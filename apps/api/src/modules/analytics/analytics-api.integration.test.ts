@@ -294,6 +294,7 @@ describe("analytics HTTP API with PostgreSQL", () => {
           repository: createPrismaAnalyticsInventoryRepository(
             prisma,
             cursorCodec,
+            { now: () => analyticsNow },
           ),
         }),
         forecastService: createForecastService(
@@ -805,6 +806,7 @@ describe("analytics HTTP API with PostgreSQL", () => {
     expect(first.body.data.branches).toHaveLength(3);
     const cursor = first.body.meta.nextCursor as string;
     expect(cursor).toEqual(expect.any(String));
+    analyticsNow = new Date(now.getTime() + 1);
     const next = await get(
       fixture.organization.id,
       `inventory?${period}&limit=1&cursor=${encodeURIComponent(cursor)}`,

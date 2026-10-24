@@ -58,6 +58,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Install Chromium for browser-backed test contracts
+        run: pnpm exec playwright install --with-deps chromium
+
       - name: Test
         run: pnpm test
 

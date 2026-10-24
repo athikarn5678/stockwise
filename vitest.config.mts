@@ -20,7 +20,13 @@ export default defineConfig({
   },
   root: repositoryRoot,
   test: {
-    exclude: [...configDefaults.exclude, "tests/e2e/**"],
+    exclude: [
+      ...configDefaults.exclude,
+      "tests/e2e/**",
+      // Irreversible transition requires the owned coordinator and its receipt;
+      // vitest.d5-p3-integration-db.config.mts runs it last on that disposable DB.
+      "apps/api/src/modules/identity/better-auth-transition.integration.test.ts",
+    ],
     fileParallelism: false,
     globalSetup: [databaseTestSetup],
     include: ["**/*.test.{ts,tsx}"],

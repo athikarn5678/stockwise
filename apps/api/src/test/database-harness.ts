@@ -101,6 +101,21 @@ export async function resetTestDatabase(
 
   try {
     await testClient.connect();
+    await testClient.query("BEGIN");
+    // Retain the durable fence across ordinary test resets. A transitioned
+    // target is never reset back into Legacy authority, even when disposable.
+    await testClient.query(`
+      DO $$
+      BEGIN
+        IF to_regclass('public.native_auth_transition') IS NOT NULL THEN
+          PERFORM 1 FROM public.native_auth_transition
+          WHERE id = true AND state = 'LEGACY' FOR SHARE;
+          IF NOT FOUND THEN
+            RAISE EXCEPTION 'test reset refused after authentication transition';
+          END IF;
+        END IF;
+      END $$;
+    `);
     await testClient.query(
       "DROP SCHEMA IF EXISTS stockwise_test_harness CASCADE",
     );
@@ -112,13 +127,14 @@ export async function resetTestDatabase(
         SELECT string_agg(format('%I.%I', schemaname, tablename), ', ')
         INTO tableList
         FROM pg_tables
-        WHERE schemaname = 'public' AND tablename <> '_prisma_migrations';
+        WHERE schemaname = 'public' AND tablename NOT IN ('_prisma_migrations', 'native_auth_transition');
 
         IF tableList IS NOT NULL THEN
           EXECUTE 'TRUNCATE TABLE ' || tableList || ' RESTART IDENTITY CASCADE';
         END IF;
       END $$;
     `);
+    await testClient.query("COMMIT");
   } finally {
     await testClient.end();
   }

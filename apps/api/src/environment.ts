@@ -64,6 +64,9 @@ export const apiEnvironmentSchema = z
       .regex(/^[\x21-\x7e]+$/)
       .optional(),
     RESEND_API_KEY: z.string().min(1).optional(),
+    // Inactive Native configuration cannot prevent Legacy startup.
+    // The Native composition validates this dedicated key before construction.
+    STOCKWISE_BETTER_AUTH_SECRET: z.string().optional(),
     STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: analyticsCursorKeySchema,
     STOCKWISE_VERIFICATION_OTP_KEY: verificationOtpKeySchema,
     STOCKWISE_VERIFICATION_OTP_KEY_ID: verificationOtpKeyIdSchema,
@@ -296,6 +299,7 @@ export function loadApiEnvironment(
     DATABASE_URL: environment.DATABASE_URL,
     OPENROUTER_API_KEY: environment.OPENROUTER_API_KEY,
     RESEND_API_KEY: environment.RESEND_API_KEY,
+    STOCKWISE_BETTER_AUTH_SECRET: environment.STOCKWISE_BETTER_AUTH_SECRET,
     STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY:
       environment.STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY,
     STOCKWISE_VERIFICATION_OTP_KEY: environment.STOCKWISE_VERIFICATION_OTP_KEY,

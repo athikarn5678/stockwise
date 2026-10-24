@@ -3,23 +3,36 @@ import { describe, expect, it } from "vitest";
 import { PrismaClient } from "../../generated/prisma/client.ts";
 import { createBetterAuthApplicationSessionService } from "./better-auth-application-session.ts";
 import { createLoginLimiter } from "./login-limiter.ts";
+import { createBetterAuthNative } from "./better-auth-native.ts";
 
 const origin = "https://web.example.test";
-const service = createBetterAuthApplicationSessionService({
-  prisma: new PrismaClient({
-    adapter: new PrismaPg({
-      connectionString: "postgresql://unused:unused@127.0.0.1:1/d4_unused_test",
-    }),
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({
+    connectionString: "postgresql://unused:unused@127.0.0.1:1/d4_unused_test",
   }),
-  secret: "d4-test-only-secret-not-a-real-credential",
-  publicWebOrigin: origin,
-  configuration: {
+});
+const configuration = {
+  secureCookie: true,
+  absoluteTimeoutMilliseconds: 604800000,
+  idleTimeoutMilliseconds: 86400000,
+  touchIntervalMilliseconds: 900000,
+};
+const service = createBetterAuthApplicationSessionService({
+  prisma,
+  native: createBetterAuthNative({
+    prisma,
+    secret: "d4-test-only-secret-not-a-real-credential",
+    publicWebOrigin: origin,
     secureCookie: true,
-    absoluteTimeoutMilliseconds: 604800000,
-    idleTimeoutMilliseconds: 86400000,
-    touchIntervalMilliseconds: 900000,
-  },
+  }),
+  publicWebOrigin: origin,
+  configuration,
   limiter: createLoginLimiter(),
+  pendingRegistrationService: {
+    async provePassword() {
+      return { outcome: "invalid" };
+    },
+  },
 });
 describe("isolated explicit native session boundary", () => {
   it.each([
@@ -34,6 +47,9 @@ describe("isolated explicit native session boundary", () => {
       ),
     ).toEqual({ outcome: "forbidden" });
     expect(await service.logout(new Headers(headers))).toEqual({
+      outcome: "forbidden",
+    });
+    expect(await service.logoutAll(new Headers(headers))).toEqual({
       outcome: "forbidden",
     });
   });
@@ -59,6 +75,11 @@ describe("isolated explicit native session boundary", () => {
       cookies: [
         "__Secure-stockwise_native.session_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure",
       ],
+    });
+  });
+  it("requires a trusted native session for logout-all", async () => {
+    expect(await service.logoutAll(new Headers({ origin }))).toEqual({
+      outcome: "authentication_required",
     });
   });
 });

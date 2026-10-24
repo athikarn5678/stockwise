@@ -12,6 +12,10 @@ import { createBetterAuthSessionResolver } from "./better-auth-bridge.ts";
 import { createPrismaBetterAuthSessionRepository } from "./better-auth-session-repository.ts";
 import { createLoginLimiter } from "./login-limiter.ts";
 import { hashPassword } from "./password-hasher.ts";
+import { createAuthenticationMiddleware } from "./authentication-context.ts";
+import { createPrismaAuthenticationSessionRepository } from "./authentication-repository.ts";
+import { createApp } from "../../app.ts";
+import { startApiServer } from "../../server.ts";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({
@@ -51,10 +55,13 @@ const native = createBetterAuthNative({
 });
 const service = createBetterAuthApplicationSessionService({
   prisma,
-  secret,
+  native,
   publicWebOrigin: origin,
   configuration,
   limiter: createLoginLimiter(),
+  pendingRegistrationService: {
+    provePassword: async () => ({ outcome: "invalid" }),
+  },
 });
 const resolver = createBetterAuthSessionResolver({
   native,
@@ -142,6 +149,116 @@ describe("native APPLICATION lifecycle on guarded PostgreSQL", () => {
     expect(
       await prisma.betterAuthSession.findUnique({ where: { id: stored.id } }),
     ).toBeNull();
+  });
+  it("rejects a real Native session on a separately composed Legacy server", async () => {
+    const user = await account();
+    const { cookie } = await establish(user.email);
+    expect(await resolver(request(cookie))).not.toBeNull();
+    const router = express.Router();
+    router.get(
+      "/protected",
+      createAuthenticationMiddleware({
+        configuration,
+        repository: createPrismaAuthenticationSessionRepository(prisma),
+      }),
+      (_request, response) => response.json({ authorized: true }),
+    );
+    const server = await startApiServer(
+      createApp({
+        apiRouter: router,
+        logger: { info() {}, error() {} },
+      }),
+      { host: "127.0.0.1", port: 0 },
+    );
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:${server.address.port}/api/v1/protected`,
+        {
+          headers: { cookie },
+        },
+      );
+      expect(response.status).toBe(401);
+      expect(await response.json()).toMatchObject({
+        error: { code: "AUTHENTICATION_REQUIRED" },
+      });
+      expect(response.headers.has("set-cookie")).toBe(false);
+    } finally {
+      await server.stop();
+    }
+  });
+  it("logout-all rejects unauthenticated/cross-origin requests and revokes every authenticated session", async () => {
+    const user = await account();
+    const first = await establish(user.email);
+    const second = await establish(user.email);
+    const other = await account();
+    const unrelated = await establish(other.email);
+    expect(await resolver(request(first.cookie))).not.toBeNull();
+    expect(await resolver(request(second.cookie))).not.toBeNull();
+    expect(await service.logoutAll(new Headers({ origin }))).toEqual({
+      outcome: "authentication_required",
+    });
+    expect(
+      await service.logoutAll(
+        new Headers({
+          origin: "https://attacker.example.test",
+          cookie: first.cookie,
+        }),
+      ),
+    ).toEqual({ outcome: "forbidden" });
+    expect(await resolver(request(first.cookie))).not.toBeNull();
+    expect(await resolver(request(second.cookie))).not.toBeNull();
+    expect(
+      await service.logoutAll(new Headers({ origin, cookie: first.cookie })),
+    ).toMatchObject({ outcome: "logged_out" });
+    expect(await resolver(request(first.cookie))).toBeNull();
+    expect(await resolver(request(second.cookie))).toBeNull();
+    expect(await resolver(request(unrelated.cookie))).not.toBeNull();
+    expect(
+      await prisma.betterAuthSession.count({ where: { userId: user.id } }),
+    ).toBe(0);
+  });
+  it("does not revoke sessions for a native cookie invalidated by credential-version change", async () => {
+    const user = await account();
+    const { cookie, session } = await establish(user.email);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { credentialVersion: { increment: 1 } },
+    });
+    expect(await service.logoutAll(new Headers({ origin, cookie }))).toEqual({
+      outcome: "authentication_required",
+    });
+    expect(
+      await prisma.betterAuthSession.findUnique({
+        where: { id: session.session.id },
+      }),
+    ).not.toBeNull();
+  });
+  it("retains every session when logout-all persistence fails", async () => {
+    const user = await account();
+    const first = await establish(user.email);
+    const second = await establish(user.email);
+    const functionName = `logout_test_fail_${randomUUID().replaceAll("-", "")}`;
+    const triggerName = `logout_test_fail_${randomUUID().replaceAll("-", "")}`;
+    await prisma.$executeRawUnsafe(
+      `CREATE FUNCTION "${functionName}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF OLD.user_id = '${user.id}'::uuid THEN RAISE EXCEPTION 'synthetic revocation failure'; END IF; RETURN OLD; END $$`,
+    );
+    await prisma.$executeRawUnsafe(
+      `CREATE TRIGGER "${triggerName}" BEFORE DELETE ON better_auth_sessions FOR EACH ROW EXECUTE FUNCTION "${functionName}"()`,
+    );
+    try {
+      await expect(
+        service.logoutAll(new Headers({ origin, cookie: first.cookie })),
+      ).rejects.toThrow("synthetic revocation failure");
+    } finally {
+      await prisma.$executeRawUnsafe(
+        `DROP TRIGGER IF EXISTS "${triggerName}" ON better_auth_sessions`,
+      );
+      await prisma.$executeRawUnsafe(
+        `DROP FUNCTION IF EXISTS "${functionName}"()`,
+      );
+    }
+    expect(await resolver(request(first.cookie))).not.toBeNull();
+    expect(await resolver(request(second.cookie))).not.toBeNull();
   });
   it.each([65, 128])(
     "accepts %i supplementary code points against the exact PHC",

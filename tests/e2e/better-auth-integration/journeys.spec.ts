@@ -85,6 +85,43 @@ journey(
     expect(pending.credentialVersion).toBe(1n);
     expect(pending.passwordHash).toMatch(/^\$argon2id\$/);
     expect(pending.userId).toBeNull();
+    input.stage = "pending-password-proof";
+    const failureCount = input.harness.deliveryFailures.length;
+    const pendingLogin = await input.page.evaluate(
+      async ({ email, password }) => {
+        const response = await fetch("/api/v1/auth/login", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+        return { status: response.status, body: await response.json() };
+      },
+      { email: input.email, password: input.password },
+    );
+    expect(pendingLogin.status).toBe(202);
+    expect(pendingLogin.body.data).toMatchObject({
+      status: "verification_required",
+      nextStep: "verify_email",
+      verification: { challengeId: null },
+    });
+    expect(
+      await input.harness.prisma.betterAuthSession.count({
+        where: { user: { email: input.email } },
+      }),
+    ).toBe(0);
+    expect(
+      (await input.context.cookies()).some(
+        (cookie) => cookie.name === nativeSessionCookie,
+      ),
+    ).toBe(false);
+    expect(
+      (await input.context.cookies()).some(
+        (cookie) => cookie.name === proofCookie,
+      ),
+    ).toBe(true);
+    expect(input.harness.mailbox.queuedCount(input.email)).toBe(0);
+    expect(input.harness.deliveryFailures).toHaveLength(failureCount);
     expect(await input.context.cookies()).not.toContainEqual(
       expect.objectContaining({ name: nativeSessionCookie }),
     );

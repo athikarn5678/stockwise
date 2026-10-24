@@ -196,6 +196,7 @@ enum VerificationConsumptionMethod {
 
 enum VerificationRevocationReason {
   LEGACY_CUTOVER
+  NATIVE_CUTOVER
   DELIVERY_SUPPRESSED
   DELIVERY_FAILED
   RESPONSE_ABORTED
@@ -218,6 +219,7 @@ model User {
   nativeRegistrationCompletedAt DateTime?  @map("native_registration_completed_at") @db.Timestamptz(3)
   passwordChangedAt             DateTime   @default(now()) @map("password_changed_at") @db.Timestamptz(3)
   credentialVersion             BigInt     @default(1) @map("credential_version") @db.BigInt
+  nativeAuthEnrollment          NativeAuthEnrollment?
   disabledAt                    DateTime?  @map("disabled_at") @db.Timestamptz(3)
   createdAt                     DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                     DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -323,6 +325,7 @@ model BetterAuthAccount {
   updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   user                  User      @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "better_auth_accounts_user_id_fkey")
 
+  nativeAuthEnrollment NativeAuthEnrollment?
   @@unique([providerId, accountId], map: "better_auth_accounts_provider_id_account_id_key")
   @@index([userId], map: "better_auth_accounts_user_id_idx")
   @@map("better_auth_accounts")
@@ -1175,4 +1178,29 @@ model MembershipAccessEventBranchScope {
   @@id([organizationId, eventId, branchId], map: "membership_access_event_branch_scopes_pkey")
   @@index([branchId, organizationId], map: "membership_access_event_branch_scopes_branch_organization_idx")
   @@map("membership_access_event_branch_scopes")
+}
+
+model NativeAuthTransition {
+  id         Boolean   @id @default(true)
+  state      String    @default("LEGACY") @db.VarChar(16)
+  runId      String?   @map("run_id") @db.Uuid
+  quiescedAt DateTime? @map("quiesced_at") @db.Timestamptz(3)
+  sealedAt   DateTime? @map("sealed_at") @db.Timestamptz(3)
+  baseline   Json?
+
+  @@map("native_auth_transition")
+}
+
+model NativeAuthEnrollment {
+  userId                    String   @id @map("user_id") @db.Uuid
+  runId                     String   @map("run_id") @db.Uuid
+  accountId                 String   @unique(map: "native_auth_enrollments_account_id_key") @map("account_id") @db.Uuid
+  sourceCredentialVersion   BigInt   @map("source_credential_version")
+  sourcePasswordChangedAt   DateTime @map("source_password_changed_at") @db.Timestamptz(3)
+  sourceDigest              String   @map("source_digest") @db.Char(64)
+  enrolledAt                DateTime @map("enrolled_at") @db.Timestamptz(3)
+  user                      User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  account                   BetterAuthAccount @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@map("native_auth_enrollments")
 }

@@ -1,8 +1,10 @@
 import { Router, type Response } from "express";
 import type { BetterAuthApplicationSessionService } from "./better-auth-application-session.ts";
 import { createCrossSiteRequestProtection } from "./credential-lifecycle-router.ts";
-import { serializeClearedVerificationProofCookie } from "./verification-security.ts";
-
+import {
+  serializeClearedVerificationProofCookie,
+  serializeVerificationProofCookie,
+} from "./verification-security.ts";
 export function createBetterAuthApplicationRouter(input: {
   service: BetterAuthApplicationSessionService;
   publicWebOrigin: string;
@@ -52,6 +54,21 @@ export function createBetterAuthApplicationRouter(input: {
           "INVALID_CREDENTIALS",
           "The email or password is incorrect.",
         );
+      } else if (result.outcome === "verification_required") {
+        response.setHeader(
+          "Set-Cookie",
+          serializeVerificationProofCookie(result.proof, result.expiresAt),
+        );
+        response.status(202).json({
+          data: {
+            status: "verification_required",
+            nextStep: "verify_email",
+            verification: { challengeId: result.challengeId },
+          },
+          meta: {
+            requestId: response.getHeader("X-Request-Id") ?? "unavailable",
+          },
+        });
       } else {
         response.setHeader("Set-Cookie", [
           ...result.cookies,
@@ -79,6 +96,35 @@ export function createBetterAuthApplicationRouter(input: {
       );
       if (result.outcome === "forbidden") {
         error(response, 403, "FORBIDDEN", "The request is not allowed.");
+      } else {
+        response.setHeader("Set-Cookie", [
+          ...result.cookies,
+          serializeClearedVerificationProofCookie(),
+        ]);
+        response.status(204).end();
+      }
+    } catch (cause) {
+      next(cause);
+    }
+  });
+  router.post("/auth/logout-all", protect, async (request, response, next) => {
+    try {
+      const result = await input.service.logoutAll(
+        new Headers({
+          origin: request.get("Origin") ?? "",
+          "sec-fetch-site": request.get("Sec-Fetch-Site") ?? "",
+          cookie: request.get("Cookie") ?? "",
+        }),
+      );
+      if (result.outcome === "forbidden") {
+        error(response, 403, "FORBIDDEN", "The request is not allowed.");
+      } else if (result.outcome === "authentication_required") {
+        error(
+          response,
+          401,
+          "AUTHENTICATION_REQUIRED",
+          "Authentication is required.",
+        );
       } else {
         response.setHeader("Set-Cookie", [
           ...result.cookies,

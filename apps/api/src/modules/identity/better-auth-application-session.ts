@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { prismaAdapter } from "@better-auth/prisma-adapter";
 import { betterAuth } from "better-auth";
 import { createAuthMiddleware } from "better-auth/api";
@@ -12,12 +11,20 @@ import { loginRequestSchema } from "./login-router.ts";
 import type { LoginLimiter } from "./login-limiter.ts";
 import { DUMMY_PASSWORD_HASH, verifyPassword } from "./password-hasher.ts";
 import type { SessionConfiguration } from "./session-configuration.ts";
+import type { PendingRegistrationService } from "./pending-registration-service.ts";
+import { isNativeAuthoritySessionValid } from "./better-auth-session-repository.ts";
 
 export type NativeLoginResult =
   | { outcome: "invalid" }
   | { outcome: "forbidden" }
   | { outcome: "validation_error" }
   | { outcome: "limited"; retryAfterSeconds: number }
+  | {
+      outcome: "verification_required";
+      proof: string;
+      expiresAt: Date;
+      challengeId: string | null;
+    }
   | {
       outcome: "authenticated";
       cookies: string[];
@@ -31,21 +38,25 @@ export interface BetterAuthApplicationSessionService {
   ): Promise<
     { outcome: "forbidden" } | { outcome: "logged_out"; cookies: string[] }
   >;
+  logoutAll(
+    headers: Headers,
+  ): Promise<
+    | { outcome: "forbidden" }
+    | { outcome: "authentication_required" }
+    | { outcome: "logged_out"; cookies: string[] }
+  >;
 }
 
 /** Isolated service only: never exposes a native handler or installs a live router. */
 export function createBetterAuthApplicationSessionService(input: {
   prisma: PrismaClient;
-  secret: string;
+  native: ReturnType<typeof createBetterAuthNative>;
   publicWebOrigin: string;
   configuration: SessionConfiguration;
   limiter: LoginLimiter;
+  pendingRegistrationService: Pick<PendingRegistrationService, "provePassword">;
 }): BetterAuthApplicationSessionService {
-  const native = createBetterAuthNative({
-    ...input,
-    secureCookie: input.configuration.secureCookie,
-  });
-  const queues = new Map<string, Promise<void>>();
+  const { native } = input;
   const cookieName = `${input.configuration.secureCookie ? "__Secure-" : ""}${BETTER_AUTH_NATIVE_COOKIE_NAME}`;
   function cookieHeaders(headers: Headers) {
     const cookies = (headers.get("cookie") ?? "")
@@ -58,25 +69,6 @@ export function createBetterAuthApplicationSessionService(input: {
         : {},
     );
   }
-  async function serial<T>(
-    email: string,
-    action: () => Promise<T>,
-  ): Promise<T> {
-    const key = createHash("sha256").update(email).digest("hex");
-    const previous = queues.get(key) ?? Promise.resolve();
-    let release!: () => void;
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    queues.set(key, current);
-    await previous;
-    try {
-      return await action();
-    } finally {
-      release();
-      if (queues.get(key) === current) queues.delete(key);
-    }
-  }
   return {
     async login(body: unknown, headers: Headers): Promise<NativeLoginResult> {
       if (
@@ -87,7 +79,7 @@ export function createBetterAuthApplicationSessionService(input: {
       const parsed = loginRequestSchema.safeParse(body);
       if (!parsed.success) return { outcome: "validation_error" };
       const { email, password } = parsed.data;
-      return serial(email, async () => {
+      return input.limiter.serializeByEmail(email, async () => {
         const limit = input.limiter.check(email);
         if (!limit.allowed)
           return {
@@ -97,6 +89,31 @@ export function createBetterAuthApplicationSessionService(input: {
         const snapshot = await input.prisma.user.findUnique({
           where: { email },
         });
+        if (snapshot === null) {
+          const proof = await input.pendingRegistrationService.provePassword({
+            email,
+            password,
+          });
+          if (proof.outcome === "limited")
+            return {
+              outcome: "limited",
+              retryAfterSeconds: proof.retryAfterSeconds,
+            };
+          if (proof.outcome !== "proved") {
+            if (
+              proof.outcome === "invalid" &&
+              proof.credentialFailure !== false
+            )
+              input.limiter.recordCredentialFailure(email);
+            return { outcome: "invalid" };
+          }
+          return {
+            outcome: "verification_required",
+            proof: proof.proof,
+            expiresAt: proof.expiresAt,
+            challengeId: null,
+          };
+        }
         const credential =
           snapshot &&
           (await input.prisma.betterAuthAccount.findUnique({
@@ -342,6 +359,72 @@ export function createBetterAuthApplicationSessionService(input: {
         })) !== null
       )
         throw new Error("Native session revocation failed");
+      return {
+        outcome: "logged_out",
+        cookies: [
+          `${cookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT${input.configuration.secureCookie ? "; Secure" : ""}`,
+        ],
+      };
+    },
+    async logoutAll(
+      headers: Headers,
+    ): Promise<
+      | { outcome: "forbidden" }
+      | { outcome: "authentication_required" }
+      | { outcome: "logged_out"; cookies: string[] }
+    > {
+      if (
+        headers.get("origin") !== input.publicWebOrigin ||
+        headers.get("sec-fetch-site") === "cross-site"
+      )
+        return { outcome: "forbidden" };
+      const resolved = await native.api.getSession({
+        headers: cookieHeaders(headers),
+        query: { disableCookieCache: true, disableRefresh: true },
+      });
+      if (resolved === null) return { outcome: "authentication_required" };
+      const revoked = await input.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM users WHERE id = ${resolved.user.id}::uuid FOR UPDATE`;
+        // Same user -> session lock order and eligibility predicate as the Bridge.
+        await tx.$queryRaw`SELECT id FROM better_auth_sessions WHERE id = ${resolved.session.id}::uuid FOR UPDATE`;
+        const session = await tx.betterAuthSession.findUnique({
+          where: { id: resolved.session.id },
+          include: {
+            user: {
+              include: {
+                betterAuthAccounts: {
+                  where: { providerId: "credential", password: { not: null } },
+                  select: { id: true },
+                  take: 1,
+                },
+              },
+            },
+          },
+        });
+        if (
+          session === null ||
+          session.token !== resolved.session.token ||
+          !isNativeAuthoritySessionValid(
+            session,
+            resolved.user.id,
+            Date.now(),
+            input.configuration,
+          )
+        )
+          return false;
+        await tx.betterAuthSession.deleteMany({
+          where: { userId: session.userId },
+        });
+        if (
+          await tx.betterAuthSession.count({
+            where: { userId: session.userId },
+          })
+        ) {
+          throw new Error("Native session revocation failed");
+        }
+        return true;
+      });
+      if (!revoked) return { outcome: "authentication_required" };
       return {
         outcome: "logged_out",
         cookies: [

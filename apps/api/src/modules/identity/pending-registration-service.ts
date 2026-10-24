@@ -36,7 +36,7 @@ export interface PendingRegistrationService {
     password: string;
   }): Promise<
     | { outcome: "limited"; retryAfterSeconds: number }
-    | { outcome: "invalid" }
+    | { outcome: "invalid"; credentialFailure?: boolean }
     | { outcome: "proved"; proof: string; expiresAt: Date }
   >;
   completeCode(input: {
@@ -156,8 +156,11 @@ export function createPendingRegistrationService({
         valid ? snapshot : null,
         security,
       );
-      return proof === null
-        ? { outcome: "invalid" }
+      return proof === null || "ineligible" in proof
+        ? {
+            outcome: "invalid",
+            credentialFailure: !(valid && snapshot !== null),
+          }
         : { outcome: "proved", ...proof };
     },
 

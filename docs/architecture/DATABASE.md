@@ -51,9 +51,13 @@ through its local `postgres` database when necessary.
 Each Vitest run provisions the target, applies committed migrations with
 `prisma migrate deploy`, then clears public-schema table data with
 `TRUNCATE ... RESTART IDENTITY CASCADE` while preserving Prisma migration
-metadata and removes only the harness-owned `stockwise_test_harness` scratch
-schema. It repeats that cleanup during teardown. Test files run serially because
-they intentionally share one resettable target.
+metadata and the initial LEGACY `native_auth_transition` singleton, and removes
+only the harness-owned `stockwise_test_harness` scratch schema. When the fence table
+exists, reset takes a transactional fence read and refuses a transitioned or
+missing singleton before destructive statements; it cannot reconstruct Legacy
+authority. Test files run
+serially because they intentionally share one resettable target. The irreversible
+D5-P3 suite runs last on its owned cluster, which is then destroyed, not reset.
 
 Run `pnpm test` for the full suite or `pnpm test:db` for the focused harness.
 Both require `TEST_DATABASE_URL` in the invoking process environment. Test
@@ -164,6 +168,32 @@ migration chain. No application of this schema to the normal development or
 production database is evidenced or authorized. See
 [`BETTER_AUTH_MIGRATION.md`](../development/BETTER_AUTH_MIGRATION.md)
 for mapping, lock/backfill risks, and forward recovery requirements.
+
+### D5-P3 durable authentication transition schema
+
+Owner-approved DEC-01/02/03 adds forward migration
+`20261024000000_native_authentication_transition` after the unchanged 22-migration
+inventory. `NativeAuthTransition` is a true-only singleton with one-way
+`LEGACY -> QUIESCED -> NATIVE` state, immutable run/baseline and transition times.
+`NativeAuthEnrollment` is append-only per-User provenance: run, canonical Native
+account, source generation/change time, internal source digest and enrollment
+time. Its User/account FKs are restrictive; no UUID/business FK is replaced.
+The new `NATIVE_CUTOVER` enum reason describes verification revocation accurately.
+
+PostgreSQL triggers coordinate authentication writes with the fence row and
+refuse stale Legacy credential/session/reset/verification authority after freeze.
+The unmounted disposable-only tool drains database work, invalidates old
+authority and inserts account/provenance/marker atomically; Native credential
+changes make Legacy replay a conflict. It never copies over an existing account.
+Business-row reconciliation includes identity, organization, membership, role,
+branch assignment and historical actor references.
+
+This migration has only owned disposable execution authority. Production/
+persistent development migration, backup restore, role hardening and application
+Live activation remain separate gates. See the migration design for credential
+eligibility, explicit frozen-source verification reconciliation, recovery limits
+and the distinction between the internal run GUC and real deployment permissions.
+
 
 ### Isolated D3 pending registration (accepted in disposable environment / not live)
 

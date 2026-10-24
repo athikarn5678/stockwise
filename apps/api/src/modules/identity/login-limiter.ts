@@ -14,6 +14,10 @@ export type LoginLimitResult =
 export interface LoginLimiter {
   check(canonicalEmail: string): LoginLimitResult;
   recordCredentialFailure(canonicalEmail: string): void;
+  serializeByEmail<T>(
+    canonicalEmail: string,
+    action: () => Promise<T>,
+  ): Promise<T>;
 }
 
 function limiterKey(canonicalEmail: string): string {
@@ -22,6 +26,7 @@ function limiterKey(canonicalEmail: string): string {
 
 export function createLoginLimiter(now: () => number = Date.now): LoginLimiter {
   const entries = new Map<string, LoginLimitEntry>();
+  const queues = new Map<string, Promise<void>>();
 
   function activeEntry(canonicalEmail: string): LoginLimitEntry | undefined {
     const key = limiterKey(canonicalEmail);
@@ -35,7 +40,26 @@ export function createLoginLimiter(now: () => number = Date.now): LoginLimiter {
     return entry;
   }
 
+  async function serializeByEmail<T>(
+    canonicalEmail: string,
+    action: () => Promise<T>,
+  ): Promise<T> {
+    const key = limiterKey(canonicalEmail);
+    const previous = queues.get(key) ?? Promise.resolve();
+    const { promise: current, resolve: release } =
+      Promise.withResolvers<void>();
+    queues.set(key, current);
+    await previous;
+    try {
+      return await action();
+    } finally {
+      release();
+      if (queues.get(key) === current) queues.delete(key);
+    }
+  }
+
   return {
+    serializeByEmail,
     check(canonicalEmail) {
       const entry = activeEntry(canonicalEmail);
 

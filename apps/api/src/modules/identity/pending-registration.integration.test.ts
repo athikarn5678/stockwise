@@ -173,6 +173,8 @@ describe("isolated D3 PostgreSQL pending registration", () => {
       security,
     );
     expect(proof).not.toBeNull();
+    if (proof === null || !("proof" in proof))
+      throw new Error("Expected pending password proof.");
     expect(
       await complete(
         row,
@@ -389,6 +391,65 @@ describe("isolated D3 PostgreSQL pending registration", () => {
       }),
     ).toEqual(account);
   });
+  it.each(["status", "version", "password-change", "account-hash"] as const)(
+    "revalidates matching Native credentials after a locked %s mutation",
+    async (change) => {
+      const address = email();
+      const user = await prisma.user.create({
+        data: {
+          email: address,
+          emailVerified: true,
+          emailVerifiedAt: new Date(),
+          nativeRegistrationCompletedAt: new Date(),
+        },
+      });
+      await prisma.betterAuthAccount.create({
+        data: {
+          userId: user.id,
+          accountId: user.id,
+          providerId: "credential",
+          password: hash,
+        },
+      });
+      const snapshot = await repository.credentialSnapshot(address);
+      expect(snapshot?.kind).toBe("verified");
+      expect(await verifyPassword(snapshot!.passwordHash, PASSWORD)).toBe(true);
+      const attempt = await repository.reserveCredential(address);
+      if (!attempt.allowed) throw new Error("Expected credential reservation.");
+
+      if (change === "status") {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { status: "DISABLED", disabledAt: new Date() },
+        });
+      } else if (change === "version") {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { credentialVersion: { increment: 1 } },
+        });
+      } else if (change === "password-change") {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { passwordChangedAt: new Date(Date.now() + 1_000) },
+        });
+      } else {
+        await prisma.betterAuthAccount.updateMany({
+          where: { userId: user.id, providerId: "credential" },
+          data: { password: await hashPassword("different Native password") },
+        });
+      }
+
+      expect(
+        await repository.finishCredential(
+          address,
+          attempt.attemptId,
+          snapshot,
+          security,
+        ),
+      ).toEqual({ ineligible: true });
+      expect((await repository.reserveCredential(address)).allowed).toBe(true);
+    },
+  );
   it("rejects enrollment if a legacy user appeared after staging", async () => {
     const row = await stage();
     const user = await prisma.user.create({
@@ -429,6 +490,7 @@ describe("isolated D3 PostgreSQL pending registration", () => {
       reason: "DELIVERY_FAILED",
     });
     expect(await complete(row)).toBe("invalid");
+    expect(await repository.credentialSnapshot(row.email)).not.toBeNull();
     expect(await repository.canDeliver(row.material.challenge.id)).toBe(false);
     const replacement = await repository.resend(row.email, security);
     expect(replacement).not.toBeNull();
@@ -558,6 +620,8 @@ describe("isolated D3 PostgreSQL pending registration", () => {
       snapshot,
       security,
     );
+    if (proof === null || !("proof" in proof))
+      throw new Error("Expected pending password proof.");
     expect(
       security.readProof(
         `__Host-stockwise_verification_proof=${proof!.proof}`,

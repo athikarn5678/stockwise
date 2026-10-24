@@ -190,20 +190,30 @@ export async function executeLocalNative(
         { ...environment, DATABASE_URL: database.TEST_DATABASE_URL },
         database.signal,
       );
-      if (mode === "database" || mode === "all")
-        await run(
-          "NATIVE_DATABASE_INTEGRATIONS",
-          process.execPath,
-          [
-            join(checkout.path, "node_modules/vitest/vitest.mjs"),
-            "run",
-            "--config",
-            "vitest.better-auth-integration-db.config.mts",
-          ],
-          checkout.path,
-          environment,
-          database.signal,
-        );
+      if (mode === "database" || mode === "all") {
+        try {
+          await run(
+            "NATIVE_DATABASE_INTEGRATIONS",
+            process.execPath,
+            [
+              join(checkout.path, "node_modules/vitest/vitest.mjs"),
+              "run",
+              "--config",
+              "vitest.better-auth-integration-db.config.mts",
+            ],
+            checkout.path,
+            environment,
+            database.signal,
+          );
+        } finally {
+          await mkdir(options.evidenceDirectory, { recursive: true });
+          await cp(
+            join(checkout.path, "test-results/native-database-results.json"),
+            join(options.evidenceDirectory, "native-database-results.json"),
+            { errorOnExist: true, force: false },
+          );
+        }
+      }
       if (mode === "all") {
         await resetTestDatabase(
           loadTestDatabaseEnvironment({
@@ -254,6 +264,42 @@ export async function executeLocalNative(
             errorOnExist: true,
             force: false,
           });
+        }
+      }
+      if (mode === "database" || mode === "all") {
+        // The irreversible database fence is rehearsed LAST. The owned cluster
+        // is destroyed afterward; no trigger disabling or fence reset is used.
+        try {
+          await run(
+            "NATIVE_TRANSITION_INTEGRATIONS",
+            process.execPath,
+            [
+              join(checkout.path, "node_modules/vitest/vitest.mjs"),
+              "run",
+              "--config",
+              "vitest.d5-p3-integration-db.config.mts",
+            ],
+            checkout.path,
+            environment,
+            database.signal,
+          );
+        } finally {
+          await cp(
+            join(checkout.path, "test-results/native-transition-results.json"),
+            join(options.evidenceDirectory, "native-transition-results.json"),
+            { errorOnExist: true, force: false },
+          );
+          await cp(
+            join(
+              checkout.path,
+              "test-results/native-transition-reconciliation.json",
+            ),
+            join(
+              options.evidenceDirectory,
+              "native-transition-reconciliation.json",
+            ),
+            { errorOnExist: true, force: false },
+          );
         }
       }
     });

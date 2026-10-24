@@ -10,6 +10,7 @@ export interface PrivateIdentityMailbox {
   allowAccount(email: string): void;
   releaseAccount(email: string): void;
   next(email: string): Promise<IdentityEmailMessage>;
+  queuedCount(email: string): number;
   clear(): void;
   provider: IdentityEmailProvider;
 }
@@ -60,6 +61,9 @@ export function createPrivateIdentityMailbox(): PrivateIdentityMailbox {
       }, 5_000);
       waiting.set(email, { resolve, reject: fail, timer });
       return promise;
+    },
+    queuedCount(email) {
+      return queued.get(email)?.length ?? 0;
     },
     clear() {
       closed = true;

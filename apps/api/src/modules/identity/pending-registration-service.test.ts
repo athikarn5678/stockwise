@@ -166,6 +166,7 @@ describe("pending registration service admission and proof", () => {
     input.passwordVerifier.verify.mockResolvedValue(true);
     expect(await input.service.provePassword({ email, password })).toEqual({
       outcome: "invalid",
+      credentialFailure: true,
     });
     expect(input.repository.reserveCredential).toHaveBeenCalledWith(email);
     expect(input.repository.finishCredential).toHaveBeenCalledWith(
@@ -176,8 +177,9 @@ describe("pending registration service admission and proof", () => {
     );
   });
 
-  it("rejects a password snapshot invalidated during verification", async () => {
+  it("does not charge a matching snapshot invalidated during verification", async () => {
     const snapshot = {
+      kind: "pending" as const,
       id: "00000000-0000-4000-8000-000000000001",
       credentialVersion: 1n,
       passwordHash: "test-hash",
@@ -191,6 +193,7 @@ describe("pending registration service admission and proof", () => {
     input.passwordVerifier.verify.mockResolvedValue(true);
     expect(await input.service.provePassword({ email, password })).toEqual({
       outcome: "invalid",
+      credentialFailure: false,
     });
     expect(input.repository.finishCredential).toHaveBeenCalledWith(
       email,

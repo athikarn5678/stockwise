@@ -33,6 +33,8 @@ async function lockEmail(tx: Prisma.TransactionClient, email: string) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${email}, 3636))`;
   await tx.$queryRaw`SELECT id FROM pending_registrations WHERE email = ${email} FOR UPDATE`;
   await tx.$queryRaw`SELECT id FROM users WHERE email = ${email} FOR UPDATE`;
+  await tx.$queryRaw`SELECT id FROM better_auth_accounts WHERE provider_id = 'credential'
+    AND user_id = (SELECT id FROM users WHERE email = ${email}) FOR UPDATE`;
 }
 async function existingUser(tx: Prisma.TransactionClient, email: string) {
   return tx.user.findUnique({ where: { email }, select: { id: true } });
@@ -46,6 +48,60 @@ function challengeData(material: VerificationChallengeMaterial) {
     failedOtpAttempts: 0,
     revokedAt: null,
   };
+}
+async function pendingPasswordEligible(
+  tx: Prisma.TransactionClient,
+  row: PendingRegistration,
+  now: Date,
+) {
+  return (
+    row.passwordHash !== null &&
+    row.consumedAt === null &&
+    row.expiresAt > now &&
+    (await existingUser(tx, row.email)) === null
+  );
+}
+
+async function nativeCredential(tx: Prisma.TransactionClient, email: string) {
+  const user = await tx.user.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      status: true,
+      disabledAt: true,
+      emailVerified: true,
+      emailVerifiedAt: true,
+      nativeRegistrationCompletedAt: true,
+      credentialVersion: true,
+      passwordChangedAt: true,
+    },
+  });
+  if (!user) return null;
+  const account = await tx.betterAuthAccount.findUnique({
+    where: {
+      providerId_accountId: { providerId: "credential", accountId: user.id },
+    },
+    select: { userId: true, password: true },
+  });
+  return account !== null &&
+    account.userId === user.id &&
+    account.password !== null &&
+    HASH.test(account.password)
+    ? {
+        kind: "verified" as const,
+        id: user.id,
+        credentialVersion: user.credentialVersion,
+        passwordHash: account.password,
+        nativeRegistrationCompletedAt: user.nativeRegistrationCompletedAt,
+        passwordChangedAt: user.passwordChangedAt,
+        eligible:
+          user.status === "ACTIVE" &&
+          user.disabledAt === null &&
+          user.emailVerified &&
+          user.emailVerifiedAt !== null &&
+          user.nativeRegistrationCompletedAt !== null,
+      }
+    : null;
 }
 async function eligible(
   tx: Prisma.TransactionClient,
@@ -341,16 +397,17 @@ export function createPendingRegistrationRepository(
     async credentialSnapshot(email) {
       return locked(email, async (tx, row, now) => {
         if (
-          !row ||
-          row.passwordHash === null ||
-          !(await eligible(tx, row, now))
+          row &&
+          row.passwordHash !== null &&
+          (await pendingPasswordEligible(tx, row, now))
         )
-          return null;
-        return {
-          id: row.id,
-          credentialVersion: row.credentialVersion,
-          passwordHash: row.passwordHash,
-        };
+          return {
+            kind: "pending" as const,
+            id: row.id,
+            credentialVersion: row.credentialVersion,
+            passwordHash: row.passwordHash,
+          };
+        return nativeCredential(tx, email);
       });
     },
     async finishCredential(
@@ -398,20 +455,54 @@ export function createPendingRegistrationRepository(
           quota.windowAt.getTime() + WINDOW <= proofTime.getTime()
         )
           return null;
-        if (
-          !row ||
-          row.id !== snapshot.id ||
-          row.credentialVersion !== snapshot.credentialVersion ||
-          row.passwordHash !== snapshot.passwordHash ||
-          !(await eligible(tx, row, proofTime))
-        )
-          return null;
+        let stale: boolean;
+        if (snapshot.kind === "pending") {
+          stale =
+            !row ||
+            row.id !== snapshot.id ||
+            row.credentialVersion !== snapshot.credentialVersion ||
+            row.passwordHash !== snapshot.passwordHash ||
+            !(await pendingPasswordEligible(tx, row, proofTime));
+        } else {
+          const current = await nativeCredential(tx, email);
+          stale =
+            !current ||
+            !snapshot.eligible ||
+            current.id !== snapshot.id ||
+            current.credentialVersion !== snapshot.credentialVersion ||
+            current.passwordHash !== snapshot.passwordHash ||
+            current.passwordChangedAt.getTime() !==
+              snapshot.passwordChangedAt.getTime() ||
+            current.nativeRegistrationCompletedAt?.getTime() !==
+              snapshot.nativeRegistrationCompletedAt?.getTime() ||
+            current.nativeRegistrationCompletedAt === null ||
+            current.nativeRegistrationCompletedAt > proofTime ||
+            current.passwordChangedAt > proofTime ||
+            !current.eligible;
+        }
+        if (stale) {
+          // Preserve durable pending admission: a changed or mismatched
+          // generation cannot refund its reserved slot.
+          if (snapshot.kind === "pending") return null;
+          await tx.pendingRegistrationQuota.update({
+            where: { key_purpose: { key, purpose } },
+            data: { count: { decrement: 1 } },
+          });
+          return { ineligible: true as const };
+        }
         await tx.pendingRegistrationQuota.update({
           where: { key_purpose: { key, purpose } },
           data: { count: { decrement: 1 } },
         });
-        const result = security.prove(row.id, row.credentialVersion, proofTime);
-        return { proof: result.proof, expiresAt: row.expiresAt };
+        const result =
+          snapshot.kind === "pending"
+            ? security.prove(snapshot.id, snapshot.credentialVersion, proofTime)
+            : security.phantom(proofTime);
+        return {
+          proof: result.proof,
+          expiresAt:
+            snapshot.kind === "pending" ? row!.expiresAt : result.expiresAt,
+        };
       });
     },
     completeCode: complete,

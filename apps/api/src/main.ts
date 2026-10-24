@@ -1,6 +1,9 @@
 import { Router } from "express";
 
 import { createAuthenticationRuntime } from "./modules/identity/authentication-runtime.ts";
+import { selectAuthenticationAuthority } from "./modules/identity/authentication-authority-selection.ts";
+import { createBetterAuthApplicationRuntime } from "./modules/identity/better-auth-application-runtime.ts";
+import { BETTER_AUTH_NATIVE_ENABLED } from "./modules/identity/better-auth-native.ts";
 import { createApp } from "./app.ts";
 import { loadApiEnvironment } from "./environment.ts";
 import { createPrismaAnalyticsBranchRepository } from "./modules/analytics/analytics-branch-repository.ts";
@@ -64,22 +67,38 @@ async function main(): Promise<void> {
   const environment = loadApiEnvironment();
   const prisma = getPrismaClient(environment);
   const emailProvider = createIdentityEmailProvider(environment);
-  const authentication = createAuthenticationRuntime({
-    environment,
-    prisma,
-    emailProvider,
-    onDeliveryFailure(kind, failure) {
-      logger.error(
-        {
-          deliveryType: kind,
-          ...(failure === undefined ? {} : { failureStage: failure.stage }),
-          ...(failure?.providerHttpStatus === undefined
-            ? {}
-            : { providerHttpStatus: failure.providerHttpStatus }),
-        },
-        "identity email delivery failed",
-      );
-    },
+  const onDeliveryFailure: Parameters<
+    typeof createAuthenticationRuntime
+  >[0]["onDeliveryFailure"] = (kind, failure) => {
+    logger.error(
+      {
+        deliveryType: kind,
+        ...(failure === undefined ? {} : { failureStage: failure.stage }),
+        ...(failure?.providerHttpStatus === undefined
+          ? {}
+          : { providerHttpStatus: failure.providerHttpStatus }),
+      },
+      "identity email delivery failed",
+    );
+  };
+  // Only one auth authority may be constructed per process. Live Native stays
+  // compile-time disabled until route parity and cutover review are accepted.
+  const authentication = selectAuthenticationAuthority({
+    nativeEnabled: BETTER_AUTH_NATIVE_ENABLED,
+    legacy: () =>
+      createAuthenticationRuntime({
+        environment,
+        prisma,
+        emailProvider,
+        onDeliveryFailure,
+      }),
+    native: () =>
+      createBetterAuthApplicationRuntime({
+        environment,
+        prisma,
+        emailProvider,
+        onDeliveryFailure,
+      }),
   });
   const { authenticationMiddleware } = authentication;
   const firstOrganizationOnboardingService =

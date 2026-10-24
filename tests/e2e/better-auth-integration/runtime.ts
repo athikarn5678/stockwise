@@ -11,36 +11,13 @@ import {
 } from "../better-auth-d5/local-runner.mts";
 import { createApp } from "../../../apps/api/src/app.ts";
 import { loadApiEnvironment } from "../../../apps/api/src/environment.ts";
+import { createBetterAuthApplicationRuntime } from "../../../apps/api/src/modules/identity/better-auth-application-runtime.ts";
 import { createPrismaBranchRepository } from "../../../apps/api/src/modules/organizations/branch-repository.ts";
 import { createBranchService } from "../../../apps/api/src/modules/organizations/branch-service.ts";
 import { createBranchRouter } from "../../../apps/api/src/modules/organizations/branch-router.ts";
-import { createBetterAuthApplicationRouter } from "../../../apps/api/src/modules/identity/better-auth-application-router.ts";
-import { createBetterAuthApplicationSessionService } from "../../../apps/api/src/modules/identity/better-auth-application-session.ts";
-import { createBetterAuthSessionResolver } from "../../../apps/api/src/modules/identity/better-auth-bridge.ts";
-import {
-  createBetterAuthNative,
-  denyAllNativeAuthRoutes,
-} from "../../../apps/api/src/modules/identity/better-auth-native.ts";
-import { createPrismaBetterAuthSessionRepository } from "../../../apps/api/src/modules/identity/better-auth-session-repository.ts";
-import { createBetterAuthPasswordResetRouter } from "../../../apps/api/src/modules/identity/credential-lifecycle-router.ts";
-import { createPrismaBetterAuthCredentialLifecycleRepository } from "../../../apps/api/src/modules/identity/credential-lifecycle-repository.ts";
-import { createPasswordResetService } from "../../../apps/api/src/modules/identity/credential-lifecycle-service.ts";
-import { createNativePasswordResetLimiter } from "../../../apps/api/src/modules/identity/native-password-reset-limiter.ts";
-import { createLoginLimiter } from "../../../apps/api/src/modules/identity/login-limiter.ts";
-import { createPendingRegistrationRouter } from "../../../apps/api/src/modules/identity/pending-registration-router.ts";
-import { createPendingRegistrationRepository } from "../../../apps/api/src/modules/identity/pending-registration-repository.ts";
-import { createPendingRegistrationService } from "../../../apps/api/src/modules/identity/pending-registration-service.ts";
-import { createVerificationSecurity } from "../../../apps/api/src/modules/identity/verification-security.ts";
-import { createVerificationDelivery } from "../../../apps/api/src/modules/identity/verification-delivery.ts";
-import { secureOneTimeTokenProvider } from "../../../apps/api/src/modules/identity/one-time-token.ts";
-import {
-  hashPassword,
-  verifyPassword,
-} from "../../../apps/api/src/modules/identity/password-hasher.ts";
 import { createPrismaFirstOrganizationOnboardingRepository } from "../../../apps/api/src/modules/identity/first-organization-onboarding-repository.ts";
 import { createFirstOrganizationOnboardingService } from "../../../apps/api/src/modules/identity/first-organization-onboarding-service.ts";
 import { createFirstOrganizationOnboardingRouter } from "../../../apps/api/src/modules/identity/first-organization-onboarding-router.ts";
-import { createSessionAuthenticationMiddleware } from "../../../apps/api/src/modules/identity/authentication-context.ts";
 import { createPrismaClient } from "../../../apps/api/src/prisma/client.ts";
 import { startApiServer } from "../../../apps/api/src/server.ts";
 import {
@@ -57,6 +34,7 @@ import { createPrivateIdentityMailbox } from "./mailbox.ts";
 export interface IdentityHarness {
   prisma: PrismaClient;
   mailbox: PrivateIdentityMailbox;
+  deliveryFailures: string[];
   stop(): Promise<void>;
 }
 export type LocalPostgresDatabase = {
@@ -207,89 +185,21 @@ export async function startHarness(
       STOCKWISE_VERIFICATION_OTP_KEY_ID: "1",
       STOCKWISE_VERIFICATION_PROOF_KEY: randomBytes(32).toString("base64url"),
       STOCKWISE_VERIFICATION_PROOF_KEY_ID: "1",
+      STOCKWISE_BETTER_AUTH_SECRET: randomBytes(32).toString("base64url"),
+      STOCKWISE_SESSION_ABSOLUTE_TIMEOUT_MINUTES: "10080",
+      STOCKWISE_SESSION_IDLE_TIMEOUT_MINUTES: "1440",
+      STOCKWISE_SESSION_TOUCH_INTERVAL_MINUTES: "15",
     });
-    const sessionConfiguration = {
-      absoluteTimeoutMilliseconds: 7 * 24 * 60 * 60 * 1000,
-      idleTimeoutMilliseconds: 24 * 60 * 60 * 1000,
-      secureCookie: false,
-      touchIntervalMilliseconds: 15 * 60 * 1000,
-    } as const;
-    const secret = randomBytes(32).toString("base64url");
-    const verificationSecurity = createVerificationSecurity({
-      publicWebOrigin: webOrigin,
-      otpKey: Buffer.from(
-        environment.STOCKWISE_VERIFICATION_OTP_KEY,
-        "base64url",
-      ),
-      otpKeyId: environment.STOCKWISE_VERIFICATION_OTP_KEY_ID,
-      proofKey: Buffer.from(
-        environment.STOCKWISE_VERIFICATION_PROOF_KEY,
-        "base64url",
-      ),
-      proofKeyId: environment.STOCKWISE_VERIFICATION_PROOF_KEY_ID,
-    });
-    const pendingRepository = createPendingRegistrationRepository(prisma);
-    const delivery = createVerificationDelivery({
-      emailProvider: mailbox.provider,
-      publicWebOrigin: webOrigin,
-      repository: pendingRepository,
-    });
-    cleanup.add(() => delivery.drain());
-    const pendingRegistrationService = createPendingRegistrationService({
-      delivery,
-      passwordHasher: { hash: hashPassword },
-      passwordVerifier: { verify: verifyPassword },
-      repository: pendingRepository,
-      security: verificationSecurity,
-    });
-
-    const native = createBetterAuthNative({
+    const deliveryFailures: string[] = [];
+    const application = createBetterAuthApplicationRuntime({
+      environment,
       prisma,
-      secret,
-      publicWebOrigin: webOrigin,
-      secureCookie: false,
+      emailProvider: mailbox.provider,
+      onDeliveryFailure: (kind) => deliveryFailures.push(kind),
     });
-    const authenticationMiddleware = createSessionAuthenticationMiddleware(
-      createBetterAuthSessionResolver({
-        native,
-        repository: createPrismaBetterAuthSessionRepository(prisma),
-        configuration: sessionConfiguration,
-        publicWebOrigin: webOrigin,
-      }),
-    );
-    const apiRouter = createPendingRegistrationRouter({
-      pendingRegistrationService,
-      publicWebOrigin: webOrigin,
-    });
-    apiRouter.use(
-      createBetterAuthApplicationRouter({
-        service: createBetterAuthApplicationSessionService({
-          prisma,
-          secret,
-          publicWebOrigin: webOrigin,
-          configuration: sessionConfiguration,
-          limiter: createLoginLimiter(),
-        }),
-        publicWebOrigin: webOrigin,
-      }),
-    );
-    // The accepted reset router applies protection to every request it receives.
-    // Route-scoped dispatch keeps that protection from intercepting protected GETs.
-    apiRouter.post(
-      ["/auth/forgot-password", "/auth/reset-password"],
-      createBetterAuthPasswordResetRouter({
-        lifecycleService: createPasswordResetService({
-          emailProvider: mailbox.provider,
-          passwordHasher: { hash: hashPassword },
-          publicWebOrigin: webOrigin,
-          repository:
-            createPrismaBetterAuthCredentialLifecycleRepository(prisma),
-          tokenProvider: secureOneTimeTokenProvider,
-        }),
-        passwordResetLimiter: createNativePasswordResetLimiter(prisma),
-        publicWebOrigin: webOrigin,
-      }),
-    );
+    cleanup.add(() => application.drain());
+    const authenticationMiddleware = application.authenticationMiddleware;
+    const apiRouter = application.router;
     apiRouter.use(
       createBranchRouter({
         authenticationMiddleware,
@@ -308,7 +218,6 @@ export async function startHarness(
         publicWebOrigin: webOrigin,
       }),
     );
-    apiRouter.use("/auth", denyAllNativeAuthRoutes);
 
     stage = "database-warmup";
     // Warm adapter pool connections before browser traffic reaches the API.
@@ -396,7 +305,12 @@ export async function startHarness(
     }
     if (!ready)
       throw new Error("Dedicated Next.js server did not become ready.");
-    return { prisma, mailbox, stop: () => cleanup.stop() };
+    return {
+      prisma,
+      mailbox,
+      deliveryFailures,
+      stop: () => cleanup.stop(),
+    };
   } catch {
     try {
       await cleanup.stop();

@@ -35,10 +35,23 @@ The independently accepted local Windows/Docker architecture below is a separate
 owner-approved accidental-error model, not a relaxation of those Linux contracts.
 R2 source is independently ACCEPTED through the owner-transferred final review;
 that provenance is not a signed approval artifact or runtime permission.
-D5-P1 formal acceptance remains separate from the updated automatic local runner's
-verified isolated PostgreSQL and Native browser execution. The active local section
-below supersedes historical routine-test authorization requirements; it does not
-claim production readiness. D5-P2–P5 remain **NOT STARTED**.
+D5-P1's updated automatic local runner/source/execution evidence received a
+**bounded independent review ACCEPT on 2026-10-24**. This is not acceptance of
+all D5 migration/cutover gates or the historical B3-M3 package as changed source.
+The active local section below supersedes historical routine-test authorization
+requirements; it does not claim production readiness.
+**D5-P2 scoped source/application integration independently ACCEPTED on
+2026-10-24**, including F1/F2/F3 closure; no runtime tests independently rerun.
+The accepted aggregate is
+`f1ffaa3640d9dcd21856eb4dcddec9909806f2cd124caba8b4443c7c0024f24c`.
+The actual `main.ts` selects the existing Legacy
+runtime while `BETTER_AUTH_NATIVE_ENABLED=false`; the Native composition is
+not constructed or mounted in normal application startup. The separately
+exercised candidate now composes pending registration/verification, pending
+login proof, Native login/logout/logout-all, the session bridge and Native reset.
+It has no Legacy writer or fallback. D5-P3's owner-approved DEC-01/02/03
+transition implementation is independently ACCEPTED within the reviewed
+source/disposable boundary, including F1 closure. D5-P4/P5 are **NOT STARTED**.
 Recovery/cutover/rollback, external email, production HTTPS and Live readiness
 remain separate unaccepted gates.
 No live auth cutover is authorized.
@@ -87,6 +100,248 @@ resolve or upgrade those statuses and claims no root migration verification.
   duplicate responses, anti-pre-hijacking, OTP protection, rate limiting,
   reset/invitation guarantees, and scanner-safe verification. Better Auth
   defaults are not implicit approval to change any of these.
+
+## D5-P2 exclusive application composition
+
+`main.ts` uses lazy factories to construct one authentication runtime. The
+inactive runtime performs no factory initialization, and a refused Native
+construction propagates rather than retrying Legacy. Existing business routers
+receive only the selected authentication middleware; StockWise remains the
+authorization boundary. The Native session reader and application session
+service share one configured Native instance. Login's one-use internal writer
+and transaction adapter remain implementation capabilities, not additional
+public authentication authorities.
+
+The isolated browser harness now uses `createBetterAuthApplicationRuntime`,
+not a separate copy of its authentication composition. Its mailbox remains
+in-memory, its PostgreSQL target receipt-bound and disposable, and its normal
+application Live flag remains OFF. Historical D5-P1/B3-M3 acceptance identities
+do not cover these changed source bytes.
+
+### Native HTTP compatibility
+
+All routes remain under `/api/v1`; the existing frontend client is unchanged.
+
+| Routes | Candidate behavior |
+| --- | --- |
+| `POST /auth/register` | Existing generic `202` continuation; standalone pending hash and proof, no User/application session before both proofs |
+| `POST /auth/login` | Verified Native enrollment returns safe actor and Native cookie; pending registration returns `202 verification_required`, proof and nullable challenge selector, with no session or automatic mail |
+| `POST /auth/verification-password-proof` | Verification-only proof; shares the process-local login failure budget while retaining durable pending admission |
+| `POST /auth/verify-email-code`, `POST /auth/verify-email` | Existing OTP/link two-proof completion, expiry/replay/error precedence; explicit sign-in afterward |
+| `POST /auth/verification-resend` | Rotate mailbox challenge without changing password version, proof or pending expiry |
+| `POST /auth/logout` | Idempotent current Native revocation; clear Native and verification-proof cookies only on success |
+| `POST /auth/logout-all` | Require current Native application authority; lock User then session, apply the Bridge validity predicate and atomically delete that user's Native sessions; clear Native/proof cookies on success |
+| `POST /auth/forgot-password`, `POST /auth/reset-password` | Existing generic recovery and Native-only credential/version/session-reset transaction |
+
+Generic Better Auth public handlers remain denied. Existing Legacy users are
+not adopted or rewritten by Native pending login, registration or resend.
+Logout-all checks current purpose/version, enrollment, password timestamp,
+verified/enabled state, credential presence, token and idle/absolute expiry
+before revoking; it does not authorize from an unvalidated Native selector.
+
+Password proof distinguishes retained pending credentials from mailbox delivery
+material. Delivery suppression or compensation revokes OTP/link use, not the
+unconsumed pending password; login may issue verification-only continuation with
+a null selector and never sends mail. Explicit resend preserves the pending
+password, version and absolute expiry.
+
+Correct eligible verified Native credentials receive the same `202 accepted`
+fallback response with an unusable phantom proof, never an application session.
+The repository rechecks User/account state, credential version/hash, password
+change and enrollment timestamps under row locks after Argon2. Correct credentials
+rejected by mutable eligibility checks remain generic and do not add shared
+credential failures. Unknown/wrong credentials still count. A changed/mismatched
+pending snapshot or expired lease retains its durable reservation charge, as in
+the existing pending-registration quota contract.
+
+Both public credential endpoints use the same limiter-owned per-email queue
+around admission and failure accounting. Login invokes the unwrapped pending
+proof implementation inside that queue, avoiding nested acquisition. Success
+does not reset the five-failure window; durable pending reservations remain in
+force. Different emails do not share a queue.
+
+### Native secret configuration
+
+`STOCKWISE_BETTER_AUTH_SECRET` is an API-owned, server-only optional input to
+`loadApiEnvironment`. It is required only when constructing the Native runtime:
+canonical unpadded base64url encoding of at least 32 cryptographically random
+bytes, distinct from analytics, OTP, current/previous proof and provider keys.
+Missing, malformed or reused material refuses construction with a fixed error
+that contains no supplied value. Legacy startup does not require or validate
+unused Native material. Native production construction also requires an HTTPS
+public web origin; test-only HTTP retains the accepted local cookie policy.
+
+Provision this persistent value outside the database and repository through
+the eventual server secret-injection mechanism; keep it stable across restarts
+and replicas. The application never generates a replacement or falls back to a
+default key. Secret storage/deployment is still Phase 8 work, not implemented
+here. Rotation requires a separately reviewed coordinated session-invalidation
+and recovery procedure; this candidate does not add old-key fallback or claim
+rotation/restart/rollback proof.
+
+### Remaining cutover dependencies
+
+Before any separately authorized Live switch: apply/reconcile the reviewed
+additive schema and owner-approved D5-P3 enrollment/account disposition under
+verified writer quiescence; preserve all UUID/business FKs; verify production
+backup/forward recovery, restart/outage/retry and compatible rollback boundaries;
+provision the dedicated Native key; close dependency-security and independent
+review gates. Never re-enable Legacy password/session authority over accounts
+whose Native credentials have changed. D5-QUALITY-01 and D5-UX-01 remain active
+pre-Live work. Real external email and production HTTPS are not verified by local
+disposable execution.
+
+## D5-P3 — Pre-cutover Legacy-to-Native transition
+
+### Authority and non-public execution boundary
+
+The owner approved DEC-01/02/03 on 2026-10-24 for source implementation and the
+existing authorized disposable runner only. The earlier assessment-only
+candidate/evidence remains historical; its PASS never meant a writer was complete.
+The writer and durable fence have real disposable PostgreSQL verification and
+scoped independent acceptance; neither grants production cutover or Live activation.
+
+Independent review returned NEEDS FIX for candidate
+`e1ea8b0c5df534f2ee4e8b1ccfb57e9b4a579589e3c34eb14b0a7793dc31ceba`:
+D5-P3-F1 found equivalent dummy PHCs bypassed exact-string exclusion. That
+candidate's evidence remains historical, not acceptance. The bounded remediation
+and fresh verification are recorded externally in
+`2026-10-24-STOCKWISE-D5-P3-F1-REMEDIATION-HANDOFF.md`.
+The owner supplied the final independent ACCEPT on 2026-10-24: F1 CLOSED,
+DEC-01/02 SATISFIED and DEC-03 SATISFIED within the reviewed boundary, with no new
+confirmed blocking findings. Accepted 76-file aggregate:
+`8aa2735c199e8e4163a31c38a90137dd18db1d462d6630ff120f8d81915ce237`.
+The reviewer verified all source identities, the five-file F1 delta, all 23
+migration checksums, historical evidence preservation and retained test/cleanup
+results; runtime suites were not independently rerun. External closure:
+`2026-10-24-STOCKWISE-D5-P3-ACCEPTANCE-CLOSURE.md`.
+Original candidate/evidence bytes remain sealed; subsequent documentation and
+quality changes have separate identities and do not inherit this acceptance.
+
+`tests/e2e/better-auth-d5/native-transition.mts` exposes the non-public
+`createDisposableNativeTransition` factory. It is not an HTTP route, startup
+callsite, environment toggle or production CLI. Construction and every transaction
+require the existing runner's exact URL/receipt and live database comment marker;
+only that receipt-bound `stockwise_test_test` database is accepted. There is no
+production override. Normal application selection remains Legacy with
+`BETTER_AUTH_NATIVE_ENABLED=false`.
+
+### DEC-01 — Validated direct credential transfer
+
+Only canonical PHC encoding with Argon2id/v19, memory 65536 KiB, time 3,
+parallelism 4, a 16-byte salt and 32-byte digest is transferable. Both accepted
+parameter orders are parsed into one comparison identity covering algorithm,
+version, parameters, canonical salt and digest; both public dummy identities
+are refused regardless of order. Absent/malformed/unsupported encodings and
+noncanonical base64 remain refused. Normalization is comparison-only: the original
+PHC bytes are copied exactly into the canonical Native credential account, never
+rehashed as a password, returned or logged. The Native verifier is unchanged.
+
+Eligibility requires ACTIVE/not disabled, both verification fields correctly
+verified, positive credential version, valid nonfuture timestamps, nonblank
+display name and existing membership or first-onboarding provenance. The writer
+does not create onboarding, memberships, assignments or roles. Membership presence
+does not activate it or grant scope; fresh StockWise RBAC remains authoritative.
+
+Preflight is repeatable-read discovery. Transfer checks expected generation and
+password-change/update timestamps, locks User then relevant credential accounts,
+and rereads source/destination state. One transaction inserts the missing canonical
+credential account, append-only generation-bound provenance, and the enrollment
+marker for the same UUID. It never creates a session, changes the Legacy hash or
+advances the password generation without password replacement.
+
+Any existing account, foreign/colliding selector or pre-existing Native marker is
+preserved, never adopted, reassigned or overwritten. Provenance binds run, source
+generation/change timestamp, internal source digest, canonical destination and
+enrollment time. Exact unchanged replay returns REPLAY without writes. Any changed
+source/destination, including Native reset, refuses replay. Sealed authority
+accepts no new Legacy imports.
+
+### DEC-02 — Verification and account disposition
+
+| Source state | Transition treatment |
+| --- | --- |
+| Eligible verified Legacy identity, no destination | Explicit validated transfer under QUIESCED authority |
+| Unverified, incomplete or disabled | Preserve UUID/business references and restrictions; do not enroll, verify or activate |
+| Unsupported/missing credential | Refuse import; require separately authenticated recovery/re-enrollment, never fabricate credentials |
+| Verification fields disagree | Refuse transfer until explicit frozen-source reconciliation |
+| Existing/misowned/partial Native destination | Conflict/preserve; no upsert or repair |
+
+Legacy `email_verified_at` is authoritative until freeze; D1's boolean was only a
+snapshot. `reconcileVerification` requires explicit `LEGACY_EMAIL_VERIFIED_AT`,
+QUIESCED matching run, locked expected generation/timestamps and no Native
+destination. It derives only the boolean from that frozen timestamp; it cannot
+create verification evidence or enroll a user. Stale reconciliation needs fresh
+preflight. Excluded users require accepted verification/onboarding or an explicitly
+authenticated recovery continuation before later authorized enrollment. Migration
+is not registration and adds no public recovery/adoption endpoint.
+
+### DEC-03 — Durable exclusion, retry and forward recovery
+
+The additive `20261024000000_native_authentication_transition` migration follows
+all 22 historical migrations without editing them. It adds:
+
+- `NativeAuthTransition`: singleton `LEGACY -> QUIESCED -> NATIVE`, immutable
+  run/baseline metadata and monotonic transition timestamps.
+- `NativeAuthEnrollment`: append-only per-User generation/source/destination
+  provenance with restrictive User and Native-account FKs.
+- Authentication-table triggers coordinating with the singleton; stale Legacy
+  credential/session/reset/verification authority is denied after freezing.
+- `NATIVE_CUTOVER` for accurate nonlegacy challenge disposition.
+
+Quiescence takes bounded ACCESS EXCLUSIVE locks on public tables in stable order,
+draining database work and establishing a full business-row baseline. It atomically
+changes durable state, revokes Legacy sessions and outstanding reset/challenge
+authority, invalidates pre-fence pending material, and removes provisional Native
+sessions/verifications. New authority cannot be minted while QUIESCED. The
+transaction-local run marker permits only bounded migration mutations, never
+Legacy password replacement.
+
+Reconciliation compares complete business-table contents and immutable identity
+fields, not only counts. It refuses sealing while eligible imports remain or
+Legacy authority survives. NATIVE here is database authority in the disposable
+rehearsal, not an application Live flag. It permanently rejects Legacy credential
+changes, sessions and reset authority, while preserving accepted Native provisional
+session finalization, reset delivery/version/revocation and two-proof registration.
+Pre-fence pending proofs need a fresh generation; ordinary post-fence delivery
+compensation/resend retains its accepted password/version/expiry behavior.
+
+Interruption rolls back account/provenance/marker together. A fresh process can
+retry current state; Native credential advances cannot be overwritten by Legacy
+replay. No rollback/unseal, hash refresh or Native-to-Legacy fallback exists.
+Ordinary test resets preserve a LEGACY singleton and refuse a transitioned target
+instead of reconstructing Legacy authority.
+
+### Backup, deployment and verification limits
+
+Before separately authorized production execution, stop ingress/background writers
+and drain already-admitted requests as well as database transactions. Encrypt
+durable backups with externally managed keys, restore-test only an isolated
+authorized target, and reconcile schema/migration identities, every UUID/business
+FK, memberships/assignments/RBAC, latest acknowledged credential generations,
+revocations and authority epoch. Keep credentials/personal data out of evidence.
+
+The GUC is an internal run marker, not a permission credential. Production
+application roles must not own schema, disable triggers, truncate the fence or
+restore backups. An administrator restoring an old database can restore its old
+fence too: external maintenance exclusion and independently retained latest
+authority/checkpoint/WAL evidence are mandatory. Database locks alone do not drain
+a request admitted outside a transaction. Missing latest Native authority means
+remain offline and forward-recover, never reactivate stale Legacy authority.
+
+Zero lost acknowledged authentication-state changes is the security objective,
+not a verified production RPO=0 claim. No production RTO is selected: later
+acceptance must measure detection, drain, backup verification, restore/replay,
+identity/credential reconciliation and controlled resumption with representative
+data/topology/failures, then obtain owner approval.
+
+Disposable verification covers actual PHC/Native-verifier compatibility, populated
+sale/refund/receipt/ledger FK preservation, negative states/destinations, database
+contention, rollback injection, killed-process/backend retry, real HTTP auth and
+post-Native-reset stale replay refusal. It is not physical backup restore,
+production failover, real email, HTTPS or Live proof. Exact evidence and identities
+remain external StockWise task records. D5-QUALITY-01 and D5-UX-01 remain pending
+pre-Live; D5-P4/P5 and Phase 8 are not advanced.
 
 ## Registration: accepted isolated D3 design, not cutover proof
 

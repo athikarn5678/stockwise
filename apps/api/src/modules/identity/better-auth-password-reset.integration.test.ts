@@ -69,10 +69,13 @@ const native = createBetterAuthNative({
 });
 const loginService = createBetterAuthApplicationSessionService({
   prisma,
-  secret,
+  native,
   publicWebOrigin: origin,
   configuration,
   limiter: createLoginLimiter(),
+  pendingRegistrationService: {
+    provePassword: async () => ({ outcome: "invalid" }),
+  },
 });
 const bridge = createBetterAuthSessionResolver({
   native,

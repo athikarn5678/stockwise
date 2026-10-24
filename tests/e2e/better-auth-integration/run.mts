@@ -34,7 +34,7 @@ const journeyId = process.argv[3];
 if (
   journeyId !== undefined &&
   (mode !== "browser" ||
-    !/^(?:0[1-9]|1[0-6]|gaps|cache-control)$/.test(journeyId))
+    !/^(?:0[1-9]|1[0-9]|gaps|cache-control)$/.test(journeyId))
 )
   throw new Error("Select a numbered journey, gaps, or cache-control.");
 

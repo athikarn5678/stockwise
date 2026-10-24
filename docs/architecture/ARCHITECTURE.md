@@ -440,6 +440,26 @@ Invitation tokens remain URL-transient and are never copied to browser storage.
 
 The browser never receives a JWT or refresh token and never stores an auth token in `localStorage` or `sessionStorage`. Session expiry/revocation and disabled actors are evaluated server-side; deauthorized membership is denied later by the separate authorization boundary. The cookie has `Path=/`, is host-only, `SameSite=Lax`, and `Secure` in production but not local HTTP. Configurable timeout baselines are sliding 24 hours idle, fixed seven days absolute, and a 15-minute minimum persisted-touch interval.
 
+#### Better Auth pre-cutover transition boundary
+
+ADR-035/036 and owner-approved D5-P3 DEC-01/02/03 retain StockWise User UUIDs,
+tenant/branch relationships and RBAC. The unmounted disposable-only transition
+tool transfers only validated eligible Legacy PHCs into missing canonical Native
+accounts. A durable PostgreSQL singleton fences Legacy authentication/writers
+with one-way LEGACY/QUIESCED/NATIVE state; append-only generation-bound enrollment
+provenance makes exact retry a no-op and changed-state retry a conflict.
+No runtime startup or HTTP route invokes the writer. The normal runtime remains
+Legacy with `BETTER_AUTH_NATIVE_ENABLED=false`.
+
+Database draining, Legacy authority invalidation and whole-business-row
+reconciliation precede database Native authority in the owned rehearsal. Native
+credential changes require forward recovery, never stale Legacy fallback.
+Deployment still requires independently verified ingress/request drain, least
+privilege, encrypted backup/restore and latest-authority reconciliation; a database
+backup can also roll back its fence. No production RPO/RTO or Live authorization
+is inferred from disposable proof. See
+[`BETTER_AUTH_MIGRATION.md`](../development/BETTER_AUTH_MIGRATION.md).
+
 ### 6.2 Manual inventory adjustment
 
 An authenticated adjustment re-resolves and holds trusted Organization, actor,

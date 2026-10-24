@@ -5,12 +5,14 @@ import {
   register,
   verifyByCode,
   login,
+  post,
   expect,
   type Scenario,
 } from "./fixtures";
 
 const origin = "http://localhost:3202";
 const cookieName = "stockwise_native.session_token";
+const proofCookieName = "__Host-stockwise_verification_proof";
 
 async function account(input: Scenario) {
   const registration = await register(input);
@@ -395,3 +397,171 @@ for (const [number, state] of [
     },
   );
 }
+journey(
+  "17 logout-all revokes every Native session and requires authentication",
+  async (input) => {
+    const scope = await account(input);
+    expect((await login(input)).status()).toBe(200);
+    const otherContext = await input.context
+      .browser()!
+      .newContext({ baseURL: origin });
+    try {
+      const otherPage = await otherContext.newPage();
+      await otherPage.addInitScript(() =>
+        localStorage.setItem("stockwise.language", "en"),
+      );
+      const other = { ...input, context: otherContext, page: otherPage };
+      expect((await login(other)).status()).toBe(200);
+      expect(
+        await input.harness.prisma.betterAuthSession.count({
+          where: { userId: scope.user.id },
+        }),
+      ).toBe(2);
+      await input.context.addCookies([
+        {
+          name: proofCookieName,
+          value: randomBytes(24).toString("base64url"),
+          domain: "localhost",
+          path: "/",
+          httpOnly: true,
+          sameSite: "Strict",
+          secure: true,
+        },
+      ]);
+      expect(
+        (await input.context.cookies()).find(
+          (cookie) => cookie.name === proofCookieName,
+        ),
+      ).toMatchObject({
+        secure: true,
+        httpOnly: true,
+        path: "/",
+        sameSite: "Strict",
+      });
+      const logoutAll = await input.page.evaluate(async () => {
+        const response = await fetch("/api/v1/auth/logout-all", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        return response.status;
+      });
+      expect(logoutAll).toBe(204);
+      expect(
+        (await input.context.cookies()).some(
+          (cookie) =>
+            cookie.name === cookieName || cookie.name === proofCookieName,
+        ),
+      ).toBe(false);
+      expect(
+        await input.harness.prisma.betterAuthSession.count({
+          where: { userId: scope.user.id },
+        }),
+      ).toBe(0);
+      await denied(input.page);
+      await denied(otherPage);
+      expect(
+        (
+          await input.context.request.post(`${origin}/api/v1/auth/logout-all`, {
+            data: {},
+            headers: { Origin: origin },
+          })
+        ).status(),
+      ).toBe(401);
+    } finally {
+      await otherContext.close();
+    }
+  },
+);
+journey(
+  "18 password proof and Native login share the aggregate failure budget",
+  async (input) => {
+    await account(input);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const proof = await input.page.evaluate(
+        async ({ email, password }) => {
+          const response = await fetch(
+            "/api/v1/auth/verification-password-proof",
+            {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email, password }),
+            },
+          );
+          return response.status;
+        },
+        { email: input.email, password: "wrong-password-long-enough" },
+      );
+      expect(proof).toBe(401);
+    }
+    expect((await login(input, "wrong-password-long-enough")).status()).toBe(
+      401,
+    );
+    const limited = await login(input);
+    expect(limited.status()).toBe(429);
+    expect(Number(limited.headers()["retry-after"])).toBeGreaterThan(0);
+    const proofAfterLimit = await input.page.evaluate(
+      async ({ email, password }) => {
+        const response = await fetch(
+          "/api/v1/auth/verification-password-proof",
+          {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+          },
+        );
+        return response.status;
+      },
+      { email: input.email, password: "wrong-password-long-enough" },
+    );
+    expect(proofAfterLimit).toBe(429);
+    expect(
+      await input.harness.prisma.betterAuthSession.count({
+        where: { user: { email: input.email } },
+      }),
+    ).toBe(0);
+  },
+);
+
+journey(
+  "19 verified password proof stays non-authorizing and preserves login budget",
+  async (input) => {
+    const { user } = await account(input);
+    const failures = input.harness.deliveryFailures.length;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const proof = await post(input, "auth/verification-password-proof", {
+        email: input.email,
+        password: input.password,
+      });
+      expect(proof.status).toBe(202);
+      expect(proof.data.data).toEqual({ status: "accepted" });
+      expect(
+        (await input.context.cookies()).find(
+          (cookie) => cookie.name === proofCookieName,
+        ),
+      ).toMatchObject({
+        httpOnly: true,
+        secure: true,
+        sameSite: "Strict",
+        path: "/",
+      });
+      await denied(input.page);
+    }
+    expect(
+      await input.harness.prisma.betterAuthSession.count({
+        where: { userId: user.id },
+      }),
+    ).toBe(0);
+    expect(input.harness.mailbox.queuedCount(input.email)).toBe(0);
+    expect(input.harness.deliveryFailures).toHaveLength(failures);
+    expect((await login(input)).status()).toBe(200);
+    expect(
+      (await input.context.cookies()).some(
+        (cookie) => cookie.name === proofCookieName,
+      ),
+    ).toBe(false);
+  },
+);

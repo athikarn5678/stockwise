@@ -6,11 +6,22 @@ import type {
 
 export type PendingRegistrationCompletion =
   "verified" | "already_verified" | "invalid" | "proof_required";
-export interface PendingCredentialSnapshot {
-  id: string;
-  credentialVersion: bigint;
-  passwordHash: string;
-}
+export type PendingCredentialSnapshot =
+  | {
+      kind: "pending";
+      id: string;
+      credentialVersion: bigint;
+      passwordHash: string;
+    }
+  | {
+      kind: "verified";
+      id: string;
+      credentialVersion: bigint;
+      passwordHash: string;
+      passwordChangedAt: Date;
+      nativeRegistrationCompletedAt: Date | null;
+      eligible: boolean;
+    };
 export interface PendingRegistrationRepository {
   admit(
     email: string,
@@ -38,7 +49,7 @@ export interface PendingRegistrationRepository {
     attemptId: string,
     snapshot: PendingCredentialSnapshot | null,
     security: VerificationSecurity,
-  ): Promise<{ proof: string; expiresAt: Date } | null>;
+  ): Promise<{ proof: string; expiresAt: Date } | { ineligible: true } | null>;
   completeCode(input: {
     email: string;
     challengeId: string;

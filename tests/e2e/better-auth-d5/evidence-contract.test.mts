@@ -51,17 +51,36 @@ const stage: StageReceipt = {
   sourceHash: hash,
   migrationHash,
   configFingerprint: fingerprint,
-  process: { stageId: "auth-flow", started: true, exitCode: 0, signal: null, timedOut: false },
+  process: {
+    stageId: "auth-flow",
+    started: true,
+    exitCode: 0,
+    signal: null,
+    timedOut: false,
+  },
   discoveredTestIds: ["login-valid", "login-invalid"],
-  results: [{ id: "login-valid", status: "PASS" }, { id: "login-invalid", status: "PASS" }],
+  results: [
+    { id: "login-valid", status: "PASS" },
+    { id: "login-invalid", status: "PASS" },
+  ],
 };
 const validEvidence: EvidenceInput = {
   expectedStageIds: ["auth-flow"],
   stages: [stage],
   ownership: { owner: "worker-1", acquired: true },
   fault: { injected: false, owner: "worker-1", faultCode: "NOT_REQUESTED" },
-  cleanup: { completed: true, owner: "worker-1", retainedArtifactsRemoved: true },
-  artifacts: [{ path: "receipts/stage-auth-flow.json", owner: "worker-1", retained: true }],
+  cleanup: {
+    completed: true,
+    owner: "worker-1",
+    retainedArtifactsRemoved: true,
+  },
+  artifacts: [
+    {
+      path: "receipts/stage-auth-flow.json",
+      owner: "worker-1",
+      retained: true,
+    },
+  ],
   limitations: ["NO_LIVE_DATABASE", "NO_AUTHORITY_CHANGE"],
 };
 
@@ -92,44 +111,94 @@ test("configuration fingerprint ignores unallowlisted secret fields", () => {
     timeoutSeconds: 300 as const,
   };
   const extendedConfiguration = { ...configuration, token: "never-hash-this" };
-  assert.equal(fingerprintConfiguration(extendedConfiguration), fingerprintConfiguration(configuration));
+  assert.equal(
+    fingerprintConfiguration(extendedConfiguration),
+    fingerprintConfiguration(configuration),
+  );
 });
 
 test("test accounting rejects zero discovery, missing results, duplicates and unexpected results", () => {
   assert.equal(accountTests([], []).success, false);
-  assert.equal(accountTests(["known"], []).errors.includes("MISSING_TEST_RESULT"), true);
-  assert.equal(accountTests(["known"], [{ id: "known", status: "PASS" }, { id: "known", status: "PASS" }]).errors.includes("DUPLICATE_TEST"), true);
-  assert.equal(accountTests(["known"], [{ id: "other", status: "PASS" }]).errors.includes("UNEXPECTED_TEST"), true);
+  assert.equal(
+    accountTests(["known"], []).errors.includes("MISSING_TEST_RESULT"),
+    true,
+  );
+  assert.equal(
+    accountTests(
+      ["known"],
+      [
+        { id: "known", status: "PASS" },
+        { id: "known", status: "PASS" },
+      ],
+    ).errors.includes("DUPLICATE_TEST"),
+    true,
+  );
+  assert.equal(
+    accountTests(["known"], [{ id: "other", status: "PASS" }]).errors.includes(
+      "UNEXPECTED_TEST",
+    ),
+    true,
+  );
 });
 
 test("required skipped or unrun test results can never succeed", () => {
   for (const status of ["SKIP", "NOT_RUN"] as const) {
-    assert.equal(accountTests(["required"], [{ id: "required", status }]).success, false);
-    assert.equal(accountTests(["required"], [{ id: "required", status }]).errors.includes("REQUIRED_TEST_NOT_PASSED"), true);
+    assert.equal(
+      accountTests(["required"], [{ id: "required", status }]).success,
+      false,
+    );
+    assert.equal(
+      accountTests(["required"], [{ id: "required", status }]).errors.includes(
+        "REQUIRED_TEST_NOT_PASSED",
+      ),
+      true,
+    );
   }
 });
 test("omitting a required test from both discovery and results fails independent expectations", () => {
-  assert.equal(validateEvidence(validEvidence, "artifacts", expected).success, true);
+  assert.equal(
+    validateEvidence(validEvidence, "artifacts", expected).success,
+    true,
+  );
   const omitted = {
     ...stage,
     discoveredTestIds: ["login-valid"],
     results: [{ id: "login-valid", status: "PASS" }] as const,
   };
-  const result = validateEvidence({ ...validEvidence, stages: [omitted] }, "artifacts", expected);
+  const result = validateEvidence(
+    { ...validEvidence, stages: [omitted] },
+    "artifacts",
+    expected,
+  );
   assert.equal(result.success, false);
   assert.equal(result.errors.includes("TEST_DISCOVERY_MISMATCH"), true);
 });
 
 test("missing exact stage receipts and incomplete process receipts fail", () => {
-  const missing = validateEvidence({ ...validEvidence, stages: [] }, "artifacts", expected);
+  const missing = validateEvidence(
+    { ...validEvidence, stages: [] },
+    "artifacts",
+    expected,
+  );
   assert.equal(missing.success, false);
   assert.equal(missing.errors.includes("MISSING_STAGE"), true);
   const failedStage = { ...stage, process: { ...stage.process, exitCode: 1 } };
-  const childFailure = validateEvidence({ ...validEvidence, stages: [failedStage] }, "artifacts", expected);
+  const childFailure = validateEvidence(
+    { ...validEvidence, stages: [failedStage] },
+    "artifacts",
+    expected,
+  );
   assert.equal(childFailure.errors.includes("CHILD_FAILURE"), true);
-  const wrongHash = validateEvidence({ ...validEvidence, stages: [{ ...stage, sourceHash: "d".repeat(64) }] }, "artifacts", expected);
+  const wrongHash = validateEvidence(
+    { ...validEvidence, stages: [{ ...stage, sourceHash: "d".repeat(64) }] },
+    "artifacts",
+    expected,
+  );
   assert.equal(wrongHash.errors.includes("HASH_MISMATCH"), true);
-  assert.equal(validateEvidence(validEvidence, "artifacts", expected).success, true);
+  assert.equal(
+    validateEvidence(validEvidence, "artifacts", expected).success,
+    true,
+  );
 });
 
 test("start failure, signal and timeout receipts are failures", () => {
@@ -138,17 +207,26 @@ test("start failure, signal and timeout receipts are failures", () => {
     { ...stage.process, exitCode: null, signal: "SIGTERM" },
     { ...stage.process, timedOut: true },
   ]) {
-    const result = validateEvidence({ ...validEvidence, stages: [{ ...stage, process }] }, "artifacts", expected);
+    const result = validateEvidence(
+      { ...validEvidence, stages: [{ ...stage, process }] },
+      "artifacts",
+      expected,
+    );
     assert.equal(result.success, false);
     assert.equal(result.errors.includes("CHILD_FAILURE"), true);
   }
 });
 test("process receipt validation requires the exact successful stage receipt shape", () => {
   const receipt = stage.process;
-  assert.deepEqual(validateProcessReceipt(receipt, "auth-flow"), { success: true, errors: [] });
+  assert.deepEqual(validateProcessReceipt(receipt, "auth-flow"), {
+    success: true,
+    errors: [],
+  });
 
   const without = (field: keyof typeof receipt): unknown =>
-    Object.fromEntries(Object.entries(receipt).filter(([key]) => key !== field));
+    Object.fromEntries(
+      Object.entries(receipt).filter(([key]) => key !== field),
+    );
   const invalidReceipts: readonly unknown[] = [
     undefined,
     null,
@@ -179,56 +257,113 @@ test("process receipt validation requires the exact successful stage receipt sha
   for (const invalid of invalidReceipts) {
     assert.equal(validateProcessReceipt(invalid, "auth-flow").success, false);
   }
-  const failedEvidence = validateEvidence({
-    ...validEvidence,
-    stages: [{ ...stage, process: { ...receipt, exitCode: 1 } }],
-  }, "artifacts", expected);
+  const failedEvidence = validateEvidence(
+    {
+      ...validEvidence,
+      stages: [{ ...stage, process: { ...receipt, exitCode: 1 } }],
+    },
+    "artifacts",
+    expected,
+  );
   assert.equal(failedEvidence.success, false);
   assert.equal(failedEvidence.errors.includes("CHILD_FAILURE"), true);
 });
 test("process-only stages accept no test accounting and reject fabricated tests", () => {
-  const processStage: StageReceipt = { ...stage, kind: "process", discoveredTestIds: [], results: [] };
+  const processStage: StageReceipt = {
+    ...stage,
+    kind: "process",
+    discoveredTestIds: [],
+    results: [],
+  };
   const processExpected = {
     ...expected,
     stageKinds: { "auth-flow": "process" as const },
     requiredTestIdsByStage: { "auth-flow": [] },
   };
-  assert.equal(validateEvidence({ ...validEvidence, stages: [processStage] }, "artifacts", processExpected).success, true);
-  const fabricatedTests = validateEvidence({
-    ...validEvidence,
-    stages: [{ ...processStage, discoveredTestIds: ["login-valid"] }],
-  }, "artifacts", processExpected);
+  assert.equal(
+    validateEvidence(
+      { ...validEvidence, stages: [processStage] },
+      "artifacts",
+      processExpected,
+    ).success,
+    true,
+  );
+  const fabricatedTests = validateEvidence(
+    {
+      ...validEvidence,
+      stages: [{ ...processStage, discoveredTestIds: ["login-valid"] }],
+    },
+    "artifacts",
+    processExpected,
+  );
   assert.equal(fabricatedTests.success, false);
-  assert.equal(fabricatedTests.errors.includes("TEST_DISCOVERY_MISMATCH"), true);
+  assert.equal(
+    fabricatedTests.errors.includes("TEST_DISCOVERY_MISMATCH"),
+    true,
+  );
 });
 
-
-
 test("cleanup and artifact retention ownership failures are reported", () => {
-  const cleanupFailure = validateEvidence({
-    ...validEvidence,
-    cleanup: { ...validEvidence.cleanup, completed: false, retainedArtifactsRemoved: false },
-  }, "artifacts", expected);
+  const cleanupFailure = validateEvidence(
+    {
+      ...validEvidence,
+      cleanup: {
+        ...validEvidence.cleanup,
+        completed: false,
+        retainedArtifactsRemoved: false,
+      },
+    },
+    "artifacts",
+    expected,
+  );
   assert.equal(cleanupFailure.errors.includes("CLEANUP_FAILURE"), true);
-  const retentionFailure = validateEvidence({
-    ...validEvidence,
-    artifacts: [{ ...validEvidence.artifacts[0]!, retained: false }],
-  }, "artifacts", expected);
-  assert.equal(retentionFailure.errors.includes("ARTIFACT_OWNERSHIP_FAILURE"), true);
+  const retentionFailure = validateEvidence(
+    {
+      ...validEvidence,
+      artifacts: [{ ...validEvidence.artifacts[0]!, retained: false }],
+    },
+    "artifacts",
+    expected,
+  );
+  assert.equal(
+    retentionFailure.errors.includes("ARTIFACT_OWNERSHIP_FAILURE"),
+    true,
+  );
 });
 
 test("artifact paths reject traversal, absolute paths, URLs, screenshots, traces and storage exports", () => {
-  for (const path of ["../outside.txt", "/tmp/outside.txt", "C:/secret.txt", "https://host/path", "screenshots/login.png", "trace.zip", "storage.json", "receipts/unfiltered.txt"]) {
+  for (const path of [
+    "../outside.txt",
+    "/tmp/outside.txt",
+    "C:/secret.txt",
+    "https://host/path",
+    "screenshots/login.png",
+    "trace.zip",
+    "storage.json",
+    "receipts/unfiltered.txt",
+  ]) {
     assert.equal(isSafeArtifactPath("artifacts", path), false, path);
   }
-  assert.equal(isSafeArtifactPath("artifacts", "receipts/stage-auth-flow.json"), true);
+  assert.equal(
+    isSafeArtifactPath("artifacts", "receipts/stage-auth-flow.json"),
+    true,
+  );
 });
 
 test("safe logs accept enumerated codes only and primary failures survive secondary failures", () => {
   assert.equal(isSafeLogEvent({ code: "STAGE_STARTED" }), true);
-  assert.equal(isSafeLogEvent({ code: "STAGE_STARTED", message: "raw URL" }), false);
-  assert.deepEqual(preservePrimaryFailure("CHILD_FAILURE", ["CLEANUP_FAILURE", "ARTIFACT_PATH_UNSAFE"]), {
-    primaryFailure: "CHILD_FAILURE",
-    secondaryFailures: ["CLEANUP_FAILURE", "ARTIFACT_PATH_UNSAFE"],
-  });
+  assert.equal(
+    isSafeLogEvent({ code: "STAGE_STARTED", message: "raw URL" }),
+    false,
+  );
+  assert.deepEqual(
+    preservePrimaryFailure("CHILD_FAILURE", [
+      "CLEANUP_FAILURE",
+      "ARTIFACT_PATH_UNSAFE",
+    ]),
+    {
+      primaryFailure: "CHILD_FAILURE",
+      secondaryFailures: ["CLEANUP_FAILURE", "ARTIFACT_PATH_UNSAFE"],
+    },
+  );
 });

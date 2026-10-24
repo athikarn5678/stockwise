@@ -83,7 +83,8 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
     throw new BranchApiError("unavailable");
   }
 
-  if (response.status === 401) throw new BranchApiError("authentication_required");
+  if (response.status === 401)
+    throw new BranchApiError("authentication_required");
   if (response.status === 403) throw new BranchApiError("forbidden");
   let body: unknown;
   try {
@@ -118,12 +119,15 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   return result.data;
 }
 
-export async function fetchAccessContext(
-  options?: { signal?: AbortSignal },
-): Promise<AccessContext> {
+export async function fetchAccessContext(options?: {
+  signal?: AbortSignal;
+}): Promise<AccessContext> {
   return parse(
     accessContextResponseSchema,
-    await request("me/access-context", options?.signal ? { signal: options.signal } : undefined),
+    await request(
+      "me/access-context",
+      options?.signal ? { signal: options.signal } : undefined,
+    ),
   ).data;
 }
 

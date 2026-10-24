@@ -45,7 +45,9 @@ function validateName(name: string): string {
   const match = MIGRATION_NAME.exec(name);
   const timestamp = match?.[1];
   if (!timestamp)
-    throw safeError("Migration inventory contains a malformed timestamp or name.");
+    throw safeError(
+      "Migration inventory contains a malformed timestamp or name.",
+    );
   const date = new Date(0);
   date.setUTCFullYear(
     Number(timestamp.slice(0, 4)),
@@ -67,17 +69,24 @@ function validateName(name: string): string {
     date.getUTCMinutes() !== Number(timestamp.slice(10, 12)) ||
     date.getUTCSeconds() !== Number(timestamp.slice(12, 14))
   )
-    throw safeError("Migration inventory contains a malformed timestamp or name.");
+    throw safeError(
+      "Migration inventory contains a malformed timestamp or name.",
+    );
   return timestamp;
 }
 
 function compareEntry(left: MigrationEntry, right: MigrationEntry): boolean {
-  return left.name === right.name && left.timestamp === right.timestamp && left.sha256 === right.sha256;
+  return (
+    left.name === right.name &&
+    left.timestamp === right.timestamp &&
+    left.sha256 === right.sha256
+  );
 }
 
 function ordered(entries: MigrationEntry[]): MigrationEntry[] {
   return [...entries].sort(
-    (a, b) => a.timestamp.localeCompare(b.timestamp) || a.name.localeCompare(b.name),
+    (a, b) =>
+      a.timestamp.localeCompare(b.timestamp) || a.name.localeCompare(b.name),
   );
 }
 
@@ -115,7 +124,9 @@ export async function readMigrationSourceManifest(
 
     const members = await readdir(root, { withFileTypes: true });
     if (members.length === 0) throw safeError("Migration inventory is empty.");
-    const lock = members.find((member) => member.name === "migration_lock.toml");
+    const lock = members.find(
+      (member) => member.name === "migration_lock.toml",
+    );
     if (!lock || !lock.isFile() || lock.isSymbolicLink())
       throw safeError("Migration lock metadata is missing or invalid.");
     const migrations: MigrationEntry[] = [];
@@ -149,16 +160,19 @@ export async function readMigrationSourceManifest(
       if (bytes.length === 0) throw safeError("Migration SQL is empty.");
       migrations.push({ name: member.name, timestamp, sha256: digest(bytes) });
     }
-    if (migrations.length === 0) throw safeError("Migration inventory is empty.");
+    if (migrations.length === 0)
+      throw safeError("Migration inventory is empty.");
     const lockPath = join(root, "migration_lock.toml");
     const lockStat = await lstat(lockPath);
     if (!lockStat.isFile() || lockStat.isSymbolicLink())
       throw safeError("Migration lock metadata is invalid.");
     const lockBytes = await readFile(lockPath);
-    if (lockBytes.length === 0) throw safeError("Migration lock metadata is empty.");
+    if (lockBytes.length === 0)
+      throw safeError("Migration lock metadata is empty.");
     return { migrations: ordered(migrations), lockSha256: digest(lockBytes) };
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("Migration ")) throw error;
+    if (error instanceof Error && error.message.startsWith("Migration "))
+      throw error;
     throw safeError("Unable to read migration source inventory.");
   }
 }
@@ -168,10 +182,7 @@ export function assertExactMigrationManifests(
   source: MigrationSourceManifest,
   execution: MigrationSourceManifest,
 ): void {
-  if (
-    !SHA256.test(source.lockSha256) ||
-    !SHA256.test(execution.lockSha256)
-  )
+  if (!SHA256.test(source.lockSha256) || !SHA256.test(execution.lockSha256))
     throw safeError("Source and execution migration manifests are invalid.");
   assertValidEntries(source.migrations);
   assertValidEntries(execution.migrations);
@@ -204,7 +215,9 @@ export function assertCleanForwardMigrationPrefix(
       !SHA256.test(entry.sha256) ||
       !compareEntry(entry, expected)
     )
-      throw safeError("Migration ledger is not a clean completed forward prefix.");
+      throw safeError(
+        "Migration ledger is not a clean completed forward prefix.",
+      );
   }
 }
 
@@ -222,7 +235,9 @@ export async function readMigrationRepositoryManifest(options: {
 }): Promise<MigrationRepositoryManifest> {
   try {
     const repositoryRoot = resolve(options.repositoryRoot);
-    const source = await readMigrationSourceManifest(join(repositoryRoot, MIGRATIONS_RELATIVE_PATH));
+    const source = await readMigrationSourceManifest(
+      join(repositoryRoot, MIGRATIONS_RELATIVE_PATH),
+    );
     const git = async (args: string[]) => {
       const result = await execFileAsync(
         "git",
@@ -263,13 +278,21 @@ export async function readMigrationRepositoryManifest(options: {
     if (digest(historicalLock) !== source.lockSha256)
       throw safeError("Migration lock metadata differs from HEAD.");
     const headNames = new Set(historical.map((entry) => entry.name));
-    const currentByName = new Map(source.migrations.map((entry) => [entry.name, entry]));
+    const currentByName = new Map(
+      source.migrations.map((entry) => [entry.name, entry]),
+    );
     for (const entry of historical) {
       const current = currentByName.get(entry.name);
-      if (!current) throw safeError("A historical migration is missing from the current checkout.");
-      if (!compareEntry(entry, current)) throw safeError("A historical migration differs from HEAD.");
+      if (!current)
+        throw safeError(
+          "A historical migration is missing from the current checkout.",
+        );
+      if (!compareEntry(entry, current))
+        throw safeError("A historical migration differs from HEAD.");
     }
-    const stagedPaths = new Set(parseGitLines(await git(["ls-files", "--", MIGRATIONS_RELATIVE_PATH])));
+    const stagedPaths = new Set(
+      parseGitLines(await git(["ls-files", "--", MIGRATIONS_RELATIVE_PATH])),
+    );
     const historicalLastTimestamp = historical.reduce(
       (latest, entry) => (entry.timestamp > latest ? entry.timestamp : latest),
       "",
@@ -281,7 +304,9 @@ export async function readMigrationRepositoryManifest(options: {
       historicalLastTimestamp &&
       additions.some((entry) => entry.timestamp <= historicalLastTimestamp)
     )
-      throw safeError("An additive migration does not follow historical migrations.");
+      throw safeError(
+        "An additive migration does not follow historical migrations.",
+      );
     const classifiedAdditions: MigrationAddition[] = additions.map((entry) => ({
       ...entry,
       tracking: stagedPaths.has(
@@ -299,7 +324,10 @@ export async function readMigrationRepositoryManifest(options: {
       lockSha256: source.lockSha256,
     };
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("Migration ")) throw error;
-    throw safeError("Unable to compare migration inventory with repository history.");
+    if (error instanceof Error && error.message.startsWith("Migration "))
+      throw error;
+    throw safeError(
+      "Unable to compare migration inventory with repository history.",
+    );
   }
 }

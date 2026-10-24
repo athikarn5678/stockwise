@@ -35,7 +35,9 @@ describe("sales API client", () => {
       { barcode: " 00AbC ", signal: controller.signal },
     );
     controller.abort();
-    pending.resolve(jsonResponse({ data: { products: [] }, meta: { nextCursor: null } }));
+    pending.resolve(
+      jsonResponse({ data: { products: [] }, meta: { nextCursor: null } }),
+    );
     await expect(lookup).rejects.toBeInstanceOf(SalesApiError);
   });
   it("uses the scoped POS product endpoint and only parses the safe product representation", async () => {

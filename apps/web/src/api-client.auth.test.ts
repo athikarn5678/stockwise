@@ -139,12 +139,17 @@ describe("authentication API client", () => {
   });
 
   it("rejects a malformed successful onboarding response instead of granting application entry", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(successfulResponse({ nextStep: "app" })));
-    await expect(completeFirstOrganizationOnboarding({
-      branchName: "Main",
-      displayName: "Owner",
-      organizationName: "Store",
-    })).rejects.toMatchObject({ kind: "unavailable" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(successfulResponse({ nextStep: "app" })),
+    );
+    await expect(
+      completeFirstOrganizationOnboarding({
+        branchName: "Main",
+        displayName: "Owner",
+        organizationName: "Store",
+      }),
+    ).rejects.toMatchObject({ kind: "unavailable" });
   });
 
   it("maps first-onboarding conflicts to safe client error kinds", async () => {

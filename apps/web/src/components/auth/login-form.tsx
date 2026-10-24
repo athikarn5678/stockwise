@@ -16,7 +16,10 @@ import {
   saveContinuation,
 } from "@/verification-continuation-browser";
 import { getContinuationRevision } from "@/verification-continuation-browser";
-import { discardPrivateSession, notifySessionChange } from "@/session-lifecycle";
+import {
+  discardPrivateSession,
+  notifySessionChange,
+} from "@/session-lifecycle";
 import { useLanguage } from "@/providers/language-provider";
 import { hasEmailShape, passwordValidationMessage } from "./auth-form-support";
 import { verificationErrorMessage } from "./auth-copy";
@@ -80,7 +83,9 @@ export function LoginForm() {
     clearContinuation();
     const id = ++requestId.current;
     const revision = getContinuationRevision();
-    const isCurrent = () => mounted.current && id === requestId.current &&
+    const isCurrent = () =>
+      mounted.current &&
+      id === requestId.current &&
       revision === getContinuationRevision();
 
     try {
@@ -105,7 +110,10 @@ export function LoginForm() {
       router.replace("/verify-email");
     } catch (requestError: unknown) {
       if (isCurrent()) setError(verificationErrorMessage(requestError, t));
-      if (requestError instanceof AuthApiError && requestError.kind === "unavailable")
+      if (
+        requestError instanceof AuthApiError &&
+        requestError.kind === "unavailable"
+      )
         notifySessionChange(queryClient);
     } finally {
       if (mounted.current && id === requestId.current) {

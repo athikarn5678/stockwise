@@ -26,6 +26,7 @@ export default defineConfig({
       // Irreversible transition requires the owned coordinator and its receipt;
       // vitest.d5-p3-integration-db.config.mts runs it last on that disposable DB.
       "apps/api/src/modules/identity/better-auth-transition.integration.test.ts",
+      "apps/api/src/modules/identity/better-auth-cutover.integration.test.ts",
     ],
     fileParallelism: false,
     globalSetup: [databaseTestSetup],

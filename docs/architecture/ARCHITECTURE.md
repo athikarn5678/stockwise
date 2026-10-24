@@ -450,6 +450,12 @@ with one-way LEGACY/QUIESCED/NATIVE state; append-only generation-bound enrollme
 provenance makes exact retry a no-op and changed-state retry a conflict.
 No runtime startup or HTTP route invokes the writer. The normal runtime remains
 Legacy with `BETTER_AUTH_NATIVE_ENABLED=false`.
+The D5-P4 source startup gate reads shipped migration checksums and one consistent
+read-only database snapshot before a future Native listener can open. It requires
+sealed authority, enabled fence triggers and reconciled credential generations;
+it never runs the transition writer or falls back to Legacy. Existing UUID/business
+preservation is established by the transition's pre-seal reconciliation, not by
+comparing mutable business rows to that frozen snapshot on every restart.
 
 Database draining, Legacy authority invalidation and whole-business-row
 reconciliation precede database Native authority in the owned rehearsal. Native

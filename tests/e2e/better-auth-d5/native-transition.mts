@@ -3,42 +3,9 @@ import {
   Prisma,
   type BetterAuthAccount,
 } from "../../../apps/api/src/generated/prisma/client.ts";
-import { DUMMY_PASSWORD_HASH } from "../../../apps/api/src/modules/identity/password-hasher.ts";
+import { isTransferableLegacyPassword } from "../../../apps/api/src/modules/identity/better-auth-transition-password.ts";
 import { assessBetterAuthTransition } from "../../../apps/api/src/modules/identity/better-auth-transition-assessment.ts";
 import { verifyLocalPostgresReceipt } from "./local-runner.mts";
-
-const NATIVE_DUMMY =
-  "$argon2id$v=19$m=65536,p=4,t=3$MELWslgkJzw87Me69Wz1tw$l9XoBv1UBhpmS40M2xzT5cHzqoSubftPd1Md5u/ZmvQ";
-
-function legacyPasswordIdentity(value: string): string | null {
-  const match =
-    /^\$argon2id\$v=19\$m=65536,(?:t=3,p=4|p=4,t=3)\$([A-Za-z0-9+/]{22})\$([A-Za-z0-9+/]{43})$/.exec(
-      value,
-    );
-  if (
-    !match ||
-    ![match[1], match[2]].every(
-      (part) =>
-        part !== undefined &&
-        Buffer.from(part, "base64").toString("base64").replace(/=+$/, "") ===
-          part,
-    )
-  )
-    return null;
-  // Compare the full validated identity, independent of parameter ordering.
-  // This canonical value is never used as the transferred credential.
-  return `$argon2id$v=19$m=65536,t=3,p=4$${match[1]}$${match[2]}`;
-}
-
-const publicDummyIdentities = new Set(
-  [DUMMY_PASSWORD_HASH, NATIVE_DUMMY].map(legacyPasswordIdentity),
-);
-
-/** Strict allowlist, not a promise that any arbitrary stored PHC is transferable. */
-export function isTransferableLegacyPassword(value: string): boolean {
-  const identity = legacyPasswordIdentity(value);
-  return identity !== null && !publicDummyIdentities.has(identity);
-}
 
 type Transaction = Prisma.TransactionClient;
 interface TransitionClient {

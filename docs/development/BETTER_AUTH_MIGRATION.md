@@ -51,9 +51,11 @@ exercised candidate now composes pending registration/verification, pending
 login proof, Native login/logout/logout-all, the session bridge and Native reset.
 It has no Legacy writer or fallback. D5-P3's owner-approved DEC-01/02/03
 transition implementation is independently ACCEPTED within the reviewed
-source/disposable boundary, including F1 closure. D5-P4/P5 are **NOT STARTED**.
-Recovery/cutover/rollback, external email, production HTTPS and Live readiness
-remain separate unaccepted gates.
+source/disposable boundary, including F1 closure. D5-P4 scoped Cutover Readiness
+is independently **ACCEPTED**, recorded 2026-10-25 from the owner-transferred
+final verdict; no confirmed blocking security or correctness findings.
+D5-P5 and AWS Phase 8 remain **NOT STARTED**. Production recovery, external email,
+production HTTPS and Live readiness remain separate unaccepted gates.
 No live auth cutover is authorized.
 This is a canonical migration design, not an execution/evidence record.
 Task evidence and acceptance records belong in the external StockWise project
@@ -177,7 +179,8 @@ and replicas. The application never generates a replacement or falls back to a
 default key. Secret storage/deployment is still Phase 8 work, not implemented
 here. Rotation requires a separately reviewed coordinated session-invalidation
 and recovery procedure; this candidate does not add old-key fallback or claim
-rotation/restart/rollback proof.
+rotation or production recovery proof. D5-P4 verifies restart with the same
+synthetic persistent Native secret only in its disposable rehearsal.
 
 ### Remaining cutover dependencies
 
@@ -189,7 +192,8 @@ provision the dedicated Native key; close dependency-security and independent
 review gates. Never re-enable Legacy password/session authority over accounts
 whose Native credentials have changed. D5-QUALITY-01 and the bounded local
 D5-UX-01 authentication/onboarding gate are complete; the original UX browser
-suite passes after link-action locator maintenance. D5-P4/P5 remain NOT STARTED.
+suite passes after link-action locator maintenance. D5-P4 scoped source/disposable
+readiness is independently ACCEPTED; D5-P5 and AWS Phase 8 remain NOT STARTED.
 Real external email and production HTTPS remain unverified.
 
 ## D5-P3 — Pre-cutover Legacy-to-Native transition
@@ -341,8 +345,106 @@ sale/refund/receipt/ledger FK preservation, negative states/destinations, databa
 contention, rollback injection, killed-process/backend retry, real HTTP auth and
 post-Native-reset stale replay refusal. It is not physical backup restore,
 production failover, real email, HTTPS or Live proof. Exact evidence and identities
-remain external StockWise task records. D5-QUALITY-01 and D5-UX-01 remain pending
-pre-Live; D5-P4/P5 and Phase 8 are not advanced.
+remain external StockWise task records. D5-QUALITY-01 and D5-UX-01 are complete.
+D5-P4's bounded source/disposable verification is below; D5-P5 and Phase 8
+remain NOT STARTED.
+
+## D5-P4 — Cutover preflight and controlled recovery readiness
+
+Independently **ACCEPTED — D5-P4 scoped Cutover Readiness implementation**,
+recorded 2026-10-25 from the owner-transferred final review. No confirmed blocking
+security or correctness findings. This is not Live activation or production
+readiness. Normal application authority remains Legacy;
+`BETTER_AUTH_NATIVE_ENABLED=false`. No schema, dependency, public API or product
+behavior changes are introduced.
+
+Acceptance is bound to candidate SHA-256
+`715750ada3ce0cf1b3018b9c53c06edeb4d43b09b0cedf3b60d42546a5d113da`
+and expanded review SHA-256
+`fca2d77b232627b418861dd1f89a5cb32a275aa57558d110dc1cb2a9bf360661`,
+not a documentation-modified aggregate. The reviewer verified 14/14 candidate
+and archived files, 84/84 expanded source files, 23/23 migration checksums and
+143/143 historical artifacts, and freshly ran `git diff --check`. Retained runtime
+evidence was inspected, not independently rerun: disposable PostgreSQL/HTTP/restart
+rehearsal 1 PASS, focused Native regressions 68 PASS, PHC/local-runner regressions
+11 PASS. Preflight/fail-closed startup, shared PHC compatibility, recovery/restart,
+credential/session and RBAC evidence are accepted within the scoped boundary.
+The separate external record is
+`2026-10-25-STOCKWISE-D5-P4-ACCEPTANCE-CLOSURE.md`; original evidence is unchanged.
+D5-P5 and AWS Phase 8 remain **NOT STARTED**; all production-only gates below
+remain pending, with no production migration or Native Live approval.
+
+### Source-level startup preflight
+
+`assertNativeCutoverReady` is a reusable read-only check. `main.ts` calls it
+before selecting Native and before opening a listener, only if the compile-time
+Native flag is enabled by a later separately authorized task. It never invokes
+the transition writer, activates Native, repairs records or falls back to Legacy.
+The unmounted runtime factory remains usable by isolated historical harnesses;
+it is not itself permission to bypass the production startup gate.
+
+The check compares the exact shipped SQL migration inventory/checksums with
+finished, non-rolled-back Prisma ledger entries, then uses one read-only
+repeatable-read transaction to require:
+
+- A sealed NATIVE singleton with coherent run/timestamp/baseline metadata and all
+  eleven expected fence triggers enabled.
+- No surviving unrevoked Legacy session, reset or verification authority.
+- Canonical Native credential accounts, original UUID/enrollment bindings and
+  coherent credential generations. The transition and preflight share the
+  existing canonical Argon2id/dummy-exclusion validator.
+- No ambiguous verification/time/generation state or complete ACTIVE/verified
+  Legacy identity left without Native credentials. Missing/unsupported credentials
+  for such an identity require explicit recovery/disposition before readiness;
+  preflight cannot invent enrollment. Consistently disabled, unverified and
+  incomplete excluded identities remain restricted and preserved.
+- No unexpired application session claiming a future credential generation.
+  Older-generation, disabled-user, expired and provisional session rows remain
+  harmless under the existing Bridge predicate and do not prevent restart.
+
+Post-reset generation advancement and later Native registration are valid.
+Business rows may change after activation: startup validates frozen baseline
+metadata, not equality with an obsolete business snapshot. The existing writer's
+seal reconciliation remains the pre-cutover UUID/business-content proof.
+Missing schema/files, checksum drift, dependency errors or inconsistent state
+refuse with a fixed non-sensitive error. Shipped migrations must accompany both
+source and compiled API deployments. Existing dedicated-secret/key-separation,
+production HTTPS and Secure-cookie validation remains in the Native composition.
+
+### Authorized disposable rehearsal
+
+The existing automatic local runner accepts `mode: "cutover"` for the dedicated
+`vitest.d5-p4-integration-db.config.mts` suite. It migrates only its fresh,
+receipt/marker-bound PostgreSQL target; it neither resets a transitioned target
+nor reruns the historical D5-P3 suite. The child HTTP worker independently checks
+the receipt/live marker and preflight before opening its listener.
+
+The rehearsal exercises real Legacy login followed by explicit ingress stop,
+read-only cancellation, transition transaction failure/forward retry/replay,
+reconciliation/seal, stale Legacy authority refusal, Native HTTP session/reset/
+logout behavior, process loss/restart under the same synthetic Native secret,
+invalid/missing-secret startup refusal, and real StockWise organization/branch/
+role enforcement. It preserves UUIDs, memberships, assignments, Native credentials
+and current generations. Checksum/account corruption probes are confined to the
+disposable target and restored without disabling the fence. Migration SQL failure
+and populated historical business-FK proofs remain accepted D5-P3 evidence, not
+newly claimed runs. Exact results and failed development attempts are external.
+
+### Production-only operational gates — not run by D5-P4
+
+Before separately authorized migration/activation, retain all of the following:
+encrypted backup and isolated physical restore verification; least-privilege
+database roles unable to own/disable/truncate the fence; ingress/background-worker
+and admitted-request drain; durable deployment/maintenance exclusion; persistent
+secret provisioning and replica consistency; actual HTTPS/domain/Secure-cookie
+and production email delivery; independently retained latest acknowledged
+authority/generation/revocation checkpoint and restore/WAL reconciliation;
+measured recovery timing and owner-approved RPO/RTO; dependency-security
+disposition; independent review and explicit production migration/activation
+approval. These are **NOT_RUN** operational gates, not an incomplete local
+implementation or implied AWS infrastructure. An old backup can contain an old
+fence: uncertain latest Native authority means remain offline and forward-recover,
+never downgrade to Legacy or overwrite newer Native credentials.
 
 ## Registration: accepted isolated D3 design, not cutover proof
 

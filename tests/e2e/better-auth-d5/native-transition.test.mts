@@ -5,7 +5,7 @@ import {
   DUMMY_PASSWORD_HASH,
   verifyPassword,
 } from "../../../apps/api/src/modules/identity/password-hasher.ts";
-import { isTransferableLegacyPassword } from "./native-transition.mts";
+import { isTransferableLegacyPassword } from "../../../apps/api/src/modules/identity/better-auth-transition-password.ts";
 
 test("allows canonical accepted-policy Legacy PHC without converting its bytes", async () => {
   const password = "  disposable Legacy password é🔒  ";

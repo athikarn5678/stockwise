@@ -22,7 +22,7 @@ const excluded = new Set([
   "playwright-report",
   ".turbo",
 ]);
-type LocalMode = "database" | "browser" | "all";
+type LocalMode = "database" | "browser" | "all" | "cutover";
 type Options = {
   dockerExecutable: string;
   image: string;
@@ -190,6 +190,34 @@ export async function executeLocalNative(
         { ...environment, DATABASE_URL: database.TEST_DATABASE_URL },
         database.signal,
       );
+      if (mode === "cutover") {
+        // One-way rehearsal owns this fresh target; never reset it to Legacy.
+        try {
+          await run(
+            "NATIVE_CUTOVER_INTEGRATIONS",
+            process.execPath,
+            [
+              join(checkout.path, "node_modules/vitest/vitest.mjs"),
+              "run",
+              "--config",
+              "vitest.d5-p4-integration-db.config.mts",
+            ],
+            checkout.path,
+            environment,
+            database.signal,
+          );
+        } finally {
+          for (const name of [
+            "native-cutover-results.json",
+            "native-cutover-reconciliation.json",
+          ])
+            await cp(
+              join(checkout.path, "test-results", name),
+              join(options.evidenceDirectory, name),
+              { errorOnExist: true, force: false },
+            );
+        }
+      }
       if (mode === "database" || mode === "all") {
         try {
           await run(

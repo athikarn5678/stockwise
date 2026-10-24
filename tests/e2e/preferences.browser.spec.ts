@@ -160,7 +160,10 @@ async function chooseLanguage(
   await page
     .getByRole("button", { name: thai ? "ภาษา" : "Language", exact: true })
     .click();
-  await page.getByRole("menuitem", { name: next, exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute(
+    "lang",
+    next === "ไทย" ? "th" : "en",
+  );
 }
 async function chooseTheme(
   page: Page,
@@ -173,7 +176,9 @@ async function chooseTheme(
       exact: true,
     })
     .click();
-  await page.getByRole("menuitem", { name: next, exact: true }).click();
+  await expect(page.locator("html")).toHaveClass(
+    next === "Dark" || next === "มืด" ? /dark/ : /light/,
+  );
 }
 test("preferences persist through navigation and reload without hydration errors", async ({
   page,
@@ -216,6 +221,18 @@ test.describe("browser defaults", () => {
     await page.goto("/");
     await expect(page.locator("html")).toHaveAttribute("lang", "th");
     await expect(page.locator("html")).toHaveClass(/dark/);
+    await page
+      .getByRole("button", { name: "รูปแบบหน้าจอ", exact: true })
+      .press("Enter");
+    await expect(page.locator("html")).toHaveClass(/light/);
+    expect(
+      await page.evaluate(() => localStorage.getItem("stockwise.theme")),
+    ).toBe("light");
+    await page
+      .getByRole("button", { name: "รูปแบบหน้าจอ", exact: true })
+      .press("Space");
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    await expect(page.getByRole("menuitem")).toHaveCount(0);
   });
 });
 test("failed logout text follows the language without repeating the request", async ({

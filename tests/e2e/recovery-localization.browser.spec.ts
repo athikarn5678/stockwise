@@ -89,12 +89,6 @@ for (const language of ["en", "th"] as const) {
       await page
         .getByRole("button", { name: copy.language, exact: true })
         .click();
-      await page
-        .getByRole("menuitem", {
-          name: language === "th" ? "English" : "ไทย",
-          exact: true,
-        })
-        .click();
       await expect(alert).toHaveText(
         flow === "forgot" ? other.authInvalidEmail : other.authPasswordLength,
       );
@@ -113,12 +107,6 @@ for (const language of ["en", "th"] as const) {
       ).toBeDisabled();
       await page
         .getByRole("button", { name: other.language, exact: true })
-        .click();
-      await page
-        .getByRole("menuitem", {
-          name: language === "th" ? "ไทย" : "English",
-          exact: true,
-        })
         .click();
       await expect(
         page.getByRole("button", {

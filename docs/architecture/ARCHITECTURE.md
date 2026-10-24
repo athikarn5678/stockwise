@@ -71,9 +71,16 @@ and `/onboarding` behavior is unchanged.
 
 The existing application shell continues to resolve authenticated organization
 and branch navigation for `/app` and its module routes. Authenticated `/login`
-still opens the resolved workspace. Pricing is informational only: plan prices
-and inclusions are not finalized, and no subscription, billing, quota, or
-entitlement state is implemented. Public-route browser tests can run with
+still opens the resolved workspace. Pricing is informational only: approved
+pre-launch Starter/Growth/Business monthly/yearly proposals and a custom-quotation
+Enterprise option grant no subscription, billing, quota, support, or entitlement
+state. Exact proposed amounts and allowances are owned by `BUILD_SPEC.md` §5.1.
+Enterprise contact activation requires an owner-verified destination; none is
+configured. No new API or checkout is introduced. Public marketing copy uses the
+existing English/Thai provider through client presentation components, while
+server page wrappers retain metadata and prerendered English. Shared preference
+buttons toggle Light/Dark (from the resolved theme) and English/Thai directly,
+preserving existing provider storage. Public-route browser tests can run with
 `pnpm exec playwright test --config playwright.public.config.ts` after a web
 production build, without API/database setup.
 

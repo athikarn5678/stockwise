@@ -1,5 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { en } from "../../apps/web/src/i18n/en";
+import { th } from "../../apps/web/src/i18n/th";
 
 for (const width of [375, 430, 768, 1024, 1280, 1440]) {
   for (const path of ["/", "/pricing"]) {
@@ -535,3 +537,98 @@ test("public routes separate from the desktop/mobile app shell and preserve logo
   ).toBeVisible();
   await expect(page.getByRole("complementary")).toHaveCount(0);
 });
+
+for (const width of [375, 1280]) {
+  for (const path of ["/", "/pricing"]) {
+    test(`marketing preferences update in place at ${width}px on ${path}`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.addInitScript(() => {
+        localStorage.setItem("stockwise.language", "en");
+        localStorage.setItem("stockwise.theme", "light");
+      });
+      await page.goto(path);
+      const documentIdentity = await page.evaluate(
+        () => performance.timeOrigin,
+      );
+      for (const [language, theme, action] of [
+        ["en", "light", null],
+        ["th", "light", "language"],
+        ["th", "dark", "theme"],
+        ["en", "dark", "language"],
+      ] as const) {
+        if (action) {
+          const previous = action === "language" && language === "th" ? en : th;
+          if (width < 768)
+            await page
+              .getByRole("button", { name: previous.menu, exact: true })
+              .click();
+          await page
+            .getByRole("button", {
+              name: action === "language" ? previous.language : previous.theme,
+              exact: true,
+            })
+            .press("Enter");
+          if (width < 768) await page.keyboard.press("Escape");
+        }
+        const copy = language === "th" ? th : en;
+        await expect(page.locator("html")).toHaveAttribute("lang", language);
+        await expect(page.locator("html")).toHaveClass(new RegExp(theme));
+        await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+          path === "/" ? copy.marketingHeroTitle : copy.pricingTitle,
+        );
+        if (path === "/pricing") {
+          await page
+            .getByRole("button", { name: copy.pricingYearly, exact: true })
+            .click();
+          await expect(
+            page.getByText("THB 1,990", { exact: true }),
+          ).toBeVisible();
+          await expect(
+            page.getByText(copy.pricingEnterpriseBranches, { exact: true }),
+          ).toBeVisible();
+          await expect(
+            page.getByText(copy.pricingContactUnavailable, { exact: true }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole("link", { name: copy.pricingContactSales }),
+          ).toHaveCount(0);
+        } else {
+          await expect(
+            page.getByText(copy.marketingProductTea, { exact: true }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole("heading", {
+              name: copy.marketingFeaturesTitle,
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole("heading", {
+              name: copy.marketingWorkflowTitle,
+              exact: true,
+            }),
+          ).toBeVisible();
+        }
+        expect(await page.evaluate(() => performance.timeOrigin)).toBe(
+          documentIdentity,
+        );
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= innerWidth,
+          ),
+        ).toBe(true);
+        expect((await new AxeBuilder({ page }).analyze()).violations).toEqual(
+          [],
+        );
+        await page.screenshot({
+          path: testInfo.outputPath(
+            `ux-${path === "/" ? "home" : "pricing"}-${width}-${language}-${theme}.png`,
+          ),
+          fullPage: true,
+        });
+      }
+    });
+  }
+}

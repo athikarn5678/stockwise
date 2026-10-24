@@ -131,7 +131,6 @@ journey(
       }),
     ).toBe(0);
     await input.page.getByRole("button", { name: "Language" }).click();
-    await input.page.getByRole("menuitem", { name: "ไทย" }).click();
     await input.page.getByLabel("รหัสยืนยัน 6 หลัก").fill(result.message.code);
     await input.page
       .getByRole("button", { name: "ยืนยัน", exact: true })
@@ -142,7 +141,6 @@ journey(
       }),
     ).toBeVisible();
     await input.page.getByRole("button", { name: "ภาษา" }).click();
-    await input.page.getByRole("menuitem", { name: "English" }).click();
     await assertNoAuthority(input);
     expect(
       await input.harness.prisma.user.findUniqueOrThrow({

@@ -71,6 +71,33 @@ StockWise must provide one consistent operational record and decision-support la
 8. Produce a maintainable cloud-ready system that can progress from MVP to production hardening without a rewrite.
 9. Include measurable software/cloud experiments, documented limitations, and cost analysis as part of the project delivery.
 
+### 5.1 Pre-launch marketing and preferences (Product-UX-01/02)
+
+The public landing and pricing pages use the existing English/Thai language
+preference and Light/Dark theme providers. Shared preference buttons toggle
+immediately with one activation and retain the existing browser persistence.
+An initial system-derived theme toggles from its resolved Light/Dark appearance.
+Marketing content updates in place; public pages retain prerendered English
+content and server-owned SEO metadata.
+
+Approved **pre-launch marketing proposals**, not enforced subscriptions:
+
+| Plan | THB/month | THB/year | Branches | Users |
+| --- | --- | --- | --- | --- |
+| Starter | 199 | 1,990 | 1 | 3 |
+| Growth | 499 | 4,990 | 3 | 10 |
+| Business | 999 | 9,990 | 10 | 30 |
+| Enterprise | Custom quotation | Custom quotation | By agreement | By agreement |
+
+The monthly/yearly selector changes presentation only. These figures grant no
+subscription, quota, entitlement, support promise, or payment authority.
+Registration does not select or purchase a plan. Enterprise is not unlimited.
+No verified company sales destination is configured: show an explicit contact
+unavailable notice, with no actionable Contact Sales control until an owner
+supplies a verified destination. There is no new public contact endpoint or
+payment collection. Account/Organization Settings, Access management, Native
+activation, and cloud work remain separately scoped.
+
 ## 6. Non-goals
 
 The following are not part of the current product scope:

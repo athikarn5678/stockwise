@@ -35,9 +35,6 @@ async function setLanguage(input: Scenario, language: "en" | "th") {
     await input.page
       .getByRole("button", { name: "Language", exact: true })
       .press("Enter");
-    await input.page
-      .getByRole("menuitem", { name: "ไทย", exact: true })
-      .press("Enter");
   }
 }
 
@@ -241,9 +238,6 @@ test("a11y Thai rejected login and recovery expose keyboard feedback", async ({
     await input.page.goto("/login");
     await input.page
       .getByRole("button", { name: "Language", exact: true })
-      .press("Enter");
-    await input.page
-      .getByRole("menuitem", { name: "ไทย", exact: true })
       .press("Enter");
     const email = input.page.getByLabel("อีเมล", { exact: true });
     const password = input.page.getByLabel("รหัสผ่าน", { exact: true });

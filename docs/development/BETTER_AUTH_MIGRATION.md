@@ -187,9 +187,10 @@ verified writer quiescence; preserve all UUID/business FKs; verify production
 backup/forward recovery, restart/outage/retry and compatible rollback boundaries;
 provision the dedicated Native key; close dependency-security and independent
 review gates. Never re-enable Legacy password/session authority over accounts
-whose Native credentials have changed. D5-QUALITY-01 and D5-UX-01 remain active
-pre-Live work. Real external email and production HTTPS are not verified by local
-disposable execution.
+whose Native credentials have changed. D5-QUALITY-01 and the bounded local
+D5-UX-01 authentication/onboarding gate are complete; the original UX browser
+suite passes after link-action locator maintenance. D5-P4/P5 remain NOT STARTED.
+Real external email and production HTTPS remain unverified.
 
 ## D5-P3 — Pre-cutover Legacy-to-Native transition
 

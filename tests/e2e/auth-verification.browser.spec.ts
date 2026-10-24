@@ -60,12 +60,10 @@ test("link entry never serializes credentials and requires explicit POST across 
   });
   await page.goto("/");
   await page.goto(`/verify-email?token=${token}`);
-  await expect(
-    page.getByRole("button", { name: "Verify", exact: true }),
-  ).toBeVisible();
+  await expect(page.locator("main form button[type=submit]")).toBeVisible();
   expect(posts).toEqual([]);
   await expectNoCredential(page);
-  await page.getByRole("button", { name: "Verify", exact: true }).click();
+  await page.locator("main form button[type=submit]").click();
   await expect(
     page.getByRole("main").getByRole("link", { name: "Sign in", exact: true }),
   ).toBeVisible();
@@ -98,21 +96,15 @@ test("abandoning or reloading a link loses its credential rather than restoring 
   });
   await page.goto("/");
   await page.goto(`/verify-email?token=${token}`);
-  await expect(
-    page.getByRole("button", { name: "Verify", exact: true }),
-  ).toBeVisible();
+  await expect(page.locator("main form button[type=submit]")).toBeVisible();
   await page.getByRole("link", { name: "Back to sign in" }).click();
   await expect(page).toHaveURL(/\/login$/);
   await page.goBack();
   await expect(page).toHaveURL(/\/$/);
   await expectNoCredential(page);
-  await expect(
-    page.getByRole("button", { name: "Verify", exact: true }),
-  ).toHaveCount(0);
+  await expect(page.locator("main form button[type=submit]")).toHaveCount(0);
   await page.goto(`/verify-email?token=${token}`);
-  await expect(
-    page.getByRole("button", { name: "Verify", exact: true }),
-  ).toBeVisible();
+  await expect(page.locator("main form button[type=submit]")).toBeVisible();
   await page.reload();
   await expect(
     page.getByRole("link", { name: "Back to sign in" }),
@@ -286,7 +278,7 @@ test("an active password-proof retry verifies the same link exactly once", async
     },
   );
   await page.goto(`/verify-email?token=${token}`);
-  await page.getByRole("button", { name: "Verify", exact: true }).click();
+  await page.locator("main form button[type=submit]").click();
   await page.getByLabel("Email address").fill("owner@example.com");
   await page.getByLabel("Password").fill("correct-horse-123");
   await page
@@ -345,7 +337,7 @@ for (const proofStatus of ["success", "failure"] as const) {
         }),
       );
       await page.goto(`/verify-email?token=${token}`);
-      await page.getByRole("button", { name: "Verify", exact: true }).click();
+      await page.locator("main form button[type=submit]").click();
       await page.getByLabel("Email address").fill("owner@example.com");
       await page.getByLabel("Password").fill("correct-horse-123");
       await page
@@ -411,7 +403,7 @@ for (const verifyStatus of ["success", "failure"] as const) {
         }),
       );
       await page.goto(`/verify-email?token=${token}`);
-      await page.getByRole("button", { name: "Verify", exact: true }).click();
+      await page.locator("main form button[type=submit]").click();
       await received.promise;
       if (abandonment === "pagehide")
         await page.evaluate(() =>

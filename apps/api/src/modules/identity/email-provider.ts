@@ -1,3 +1,5 @@
+import { renderIdentityEmail } from "./email-templates.ts";
+
 const RESEND_EMAIL_ENDPOINT = "https://api.resend.com/emails";
 const RESEND_TIMEOUT_MILLISECONDS = 10_000;
 
@@ -76,11 +78,6 @@ export function createResendEmailProvider({
         : isInvitation
           ? "Accept your StockWise invitation"
           : "Reset your StockWise password";
-      const action = isVerification
-        ? "verify your email"
-        : isInvitation
-          ? "accept your organization invitation"
-          : "reset your password";
 
       const requestSignal =
         signal === undefined
@@ -95,10 +92,7 @@ export function createResendEmailProvider({
           body: JSON.stringify({
             from,
             subject,
-            text:
-              message.kind === "verification"
-                ? `Your StockWise verification code is ${message.code}.\n\nOr use this secure link: ${message.url}\n\nBoth expire in 10 minutes. Only the latest requested code and link are valid. Do not share them. If you did not request this email, ignore it.`
-                : `Use this link to ${action}: ${message.url}`,
+            ...renderIdentityEmail(message),
             to: [message.recipient],
           }),
           headers: {

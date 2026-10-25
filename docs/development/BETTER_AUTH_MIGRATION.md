@@ -98,6 +98,11 @@ resolve or upgrade those statuses and claims no root migration verification.
 - Retain the existing `IdentityEmailProvider` boundary and `ADR-014` configuration:
   production Resend, development non-delivery unless separately opted in, test
   non-delivery/recording and rejection of Resend. No real external send here.
+  Transactional Resend messages include StockWise HTML with a CTA and a
+  plain-text fallback retaining the original action URL. Verification retains
+  its six-digit OTP and ten-minute expiry; invitations retain seven-day validity
+  and reset links retain their thirty-minute expiry. Rendering escapes dynamic
+  HTML text/attributes and loads no remote assets or tracking resources.
 - Preserve exact password validation and accepted Argon2id policy, generic
   duplicate responses, anti-pre-hijacking, OTP protection, rate limiting,
   reset/invitation guarantees, and scanner-safe verification. Better Auth

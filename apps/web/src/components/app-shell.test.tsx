@@ -248,6 +248,13 @@ describe("web application shell", () => {
         .getByRole("link", { name: "Sales history" })
         .getAttribute("href"),
     ).toBe(`/app/sales?organizationId=${ORG}&branchId=${BRANCH}`);
+    expect(
+      within(nav)
+        .getByRole("link", { name: "Organization settings" })
+        .getAttribute("href"),
+    ).toBe(
+      `/app/organization-settings?organizationId=${ORG}&branchId=${BRANCH}`,
+    );
     for (const logo of screen.getAllByRole("link", { name: "StockWise" })) {
       expect(logo.getAttribute("href")).toBe(
         `/app?organizationId=${ORG}&branchId=${BRANCH}`,
@@ -498,6 +505,9 @@ describe("web application shell", () => {
       expect(!!screen.queryByRole("link", { name: "Purchase orders" })).toBe(
         suppliers,
       );
+      expect(
+        !!screen.queryByRole("link", { name: "Organization settings" }),
+      ).toBe(manage);
     },
   );
 
@@ -516,21 +526,6 @@ describe("web application shell", () => {
     expect(
       screen.getByRole("link", { name: "Home" }).getAttribute("aria-current"),
     ).toBeNull();
-  });
-
-  it("offers only Home and logout until an organization is chosen", () => {
-    const context = accessContext();
-    context.organizations.push({
-      ...context.organizations[0]!,
-      id: "10000000-0000-4000-8000-000000000002",
-    });
-    renderShell(context);
-    expect(
-      within(screen.getByRole("navigation"))
-        .getAllByRole("link")
-        .map((link) => link.textContent),
-    ).toEqual(["Home"]);
-    expect(screen.getByRole("button", { name: "Log out" })).toBeTruthy();
   });
 
   it("hides branch operations when no effective branch remains", () => {

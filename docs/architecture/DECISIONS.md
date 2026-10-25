@@ -2843,6 +2843,38 @@ Prove that Better Auth 1.7.7's configured password verifier accepts the
 directly promoted Argon2id PHC hash. Its native `setPassword` API hashes a raw
 password and is not a valid promotion path.
 
+## ADR-037 — Minimal organization name settings
+
+- **Date:** 2026-10-25
+- **Status:** Accepted
+- **Authority:** Explicit owner approval for Product-ACCOUNT-01 completion
+
+### Context
+
+Organization GET was planned and PATCH field/permission details were blocked.
+The existing Organization has a 200-character name but no business contact
+fields. Existing `organization-settings.manage` grants OWNER/ADMIN authority.
+The historical external name-only proposal remains unchanged evidence.
+
+### Decision
+
+Accept only GET/PATCH `/api/v1/organizations/{organizationId}` under the existing
+capability, requiring active verified actor, active same-organization membership
+and active organization. Return only id/name/updatedAt. PATCH accepts only
+edge-trimmed nonblank name (maximum 200, Unicode/internal whitespace preserved,
+duplicates permitted) and exact prior millisecond UTC expectedUpdatedAt.
+Revalidate authority at the mutation boundary; atomically compare/update and
+return the written row with a strictly advancing version. Conflicts return
+409 ORGANIZATION_STALE. Preserve no-store and same-origin cookie protection.
+The exact HTTP contract is owned by `docs/contracts/API.md` §7.
+
+### Consequences
+
+The name-only editor decision gate is closed. No schema/migration is needed.
+VAT, timezone, status, ownership, membership, credentials, sessions, contact,
+tax/legal and billing fields are not editable. Branch Settings retains branch
+phone/address. Product-ACCESS-01 and Native Live are not authorized by this ADR.
+
 ## 2. Explicitly superseded planning directions
 
 The current ADRs supersede these earlier, unimplemented ideas:

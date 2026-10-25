@@ -208,6 +208,13 @@ It is navigation state, never authentication or authorization evidence. The
 browser stores no selected organization/branch in a session, user row, cookie,
 `localStorage`, or `sessionStorage`.
 
+Product-ACCOUNT-01 organization settings is name-only under owner-approved
+ADR-037: active verified OWNER/ADMIN in an active organization may read/update
+its edge-trimmed nonblank name (maximum 200, duplicate names allowed).
+Exact optimistic versions prevent overwrite; VAT, reporting timezone, status,
+roles, ownership, contact/legal/billing fields and authentication remain
+unchanged. Branch phone/address stays in Branch Settings. No migration.
+
 Membership access management is fixed by `ADR-021`. `OWNER` may invite and
 manage every accepted role; `ADMIN` may invite and manage only non-owner roles.
 An invitation is allowed only when no membership of any status exists for the
@@ -419,6 +426,7 @@ Identifiers below are stable references for plans, use cases, tests, and APIs.
 - **FR-IAM-012:** The system shall issue a stateless encrypted password-proof cookie for verification completion and the login fallback. The proof shall not create a session, grant tenant authority, or substitute for the opaque session; it shall be rejected unless its subject and version match the locked user's identity and current credential version. (Implemented `ADR-034` backend contract.)
 - **FR-IAM-013:** Correct-password ACTIVE/unverified login shall return `verification_required`, a usable selector or null, and real proof, without Session/application-cookie mutation or automatic mail. ACTIVE/verified login retains session behavior and clears proof. Both revalidate the password snapshot/version. (Implemented `ADR-034` backend contract.)
 - **FR-IAM-014:** Reset remains ACTIVE/verified-only, 30-minute hash-only, with invalid-token rejection before Argon2. Its atomic password/reset/session transition additionally advances credential version and invalidates open verification material without creating a session. (Implemented `ADR-034` backend delta.)
+- **FR-IAM-015:** Every authenticated account, regardless of organization role or membership, shall view its own read-only email and maintain its display name and optional profile phone through server-derived self identity, strict validation and optimistic concurrency. Profile edits shall not change email, credentials, verification, sessions, memberships or tenant data. Organization name-only maintenance is approved by ADR-037; other organization business fields remain excluded.
 
 First-organization onboarding is a one-time, authenticated, verified-user flow.
 The initial branch code is the server-owned constant `MAIN` and is never an

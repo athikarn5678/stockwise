@@ -84,6 +84,33 @@ preserving existing provider storage. Public-route browser tests can run with
 `pnpm exec playwright test --config playwright.public.config.ts` after a web
 production build, without API/database setup.
 
+### Self-profile maintenance
+
+`/app/profile` uses the existing shell, EN/TH provider and theme components.
+It is account-scoped, not tenant-scoped, and remains available without an
+organization membership. Express owns `GET /me` and `PATCH /me/profile`;
+the existing selected authentication middleware supplies the trusted actor
+for both Legacy and the non-live Native composition. The module updates only
+the existing User display name/phone with atomic optimistic concurrency.
+Shared access-context actor data refreshes after save. Session reconciliation
+continues to clear private queries, hide private content and revalidate authority.
+One route-owned unsaved Profile/Organization Settings form may survive only a
+soft focus/visibility reconciliation in memory, and only after fresh actor and
+effective organization/role/branch authority match. Logout, session hints, 401,
+failed access checks, authority changes and route departure discard that handoff.
+No browser storage or general private-data cache is used. Browser Back/Forward
+is not intercepted; internal-link/unload warnings are not a history blocker.
+No new auth authority, schema, dependency or live cutover is introduced.
+
+`/app/organization-settings` resolves its selected organization from validated
+access context and is OWNER/ADMIN-only UX. Express independently enforces
+`organization-settings.manage` and the name-only ADR-037 GET/PATCH contract,
+including locked mutation-boundary authorization and atomic optimistic versions.
+Successful save refreshes shared organization navigation names without changing
+session, branch selection or URL context. EN/TH and theme providers are reused.
+Organization has no business phone/address columns; Branch Settings remains
+the owner of individual-branch contact information.
+
 ### Thermal Sale receipt
 
 `P7-POST-M5-T01` shares one `SaleReceipt` presentation between the completed POS

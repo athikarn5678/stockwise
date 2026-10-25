@@ -274,8 +274,8 @@ requests.
 | `POST /auth/forgot-password` | Public | `{ "email": "account@example.com" }` | Generic `202`; creates/replaces and delivers only for an eligible account | Validation; accepted three-per-15-minute limit; provider failure remains non-disclosing | Implemented by P2-M2-T03 |
 | `POST /auth/reset-password` | Public | `{ "token": "opaque-token", "newPassword": "exact-value" }` | `200` reset result; atomically consumes token, updates password, increments credential version, invalidates open challenges, and revokes all sessions | Generic `400 INVALID_TOKEN`; password validation; safe dependency failure | Implemented P2-M2-T03 with T02A `ADR-034` version/challenge invalidation |
 | `POST /auth/verification-password-proof` | Public | `{ "email", "password" }` | `202` `data {status: "accepted"}`; sets a real proof cookie for a correct pending account and a phantom proof cookie for a correct verified account; never creates a session, challenge, or mail | Same login limiter object; generic `401 INVALID_CREDENTIALS` for wrong/missing/disabled | Implemented T02A `ADR-034` |
-| `GET /me` | Authenticated | None | Safe profile and onboarding status | Authentication required | Planned after identity foundation |
-| `PATCH /me/profile` | Authenticated | Required display name; optional phone | Updated safe profile | Validation, stale/conflict | Planned after identity foundation |
+| `GET /me` | Authenticated, any role or no membership | No query or user selector | Safe current profile: `id`, `email`, nullable `displayName`/`phone`, `updatedAt` | Authentication required; unknown query rejected | Implemented by Product-ACCOUNT-01 |
+| `PATCH /me/profile` | Authenticated, any role or no membership | Required display name and exact `expectedUpdatedAt`; optional phone | Updated safe current profile | Strict validation; `409 PROFILE_STALE`; same-origin protection | Implemented by Product-ACCOUNT-01 |
 | `GET /me/organizations` | Authenticated | Pagination if needed | Accessible organization summaries | Authentication required | Planned |
 | `GET /me/access-context` | Authenticated | None | Safe active user/organization/role/effective-branch context plus first-organization onboarding eligibility | Authentication required | Implemented by P2-M3-T02; eligibility added by post-login routing fix |
 | `GET /organizations/{organizationId}/branches` | Organization-scoped | Optional exact `includeInactive=true`; no pagination | Code-ascending accessible branch list | Invalid query/forbidden safely | Implemented by P2-M3-T02 |
@@ -285,6 +285,47 @@ requests.
 | `POST /organizations/{organizationId}/branches/{branchId}/reactivate` | `branch.manage` (`OWNER`/`ADMIN`) | Exact `expectedUpdatedAt` | Active safe branch | Safe not-found, `BRANCH_STALE` | Implemented by P2-M3-T02 |
 
 There are no Google OAuth endpoints in the MVP contract.
+
+### Self-profile maintenance contract
+
+`GET /me` and `PATCH /me/profile` derive the only user selector from the
+server's trusted authenticated actor, independently of organization or branch
+selection. Both use the canonical `{data,meta:{requestId}}` success envelope
+and `Cache-Control: no-store`. The profile contains exactly `id`, canonical
+read-only `email`, nullable `displayName`, nullable `phone`, and millisecond UTC
+`updatedAt`. Onboarding eligibility remains available through
+`GET /me/access-context`, not duplicated in the profile.
+
+PATCH accepts exactly `displayName`, optional `phone`, and `expectedUpdatedAt`.
+Display name is trimmed, required/nonblank, maximum 200 characters; phone is
+trimmed, maximum 32 characters, with blank stored as `null`. Omitted phone
+preserves the current value; explicit `null` is not an accepted input.
+Internal whitespace and Unicode representation are preserved. The timestamp
+must be the exact previous `YYYY-MM-DDTHH:mm:ss.sssZ` version. One atomic
+conditional update returns its own safe updated row and advances the version,
+including writes within the same millisecond; competing/stale writes return
+`409 PROFILE_STALE` without replacing current values.
+
+Unknown fields and query selectors are rejected, including user/tenant IDs,
+email, roles, status and credential fields. Existing authentication and
+same-origin mutation protection apply. Updating a profile neither changes
+credentials/verification, revokes or rotates sessions, nor mutates memberships,
+organization/branch data or first-onboarding provenance.
+
+The `/app/profile` form is available to every authenticated account, including
+accounts without memberships. It refreshes shared actor display data after
+save without logging out. Dirty drafts retain their original base version
+during ordinary query refresh; conflicts offer explicit reload. Save/Cancel,
+internal-link and browser-unload warnings use EN/TH and the existing themes.
+Security reconciliation still clears private queries/mutations and fences old
+requests. One route-owned in-memory Profile/Organization Settings draft may
+survive harmless focus/visibility reconciliation only after fresh matching actor
+and effective organization/role/branch authority. Logout, session hints, failed
+authentication/authorization, authority changes and route departure discard it.
+An actor change detected by ordinary access-context refetch also hard-invalidates
+private state before the new actor's content mounts. Rejected organization edits
+cannot be restored after authority returns. No private web-storage persistence or
+browser-history interception is introduced.
 
 ### Branch and access-context contract
 
@@ -772,8 +813,8 @@ and the password proof.
 | Method/path | Auth | Request | Response | Key validation/errors | Status |
 | --- | --- | --- | --- | --- | --- |
 | `POST /organizations` | Authenticated verified account; first-onboarding/replay rules below | Required display, organization, and initial branch names; optional profile/branch phone and branch address | `200`; initial creation or identical replay of safe user/organization/`MAIN` branch/OWNER context | Strict validation; `ALREADY_ONBOARDED`; `ALREADY_HAS_ORGANIZATION_ACCESS`; safe dependency failure | Implemented by P2-M3-T01 |
-| `GET /organizations/{organizationId}` | Organization-scoped | None | Organization detail allowed to role | Safe not-found/forbidden | Planned |
-| `PATCH /organizations/{organizationId}` | Organization admin | Editable fields | Updated organization | Validation/state/stale conflict | Blocked field/permission details |
+| `GET /organizations/{organizationId}` | `organization-settings.manage` (OWNER/ADMIN) | No query | Only `id`, `name`, `updatedAt` | Validation; safe forbidden | Implemented by Product-ACCOUNT-01 (ADR-037) |
+| `PATCH /organizations/{organizationId}` | `organization-settings.manage` (OWNER/ADMIN) | Exactly `name`, `expectedUpdatedAt` | Only `id`, `name`, `updatedAt` | Validation; safe forbidden; `409 ORGANIZATION_STALE` | Implemented by Product-ACCOUNT-01 (ADR-037) |
 | `POST /organizations/{organizationId}/branches` | `OWNER` or `ADMIN` | Code, name; optional phone/address | Created branch | Duplicate code, invalid state | Planned after identity foundation |
 | `GET /organizations/{organizationId}/members` | `OWNER` or `ADMIN` | `includeInactive`, opaque cursor, limit | Safe member/user/role/status/configured branch scope page | Invalid cursor, forbidden | Implemented by P2-M3-T03 |
 | `GET /organizations/{organizationId}/invitations` | `OWNER` or `ADMIN` | Opaque cursor, limit | Open invitation metadata/scope page; no token/hash | Invalid cursor, forbidden | Implemented by P2-M3-T03 |
@@ -785,6 +826,33 @@ and the password proof.
 | `POST /organizations/{organizationId}/members/{membershipId}/reactivate` | Same delegation as desired/current role | Exact role, full branch IDs, expected `updatedAt` | Active safe membership | Escalation, stale/state/scope | Implemented by P2-M3-T03 |
 
 No endpoint may accept an arbitrary `organizationId` in the body as ownership truth.
+
+### Organization name settings (ADR-037)
+
+Owner approved the minimal name-only contract on 2026-10-25. Both endpoints
+require an authenticated active verified actor, active membership in the selected
+active organization, and existing `organization-settings.manage` (OWNER/ADMIN).
+The UUID path selects a resource, never authority. Inaccessible organizations,
+including other tenants and branch-role access, receive the same safe forbidden
+response without disclosing existence. GET accepts no query. Authenticated
+responses use `Cache-Control: no-store` and the canonical success envelope with
+only `{id,name,updatedAt}` in `data`.
+
+PATCH accepts exactly `{name,expectedUpdatedAt}` and no query. Name is trimmed
+only at its edges, nonblank, at most 200 characters; internal whitespace and
+Unicode are preserved and duplicate names are allowed. `expectedUpdatedAt` is
+the exact previous millisecond UTC timestamp. Required actor, membership,
+permission and organization state are revalidated at the transaction boundary.
+An atomic conditional PostgreSQL update returns its own row and advances the
+version by at least one millisecond, including same-millisecond writes. A stale
+or competing version returns `409 ORGANIZATION_STALE` without replacing data.
+Existing same-origin/cookie mutation protection remains required.
+
+Unknown fields are rejected, including organization reassignment, status,
+membership, role, ownership, VAT state/rate, reporting timezone, contact,
+tax/legal and billing fields. No schema migration, credential/session change,
+ownership transfer or organization contact-field contract is introduced.
+Branch phone/address remain Branch Settings.
 
 ### Membership invitation and assignment contract
 

@@ -45,9 +45,13 @@ export function isSessionChangeHint(
   );
 }
 
-export async function privateFetch(path: string, init?: RequestInit) {
+export function currentPrivateSessionSignal(): AbortSignal {
   privateRequests ??= new AbortController();
-  const generationSignal = privateRequests.signal;
+  return privateRequests.signal;
+}
+
+export async function privateFetch(path: string, init?: RequestInit) {
+  const generationSignal = currentPrivateSessionSignal();
   const signal = init?.signal
     ? AbortSignal.any([init.signal, generationSignal])
     : generationSignal;

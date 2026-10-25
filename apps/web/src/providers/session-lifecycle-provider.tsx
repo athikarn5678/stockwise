@@ -21,20 +21,28 @@ import {
 } from "@/session-lifecycle";
 import { clearContinuation } from "@/verification-continuation-browser";
 import { isGuestRoute, routeAccessPolicy } from "@/route-access-policy";
+import { AccountDraftContext, createAccountDraftStore } from "./account-draft";
+import type { AccessContext } from "@/branch-api-client";
 
 interface SessionLifecycleState {
   generation: number;
   suspended: boolean;
   unauthorized: boolean;
+  authenticatedActorId: string | null;
 }
 interface SessionLifecycleValue extends SessionLifecycleState {
   acknowledgeFreshAuthenticatedContext: () => void;
+  reconcileAccountDraft: (context: AccessContext | null) => void;
+  reconcileAuthenticatedActor: (actorId: string) => void;
 }
 const SessionLifecycleContext = createContext<SessionLifecycleValue>({
   generation: 0,
   suspended: false,
   unauthorized: false,
+  authenticatedActorId: null,
   acknowledgeFreshAuthenticatedContext: () => {},
+  reconcileAccountDraft: () => {},
+  reconcileAuthenticatedActor: () => {},
 });
 export function useSessionLifecycle() {
   return useContext(SessionLifecycleContext);
@@ -47,14 +55,42 @@ export function SessionLifecycleProvider({
 }) {
   const client = useQueryClient();
   const pathname = usePathname();
+  const [accountDraft] = useState(createAccountDraftStore);
+  const previousPathname = useRef(pathname);
+  if (previousPathname.current !== pathname) {
+    accountDraft.clear();
+    previousPathname.current = pathname;
+  }
   const guestRouteRef = useRef(isGuestRoute(routeAccessPolicy(pathname)));
   guestRouteRef.current = isGuestRoute(routeAccessPolicy(pathname));
   const [state, setState] = useState<SessionLifecycleState>({
     generation: 0,
     suspended: false,
     unauthorized: false,
+    authenticatedActorId: null,
   });
   const suspended = useRef(false);
+  const authenticatedActor = useRef<string | null>(null);
+  const reconcileAuthenticatedActor = useCallback(
+    (actorId: string) => {
+      if (authenticatedActor.current === actorId) return;
+      const changed = authenticatedActor.current !== null;
+      authenticatedActor.current = actorId;
+      if (changed) {
+        accountDraft.clear();
+        clearContinuation();
+        discardPrivateSession(client);
+      }
+      // Called from the shell's pre-paint authority boundary. Do not flushSync
+      // inside a React lifecycle; its layout update already blocks private paint.
+      setState((previous) => ({
+        ...previous,
+        authenticatedActorId: actorId,
+        generation: previous.generation + (changed ? 1 : 0),
+      }));
+    },
+    [accountDraft, client],
+  );
   const acknowledgeFreshAuthenticatedContext = useCallback(() => {
     // Clear the 401 recovery latch only after a fresh authenticated
     // access-context response has been validated by the guest-entry guard.
@@ -75,13 +111,18 @@ export function SessionLifecycleProvider({
       /* Storage/focus fallback. */
     }
 
-    const reset = (unauthorized = false) => {
+    const reset = (unauthorized = false, preserveAccountDraft = false) => {
+      if (!preserveAccountDraft) {
+        accountDraft.clear();
+        authenticatedActor.current = null;
+      }
       discardPrivateSession(client);
       flushSync(() =>
         setState((previous) => ({
           generation: previous.generation + 1,
           suspended: suspended.current,
           unauthorized,
+          authenticatedActorId: authenticatedActor.current,
         })),
       );
     };
@@ -129,7 +170,7 @@ export function SessionLifecycleProvider({
       suspended.current = true;
       // Anonymous auth drafts are not private session data. Do not remount
       // their forms simply because the user opened a different window.
-      if (!guestRouteRef.current) reset();
+      if (!guestRouteRef.current) reset(false, true);
     };
     const resume = (force = false) => {
       if (document.visibilityState === "hidden") return;
@@ -153,7 +194,7 @@ export function SessionLifecycleProvider({
         );
         return;
       }
-      reset();
+      reset(false, true);
     };
     const onPageShow = (event: PageTransitionEvent) => {
       if (event.persisted || suspended.current) resume(event.persisted);
@@ -197,12 +238,19 @@ export function SessionLifecycleProvider({
       // and silently issue another request before the guest can retry.
       // Explicit session events and pagehide still purge private authority.
     };
-  }, [client]);
+  }, [client, accountDraft]);
   return (
     <SessionLifecycleContext.Provider
-      value={{ ...state, acknowledgeFreshAuthenticatedContext }}
+      value={{
+        ...state,
+        acknowledgeFreshAuthenticatedContext,
+        reconcileAccountDraft: accountDraft.reconcile,
+        reconcileAuthenticatedActor,
+      }}
     >
-      {children}
+      <AccountDraftContext.Provider value={accountDraft}>
+        {children}
+      </AccountDraftContext.Provider>
     </SessionLifecycleContext.Provider>
   );
 }

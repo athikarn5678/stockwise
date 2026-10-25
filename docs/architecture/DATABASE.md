@@ -358,6 +358,13 @@ Lifecycle:
 - Deactivation must preserve historical actor references.
 - Physical deletion/anonymization and retention require an accepted policy.
 
+Product-ACCOUNT-01 self-profile maintenance reuses `displayName`/`phone` and
+the existing millisecond `updatedAt`; it requires no schema migration.
+The update compares the authenticated user's ID and exact prior version in
+one SQL mutation, returns that mutation's safe row and advances the version
+monotonically. No credential, session, membership or onboarding-provenance
+field is written by this path.
+
 #### `Organization`
 
 Purpose: tenant and business ownership boundary.
@@ -382,6 +389,13 @@ Constraints and indexes:
   application configuration state and not a legal registration classification.
 - P5-M1-T02 initializes existing and newly created Organizations to `UNCONFIGURED`
   with a null rate so migration/onboarding never silently asserts legal VAT status.
+
+ADR-037 organization name settings reuses only `name` and `updatedAt`.
+The mutation locks/revalidates required actor, organization and membership
+authority, compares the exact prior version in an atomic update, returns its
+own written row and advances the version by at least one millisecond.
+VAT status/rate, reporting timezone, memberships, branches and sessions are
+unchanged. No schema change or migration is required or authorized.
 
 Lifecycle:
 

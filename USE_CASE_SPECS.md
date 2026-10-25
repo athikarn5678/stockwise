@@ -195,6 +195,27 @@ The accepted MVP RBAC roles are `OWNER`, `ADMIN`, `BRANCH_MANAGER`, `INVENTORY_S
 - **Expected result:** One valid token changes the password, increments the credential version, invalidates any open verification challenge, and invalidates every prior session, without revealing account existence.
 - **Acceptance criteria:** Generic responses, hash-only 30-minute token, exact password policy, pre-Argon2 rejection, `ACTIVE` verified-only eligibility, atomic reset with credential-version increment and open-challenge invalidation, session revocation, replay/concurrency/provider/rollback/leakage tests pass.
 
+### UC-IAM-009 — Maintain my profile
+
+- **Status:** Implemented by Product-ACCOUNT-01; organization name settings approved separately by ADR-037.
+- **Actor:** Any authenticated account, including every fixed role and accounts without organization access.
+- **Preconditions:** Existing authenticated server-side actor; no selected organization or branch is required.
+- **Main flow:** Open `/app/profile`; the API resolves only the current actor and returns safe profile fields. The user edits the required display name and optional phone while email remains read-only. Save submits the original profile version, atomically updates only permitted fields and refreshes shared actor display data without rotating/revoking the session.
+- **Alternative flows:** Cancel restores saved fields. Ordinary query refresh preserves dirty values and their base version. A stale response preserves the draft and offers explicit reload of the current profile. Failed load/save provides retry and safe EN/TH feedback. Internal-link navigation and browser unload warn about unsaved edits.
+- **Business rules:** Use ADR-015 profile fields and existing normalization/length limits; exact request, response and version syntax are in `docs/contracts/API.md`. Unknown fields and user/tenant selectors are rejected. A route-owned in-memory draft may survive soft session revalidation only after fresh actor and effective authority match; logout, session hints, failures, authority changes and route departure discard it. Browser Back/Forward is not intercepted.
+- **Authorization:** The trusted authenticated actor may update only itself. No membership, organization role or client-submitted ID grants authority over another user.
+- **Acceptance criteria:** Anonymous denial, actor isolation, unauthorized-field and invalid-query rejection, normalization, omitted/blank phone, stale/concurrent writes, credential/session preservation, safe failures, shared actor refresh and localized responsive Save/Cancel behavior are verified.
+
+### UC-IAM-010 — Maintain organization name
+
+- **Status:** Owner-approved name-only contract (ADR-037), Product-ACCOUNT-01.
+- **Actor:** OWNER or ADMIN with active membership in the selected active organization.
+- **Main flow:** Resolve selected organization from validated access context; load current name; edit and Save with the exact original version. The API independently revalidates actor, organization and permission and conditionally updates only name/version. Refresh shared organization navigation names without changing session or branch context.
+- **Alternative flows:** Cancel restores saved name. Load/save failure provides localized feedback and retry. Stale writes preserve the draft and require explicit reload before retry. Soft focus/visibility reconciliation may restore the route-owned draft only after matching fresh actor and effective authority; security invalidation discards it. Internal links/unload warn; Back/Forward is not intercepted.
+- **Business rules:** Nonblank edge-trimmed name, maximum 200; preserve internal whitespace/Unicode; duplicates allowed. Reject every unknown field; VAT/timezone/status/roles/ownership/contact/billing remain unchanged. Branch contact data stays in Branch Settings. No migration.
+- **Authorization:** Existing organization-settings.manage only. Path IDs are selectors; inactive/revoked/cross-tenant/branch-role access is safely forbidden without existence disclosure.
+- **Acceptance criteria:** OWNER/ADMIN GET/PATCH, all branch-role and anonymous denial, cross-tenant isolation, strict validation, stale/concurrent updates, revocation/inactive state and unchanged related data; accessible responsive EN/TH Light/Dark save/cancel/stale and shared-name refresh.
+
 ### ADR-034 verification and recovery contract (backend and frontend implemented; acceptance review pending)
 
 The accepted `ADR-034` target defines the verification and recovery behavior

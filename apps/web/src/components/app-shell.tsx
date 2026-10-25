@@ -3,9 +3,16 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { type ReactNode, useEffect, useRef } from "react";
+import {
+  Fragment,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from "react";
 
 import { BranchApiError, fetchAccessContext } from "@/branch-api-client";
+import { accountDraftAuthority } from "@/providers/account-draft";
 import {
   applicationContextUrl,
   resolveApplicationContext,
@@ -23,6 +30,8 @@ import {
   Store,
   Users,
   Truck,
+  UserRound,
+  Settings,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -145,10 +154,32 @@ function WorkspaceShell({ children }: AppShellProps) {
     // abort signal; the session-generation abort signal still applies.
     refetchOnMount: guestRoute ? "always" : true,
   });
-  const context =
-    contextQuery.isError || contextQuery.isFetching
+  const receivedContext =
+    contextQuery.isError || (contextQuery.isFetching && !contextQuery.data)
       ? undefined
       : contextQuery.data;
+  const actorChanged =
+    receivedContext !== undefined &&
+    lifecycle.authenticatedActorId !== null &&
+    lifecycle.authenticatedActorId !== receivedContext.user.id;
+  // Never render a newly detected actor against the previous actor's queries.
+  // Reconcile before paint regardless of which access-context observer refetched.
+  const context = actorChanged ? undefined : receivedContext;
+  useLayoutEffect(() => {
+    if (receivedContext)
+      lifecycle.reconcileAuthenticatedActor(receivedContext.user.id);
+  }, [receivedContext, lifecycle.reconcileAuthenticatedActor]);
+  useEffect(() => {
+    if (contextQuery.isError) lifecycle.reconcileAccountDraft(null);
+    else if (contextQuery.isSuccess && !contextQuery.isFetching)
+      lifecycle.reconcileAccountDraft(contextQuery.data);
+  }, [
+    contextQuery.isError,
+    contextQuery.isSuccess,
+    contextQuery.isFetching,
+    contextQuery.data,
+    lifecycle.reconcileAccountDraft,
+  ]);
   const resolved = context
     ? resolveApplicationContext(
         context,
@@ -227,7 +258,10 @@ function WorkspaceShell({ children }: AppShellProps) {
 
   const canManage =
     organization?.role === "OWNER" || organization?.role === "ADMIN";
-  const destinations = [{ label: t("home"), path: "/app", visible: true }];
+  const destinations = [
+    { label: t("home"), path: "/app", visible: true },
+    { label: t("profileTitle"), path: "/app/profile", visible: true },
+  ];
   if (organization) {
     destinations.push(
       { label: t("catalog"), path: "/app/catalog", visible: true },
@@ -259,6 +293,11 @@ function WorkspaceShell({ children }: AppShellProps) {
       },
       { label: t("branches"), path: "/app/branches", visible: canManage },
       { label: t("members"), path: "/app/members", visible: canManage },
+      {
+        label: t("organizationSettingsTitle"),
+        path: "/app/organization-settings",
+        visible: canManage,
+      },
     );
   }
 
@@ -267,7 +306,8 @@ function WorkspaceShell({ children }: AppShellProps) {
       className="mx-auto flex w-full min-w-0 max-w-6xl flex-1 px-4 py-6 sm:px-6"
       id="main-content"
     >
-      {checkingSession && !preserveGuestDraft ? (
+      {actorChanged ||
+      (checkingSession && !contextQuery.data && !preserveGuestDraft) ? (
         <p aria-live="polite">{t("loadingAccess")}</p>
       ) : openingWorkspace ? (
         <p aria-live="polite">{t("openingWorkspace")}</p>
@@ -288,7 +328,17 @@ function WorkspaceShell({ children }: AppShellProps) {
           </Button>
         </div>
       ) : (
-        children
+        <Fragment
+          key={
+            context &&
+            (pathname === "/app/profile" ||
+              pathname === "/app/organization-settings")
+              ? accountDraftAuthority(context)
+              : "content"
+          }
+        >
+          {children}
+        </Fragment>
       )}
     </div>
   );
@@ -368,6 +418,8 @@ const destinationIcons: Record<string, LucideIcon> = {
   "/app/purchase-orders": ClipboardList,
   "/app/branches": Store,
   "/app/members": Users,
+  "/app/profile": UserRound,
+  "/app/organization-settings": Settings,
 };
 
 function WorkspaceHeader({ title }: { title: string }) {

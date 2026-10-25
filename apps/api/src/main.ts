@@ -56,9 +56,15 @@ import { createMembershipAccessRouter } from "./modules/identity/membership-acce
 import { createPrismaMembershipAccessRepository } from "./modules/identity/membership-access-repository.ts";
 import { createMembershipAccessService } from "./modules/identity/membership-access-service.ts";
 import { secureOneTimeTokenProvider } from "./modules/identity/one-time-token.ts";
+import { createPrismaSelfProfileRepository } from "./modules/identity/profile-repository.ts";
+import { createSelfProfileRouter } from "./modules/identity/profile-router.ts";
+import { createSelfProfileService } from "./modules/identity/profile-service.ts";
 import { createPrismaBranchRepository } from "./modules/organizations/branch-repository.ts";
 import { createBranchRouter } from "./modules/organizations/branch-router.ts";
 import { createBranchService } from "./modules/organizations/branch-service.ts";
+import { createPrismaOrganizationSettingsRepository } from "./modules/organizations/organization-settings-repository.ts";
+import { createOrganizationSettingsRouter } from "./modules/organizations/organization-settings-router.ts";
+import { createOrganizationSettingsService } from "./modules/organizations/organization-settings-service.ts";
 import { getPrismaClient } from "./prisma/client.ts";
 import { createShutdownHandler, startApiServer } from "./server.ts";
 
@@ -109,8 +115,14 @@ async function main(): Promise<void> {
     createFirstOrganizationOnboardingService({
       repository: createPrismaFirstOrganizationOnboardingRepository(prisma),
     });
+  const selfProfileService = createSelfProfileService({
+    repository: createPrismaSelfProfileRepository(prisma),
+  });
   const branchService = createBranchService({
     repository: createPrismaBranchRepository(prisma),
+  });
+  const organizationSettingsService = createOrganizationSettingsService({
+    repository: createPrismaOrganizationSettingsRepository(prisma),
   });
   const membershipAccessService = createMembershipAccessService({
     emailProvider,
@@ -189,9 +201,23 @@ async function main(): Promise<void> {
     }),
   );
   apiRouter.use(
+    createSelfProfileRouter({
+      authenticationMiddleware,
+      profileService: selfProfileService,
+      publicWebOrigin: environment.STOCKWISE_PUBLIC_WEB_ORIGIN,
+    }),
+  );
+  apiRouter.use(
     createBranchRouter({
       authenticationMiddleware,
       branchService,
+      publicWebOrigin: environment.STOCKWISE_PUBLIC_WEB_ORIGIN,
+    }),
+  );
+  apiRouter.use(
+    createOrganizationSettingsRouter({
+      authenticationMiddleware,
+      organizationSettingsService,
       publicWebOrigin: environment.STOCKWISE_PUBLIC_WEB_ORIGIN,
     }),
   );

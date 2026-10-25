@@ -873,13 +873,19 @@ active same-organization branch. Inactive or cross-tenant IDs return the same
 safe `400 INVALID_BRANCH_SCOPE`. Any active/inactive membership for that
 canonical email returns `409 MEMBERSHIP_ALREADY_EXISTS` without mutation.
 
-Creating for the same organization/email always reissues: the prior open row is
-terminal `REPLACED`, a new hash-only seven-day token row is created, and only the
-new transient URL is delivered. Delivery failure conditionally revokes that row
-and returns `503 INVITATION_DELIVERY_FAILED`. Explicit revoke is `POST` with no
-body. Revoked and expired outcomes are safe/idempotent `200`; an accepted
-invitation returns `409 INVITATION_FINALIZED`. `ADMIN` cannot revoke an OWNER
-invitation.
+Creating for the same organization/email reissues only when the actor may manage
+both the existing replaceable invitation's role and the requested new role/scope.
+These checks occur inside the existing organization-locked transaction before any
+replacement write. In particular, `ADMIN` cannot replace an open OWNER invitation
+by requesting a non-owner role; this returns the established `403 FORBIDDEN`,
+leaves the original invitation/scope/token validity unchanged, creates no new row
+and performs no delivery. Expired but otherwise nonterminal replaceable rows use
+the same delegation checks. Authorized reissue marks the prior open row terminal
+`REPLACED`, creates a new hash-only seven-day token row and delivers only the new
+transient URL. Delivery failure conditionally revokes that row and returns
+`503 INVITATION_DELIVERY_FAILED`. Explicit revoke is `POST` with no body.
+Revoked and expired outcomes are safe/idempotent `200`; an accepted invitation
+returns `409 INVITATION_FINALIZED`. `ADMIN` cannot revoke an OWNER invitation.
 
 Acceptance accepts exactly `{ "token": "opaque-token" }`. Malformed, unknown,
 expired, revoked, replaced, wrong-email, or another-actor consumed tokens return
@@ -918,6 +924,25 @@ default limit 25, maximum 100. Member listing defaults to active rows and accept
 hashes/raw values, provider payloads, and persistence internals. Cross-tenant
 resource identifiers use safe forbidden/not-found behavior without revealing
 existence.
+
+Product-ACCESS-01 reuses these endpoints unchanged. `/app/members` localizes the
+fixed-role guidance, member/configured-scope display, open invitation states and
+errors; confirms consequential changes; and refreshes access context and list
+queries after mutations. A refetched member version does not silently overwrite
+or rebase an unsaved edit: the UI requires an explicit latest-version reload
+before another write. Team drafts are component-local and reset on actor,
+selected-organization or effective-authority changes. Existing private-request,
+session-revalidation and Product-ACCOUNT-01 draft protections remain unchanged.
+Open invitations are not a complete historical invitation listing.
+
+Every Invite member submission requires EN/TH confirmation showing the submitted
+email, requested role and branch scope (or organization-wide access), and warning
+that an existing open invitation may be replaced and its previous link invalidated.
+The UI must not infer absence of an invitation from paginated/stale list data.
+Cancellation sends no create request. Confirmation submits the displayed payload
+once, prevents repeated prompts/submissions while pending and is invalidated by
+actor/organization/effective-authority or private-session changes. Reissue retains
+its separate confirmation; neither confirmation is backend authorization.
 
 ### First organization onboarding contract
 

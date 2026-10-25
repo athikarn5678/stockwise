@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,6 +22,9 @@ import {
   replaceMembership,
   revokeInvitation,
 } from "@/membership-api-client";
+import { LanguageProvider } from "@/providers/language-provider";
+import { notifySessionChange } from "@/session-lifecycle";
+import { th } from "@/i18n/th";
 
 import { MembershipManagement } from "./membership-management";
 
@@ -28,12 +32,13 @@ const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const BRANCH_ID = "20000000-0000-4000-8000-000000000001";
 const MEMBER_ID = "30000000-0000-4000-8000-000000000001";
 const INVITATION_ID = "40000000-0000-4000-8000-000000000001";
+let requestedOrganizationId = ORGANIZATION_ID;
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () =>
     new URLSearchParams({
       branchId: BRANCH_ID,
-      organizationId: ORGANIZATION_ID,
+      organizationId: requestedOrganizationId,
     }),
 }));
 
@@ -135,16 +140,20 @@ function renderManagement() {
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   });
-  const invalidate = vi.spyOn(queryClient, "invalidateQueries");
   render(
     <QueryClientProvider client={queryClient}>
-      <MembershipManagement />
+      <LanguageProvider>
+        <MembershipManagement />
+      </LanguageProvider>
     </QueryClientProvider>,
   );
-  return invalidate;
+  return queryClient;
 }
 
 beforeEach(() => {
+  requestedOrganizationId = ORGANIZATION_ID;
+  localStorage.clear();
+  vi.spyOn(window, "confirm").mockReturnValue(true);
   vi.mocked(fetchAccessContext).mockResolvedValue(context());
   vi.mocked(fetchBranches).mockResolvedValue([branch]);
   vi.mocked(fetchMemberships).mockResolvedValue({
@@ -168,10 +177,259 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 describe("membership management UI", () => {
-  it("shows persisted invitation branches rather than the currently selected branch", async () => {
+  it.each(["BRANCH_MANAGER", "INVENTORY_STAFF", "CASHIER"] as const)(
+    "denies %s without loading management resources",
+    async (role) => {
+      vi.mocked(fetchAccessContext).mockResolvedValue({
+        ...context(),
+        organizations: [{ ...context().organizations[0]!, role }],
+      });
+      renderManagement();
+      await screen.findByRole("heading", {
+        name: "Member management unavailable",
+      });
+      expect(fetchMemberships).not.toHaveBeenCalled();
+      expect(fetchInvitations).not.toHaveBeenCalled();
+      expect(fetchBranches).not.toHaveBeenCalled();
+    },
+  );
+
+  it("requires an explicit branch before inviting and clears the sent address", async () => {
+    renderManagement();
+    const send = await screen.findByRole("button", { name: "Send invitation" });
+    expect((send as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "new@example.com" },
+    });
+    fireEvent.click((await screen.findAllByLabelText("MAIN — Main"))[0]!);
+    fireEvent.click(send);
+    await waitFor(() =>
+      expect((screen.getByLabelText("Email") as HTMLInputElement).value).toBe(
+        "",
+      ),
+    );
+    expect(createInvitation).toHaveBeenCalledWith(ORGANIZATION_ID, {
+      branchIds: [BRANCH_ID],
+      email: "new@example.com",
+      role: "CASHIER",
+    });
+  });
+  it.each([
+    ["new", "new@example.com", false],
+    ["visible existing", invitation.invitedEmail, true],
+    ["unloaded existing", "later-page@example.com", false],
+  ])(
+    "cancelling an invite for a %s address makes no create request",
+    async (_description, address, visible) => {
+      if (visible) {
+        vi.mocked(fetchInvitations).mockResolvedValue({
+          data: [invitation],
+          meta: { nextCursor: null },
+        });
+      } else {
+        vi.mocked(fetchInvitations).mockResolvedValue({
+          data: [],
+          meta: { nextCursor: "next-page" },
+        });
+      }
+      vi.mocked(window.confirm).mockReturnValue(false);
+      renderManagement();
+      fireEvent.change(await screen.findByLabelText("Email"), {
+        target: { value: address },
+      });
+      fireEvent.click((await screen.findAllByLabelText("MAIN — Main"))[0]!);
+      fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+      expect(window.confirm).toHaveBeenCalledTimes(1);
+      expect(createInvitation).not.toHaveBeenCalled();
+    },
+  );
+
+  it("confirms the actual invite details including branch scope", async () => {
+    renderManagement();
+    fireEvent.change(await screen.findByLabelText("Email"), {
+      target: { value: "specific@example.com" },
+    });
+    fireEvent.click((await screen.findAllByLabelText("MAIN — Main"))[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+    await waitFor(() =>
+      expect(createInvitation).toHaveBeenCalledWith(ORGANIZATION_ID, {
+        branchIds: [BRANCH_ID],
+        email: "specific@example.com",
+        role: "CASHIER",
+      }),
+    );
+    expect(window.confirm).toHaveBeenCalledTimes(1);
+    const prompt = vi.mocked(window.confirm).mock.calls[0]?.[0] ?? "";
+    expect(prompt).toContain("specific@example.com");
+    expect(prompt).toContain("CASHIER");
+    expect(prompt).toContain("MAIN");
+    expect(prompt).toMatch(/replace|invalidat/i);
+  });
+
+  it.each(["OWNER", "ADMIN"] as const)(
+    "%s may invite with organization-wide scope",
+    async (role) => {
+      vi.mocked(fetchAccessContext).mockResolvedValue(context(role));
+      renderManagement();
+      fireEvent.change(await screen.findByLabelText("Email"), {
+        target: { value: "wide@example.com" },
+      });
+      await screen.findAllByLabelText("MAIN — Main");
+      fireEvent.change(screen.getAllByLabelText("Role")[0]!, {
+        target: { value: "ADMIN" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+      await waitFor(() =>
+        expect(createInvitation).toHaveBeenCalledWith(ORGANIZATION_ID, {
+          branchIds: [],
+          email: "wide@example.com",
+          role: "ADMIN",
+        }),
+      );
+      expect(window.confirm).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(window.confirm).mock.calls[0]?.[0]).toMatch(
+        /organization-wide/i,
+      );
+    },
+  );
+
+  it("blocks duplicate submit while confirmation is open and submits its captured draft", async () => {
+    vi.mocked(window.confirm).mockImplementation(() => {
+      fireEvent.submit(screen.getByLabelText("Email").closest("form")!);
+      expect(createInvitation).not.toHaveBeenCalled();
+      return true;
+    });
+    renderManagement();
+    fireEvent.change(await screen.findByLabelText("Email"), {
+      target: { value: "captured@example.com" },
+    });
+    fireEvent.click((await screen.findAllByLabelText("MAIN — Main"))[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+    await waitFor(() =>
+      expect(createInvitation).toHaveBeenCalledWith(ORGANIZATION_ID, {
+        branchIds: [BRANCH_ID],
+        email: "captured@example.com",
+        role: "CASHIER",
+      }),
+    );
+    expect(window.confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a changed unsent draft when the confirmed snapshot succeeds", async () => {
+    vi.mocked(window.confirm).mockImplementation(() => {
+      fireEvent.change(screen.getByLabelText("Email"), {
+        target: { value: "later@example.com" },
+      });
+      fireEvent.change(screen.getAllByLabelText("Role")[0]!, {
+        target: { value: "ADMIN" },
+      });
+      return true;
+    });
+    renderManagement();
+    fireEvent.change(await screen.findByLabelText("Email"), {
+      target: { value: "confirmed@example.com" },
+    });
+    fireEvent.click((await screen.findAllByLabelText("MAIN — Main"))[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+    await waitFor(() =>
+      expect(createInvitation).toHaveBeenCalledWith(ORGANIZATION_ID, {
+        branchIds: [BRANCH_ID],
+        email: "confirmed@example.com",
+        role: "CASHIER",
+      }),
+    );
+    expect((screen.getByLabelText("Email") as HTMLInputElement).value).toBe(
+      "later@example.com",
+    );
+    expect(
+      (screen.getAllByLabelText("Role")[0] as HTMLSelectElement).value,
+    ).toBe("ADMIN");
+  });
+
+  it("does not send the confirmed invite after actor authority changes during confirmation", async () => {
+    const client = renderManagement();
+    await screen.findByRole("button", { name: "Deactivate" });
+    vi.mocked(window.confirm).mockImplementation(() => {
+      client.setQueryData(["access-context"], context("CASHIER"));
+      return true;
+    });
+    fireEvent.change(await screen.findByLabelText("Email"), {
+      target: { value: "stale-authority@example.com" },
+    });
+    fireEvent.click((await screen.findAllByLabelText("MAIN — Main"))[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+    await screen.findByRole("heading", {
+      name: "Member management unavailable",
+    });
+    expect(createInvitation).not.toHaveBeenCalled();
+  });
+
+  it("does not send the confirmed invite after the private session changes", async () => {
+    const client = renderManagement();
+    await screen.findByRole("button", { name: "Deactivate" });
+    vi.mocked(window.confirm).mockImplementation(() => {
+      notifySessionChange(client);
+      return true;
+    });
+    fireEvent.change(await screen.findByLabelText("Email"), {
+      target: { value: "stale-session@example.com" },
+    });
+    fireEvent.click((await screen.findAllByLabelText("MAIN — Main"))[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+    expect(createInvitation).not.toHaveBeenCalled();
+  });
+
+  it("does not send the confirmed invite after the organization changes", async () => {
+    const client = renderManagement();
+    await screen.findByRole("button", { name: "Deactivate" });
+    const otherOrganizationId = "10000000-0000-4000-8000-000000000002";
+    vi.mocked(window.confirm).mockImplementation(() => {
+      requestedOrganizationId = otherOrganizationId;
+      client.setQueryData(["access-context"], {
+        ...context(),
+        organizations: [
+          ...context().organizations,
+          { ...context().organizations[0]!, id: otherOrganizationId },
+        ],
+      });
+      return true;
+    });
+    fireEvent.change(await screen.findByLabelText("Email"), {
+      target: { value: "stale-organization@example.com" },
+    });
+    fireEvent.click((await screen.findAllByLabelText("MAIN — Main"))[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+    expect(createInvitation).not.toHaveBeenCalled();
+  });
+
+  it("does not send after the actor switches while confirmation is open", async () => {
+    const client = renderManagement();
+    await screen.findByRole("button", { name: "Deactivate" });
+    vi.mocked(window.confirm).mockImplementation(() => {
+      client.setQueryData(["access-context"], {
+        ...context(),
+        user: { ...context().user, id: "60000000-0000-4000-8000-000000000002" },
+      });
+      return true;
+    });
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "old-actor@example.com" },
+    });
+    fireEvent.click((await screen.findAllByLabelText("MAIN — Main"))[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+    await waitFor(() =>
+      expect((screen.getByLabelText("Email") as HTMLInputElement).value).toBe(
+        "",
+      ),
+    );
+    expect(createInvitation).not.toHaveBeenCalled();
+  });
+
+  it("shows retained inactive invitation branch scope", async () => {
     vi.mocked(fetchInvitations).mockResolvedValue({
       data: [
         {
@@ -180,8 +438,8 @@ describe("membership management UI", () => {
             {
               ...invitation.branchScopes[0]!,
               code: "OTHER",
-              name: "Other branch",
-              status: "INACTIVE",
+              name: "Other retained branch",
+              status: "INACTIVE" as const,
             },
           ],
         },
@@ -189,80 +447,133 @@ describe("membership management UI", () => {
       meta: { nextCursor: null },
     });
     renderManagement();
-    const card = (
-      await screen.findByRole("heading", { name: invitation.invitedEmail })
-    ).closest("article")!;
-    expect(card.textContent).toContain(
-      "Branch scope: OTHER — Other branch (Inactive)",
+    const card = await screen.findByRole("heading", {
+      name: invitation.invitedEmail,
+    });
+    expect(card.closest("article")?.textContent).toContain(
+      "OTHER — Other retained branch",
     );
-    expect(card.textContent).not.toContain("MAIN — Main");
+    expect(card.closest("article")?.textContent).not.toContain("MAIN — Main");
+    expect(card.closest("article")?.textContent).toContain("Inactive");
   });
 
   it.each(["OWNER", "ADMIN"] as const)(
-    "shows %s invitations as organization-wide",
-    async (intendedRole) => {
+    "shows %s invitation organization-wide scope",
+    async (role) => {
       vi.mocked(fetchInvitations).mockResolvedValue({
-        data: [{ ...invitation, intendedRole, branchScopes: [] }],
+        data: [{ ...invitation, intendedRole: role, branchScopes: [] }],
         meta: { nextCursor: null },
       });
       renderManagement();
-      const card = (
-        await screen.findByRole("heading", { name: invitation.invitedEmail })
-      ).closest("article")!;
-      expect(card.textContent).toContain("Organization-wide scope");
+      const card = await screen.findByRole("heading", {
+        name: invitation.invitedEmail,
+      });
+      expect(card.closest("article")?.textContent).toContain(
+        "Organization-wide scope",
+      );
     },
   );
 
-  it("gates branch-scoped users without loading management resources", async () => {
-    vi.mocked(fetchAccessContext).mockResolvedValue(context("CASHIER"));
+  it("shows backend forbidden feedback and permits retrying the invite", async () => {
+    vi.mocked(createInvitation).mockRejectedValueOnce(
+      new MembershipApiError("forbidden"),
+    );
     renderManagement();
-
-    expect(
-      await screen.findByRole("heading", {
-        name: "Member management unavailable",
-      }),
-    ).toBeTruthy();
-    expect(fetchMemberships).not.toHaveBeenCalled();
-    expect(fetchInvitations).not.toHaveBeenCalled();
-  });
-
-  it("submits explicit branch scope and refreshes management and access context", async () => {
-    const invalidate = renderManagement();
-    await screen.findByRole("heading", { name: "Members" });
-
-    fireEvent.change(screen.getByLabelText("Email"), {
-      target: { value: "new@example.com" },
+    fireEvent.change(await screen.findByLabelText("Email"), {
+      target: { value: "retry@example.com" },
     });
     fireEvent.click((await screen.findAllByLabelText("MAIN — Main"))[0]!);
-    fireEvent.submit(
-      screen.getByRole("button", { name: "Send invitation" }).closest("form")!,
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "You do not have permission",
     );
-
-    await waitFor(() =>
-      expect(createInvitation).toHaveBeenCalledWith(ORGANIZATION_ID, {
-        branchIds: [BRANCH_ID],
-        email: "new@example.com",
-        role: "CASHIER",
-      }),
-    );
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["access-context"] });
-    expect(invalidate).toHaveBeenCalledWith({
-      queryKey: ["members", ORGANIZATION_ID],
-    });
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+    await waitFor(() => expect(createInvitation).toHaveBeenCalledTimes(2));
+    expect(window.confirm).toHaveBeenCalledTimes(2);
   });
 
-  it("supports revoke, full replacement, deactivation, and stale feedback", async () => {
+  it("keeps invite scope controls disabled while creation is pending", async () => {
+    const { promise, resolve } = Promise.withResolvers<typeof invitation>();
+    vi.mocked(createInvitation).mockReturnValueOnce(promise);
     renderManagement();
-    await screen.findByText("invitee@example.com");
-
-    fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
+    fireEvent.change(await screen.findByLabelText("Email"), {
+      target: { value: "pending@example.com" },
+    });
+    const scope = (await screen.findAllByLabelText("MAIN — Main"))[0]!;
+    fireEvent.click(scope);
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+    await screen.findByRole("button", { name: "Sending…" });
+    expect(scope.getAttribute("aria-disabled")).toBe("true");
+    const form = screen.getByLabelText("Email").closest("form")!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(createInvitation).toHaveBeenCalledTimes(1);
+    expect(window.confirm).toHaveBeenCalledTimes(1);
+    resolve(invitation);
     await waitFor(() =>
-      expect(revokeInvitation).toHaveBeenCalledWith(
-        ORGANIZATION_ID,
-        INVITATION_ID,
-      ),
+      expect(screen.queryByRole("button", { name: "Sending…" })).toBeNull(),
     );
+  });
 
+  it("localizes invite confirmation details into Thai", async () => {
+    localStorage.setItem("stockwise.language", "th");
+    renderManagement();
+    await screen.findByRole("heading", { name: th.teamTitle });
+    fireEvent.change(screen.getByLabelText(th.teamEmail), {
+      target: { value: "thai@example.com" },
+    });
+    fireEvent.click((await screen.findAllByLabelText("MAIN — Main"))[0]!);
+    fireEvent.click(screen.getByRole("button", { name: th.teamSend }));
+    expect(window.confirm).toHaveBeenCalledTimes(1);
+    const prompt = vi.mocked(window.confirm).mock.calls[0]?.[0] ?? "";
+    expect(prompt).toContain("thai@example.com");
+    expect(prompt).toContain(th.CASHIER);
+    expect(prompt).toContain("MAIN — Main");
+    expect(prompt).toContain("หากมีคำเชิญ");
+    expect(prompt).toContain("ลิงก์เดิมจะใช้ไม่ได้");
+  });
+
+  it("keeps owner membership and owner invitations read-only for administrators", async () => {
+    vi.mocked(fetchAccessContext).mockResolvedValue(context("ADMIN"));
+    vi.mocked(fetchMemberships).mockResolvedValue({
+      data: [{ ...membership, role: "OWNER", branchAssignments: [] }],
+      meta: { nextCursor: null },
+    });
+    vi.mocked(fetchInvitations).mockResolvedValue({
+      data: [{ ...invitation, intendedRole: "OWNER", branchScopes: [] }],
+      meta: { nextCursor: null },
+    });
+    renderManagement();
+    await screen.findByText("Only an owner may change owner access.");
+    expect(screen.queryByRole("button", { name: "Deactivate" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Revoke" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reissue" })).toBeNull();
+    for (const select of screen.getAllByLabelText("Role"))
+      expect(
+        within(select).queryByRole("option", { name: "OWNER" }),
+      ).toBeNull();
+  });
+
+  it("does not mutate when a consequential change is cancelled", async () => {
+    vi.mocked(window.confirm).mockReturnValue(false);
+    renderManagement();
+    fireEvent.click(await screen.findByRole("button", { name: "Revoke" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reissue" }));
+    fireEvent.click(screen.getByRole("button", { name: "Deactivate" }));
+    fireEvent.change(screen.getAllByLabelText("Role")[1]!, {
+      target: { value: "ADMIN" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save access" }));
+    expect(revokeInvitation).not.toHaveBeenCalled();
+    expect(createInvitation).not.toHaveBeenCalled();
+    expect(deactivateMembership).not.toHaveBeenCalled();
+    expect(replaceMembership).not.toHaveBeenCalled();
+  });
+
+  it("submits a confirmed full replacement with the original optimistic version", async () => {
+    const client = renderManagement();
+    await screen.findByRole("button", { name: "Deactivate" });
+    const invalidate = vi.spyOn(client, "invalidateQueries");
     fireEvent.change(screen.getAllByLabelText("Role")[1]!, {
       target: { value: "ADMIN" },
     });
@@ -273,30 +584,111 @@ describe("membership management UI", () => {
         MEMBER_ID,
         {
           branchIds: [],
-          expectedUpdatedAt: membership.updatedAt,
           role: "ADMIN",
+          expectedUpdatedAt: membership.updatedAt,
         },
       ),
     );
+    expect(window.confirm).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ["access-context"] }),
+    );
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["members", ORGANIZATION_ID],
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["invitations", ORGANIZATION_ID],
+    });
+  });
 
+  it("preserves a draft on background update and requires explicit reload before rebasing", async () => {
+    const client = renderManagement();
+    await screen.findByRole("button", { name: "Deactivate" });
+    fireEvent.change(screen.getAllByLabelText("Role")[1]!, {
+      target: { value: "ADMIN" },
+    });
+    const latest = {
+      ...membership,
+      role: "BRANCH_MANAGER" as const,
+      updatedAt: "2026-08-24T13:00:00.000Z",
+    };
+    client.setQueryData(["members", ORGANIZATION_ID, false], {
+      pages: [{ data: [latest], meta: { nextCursor: null } }],
+      pageParams: [null],
+    });
+    await screen.findByRole("button", { name: "Reload latest access" });
+    expect(
+      (screen.getAllByLabelText("Role")[1] as HTMLSelectElement).value,
+    ).toBe("ADMIN");
+    expect(
+      (
+        screen.getByRole("button", { name: "Save access" }) as HTMLButtonElement
+      ).matches(":disabled"),
+    ).toBe(true);
+    expect(replaceMembership).not.toHaveBeenCalled();
+    vi.mocked(fetchMemberships).mockResolvedValue({
+      data: [latest],
+      meta: { nextCursor: null },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reload latest access" }),
+    );
+    await waitFor(() =>
+      expect(
+        (screen.getAllByLabelText("Role")[1] as HTMLSelectElement).value,
+      ).toBe("BRANCH_MANAGER"),
+    );
+    fireEvent.change(screen.getAllByLabelText("Role")[1]!, {
+      target: { value: "ADMIN" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save access" }));
+    await waitFor(() =>
+      expect(replaceMembership).toHaveBeenCalledWith(
+        ORGANIZATION_ID,
+        MEMBER_ID,
+        { branchIds: [], role: "ADMIN", expectedUpdatedAt: latest.updatedAt },
+      ),
+    );
+  });
+
+  it("blocks repeat stale writes and keeps last-owner rejection visible", async () => {
     vi.mocked(deactivateMembership).mockRejectedValueOnce(
       new MembershipApiError("stale"),
     );
+    renderManagement();
+    fireEvent.click(await screen.findByRole("button", { name: "Deactivate" }));
+    await screen.findByRole("button", { name: "Reload latest access" });
+    expect(
+      (
+        screen.getByRole("button", { name: "Deactivate" }) as HTMLButtonElement
+      ).matches(":disabled"),
+    ).toBe(true);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reload latest access" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Reload latest access" }),
+      ).toBeNull(),
+    );
+    vi.mocked(deactivateMembership).mockRejectedValueOnce(
+      new MembershipApiError("last_active_owner"),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Deactivate" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("changed");
+    await screen.findByRole("alert");
+    expect(deactivateMembership).toHaveBeenCalledTimes(2);
   });
 
-  it("loads inactive members and offers explicit reactivation", async () => {
-    const inactive = { ...membership, status: "INACTIVE" as const };
+  it("reactivates inactive members only after confirming explicit desired access", async () => {
     vi.mocked(fetchMemberships).mockResolvedValue({
-      data: [inactive],
+      data: [{ ...membership, status: "INACTIVE" }],
       meta: { nextCursor: null },
     });
     renderManagement();
-    await screen.findByText(/INACTIVE/);
-
     fireEvent.click(
-      screen.getByRole("button", { name: "Reactivate with this access" }),
+      await screen.findByRole("button", {
+        name: "Reactivate with this access",
+      }),
     );
     await waitFor(() =>
       expect(reactivateMembership).toHaveBeenCalledWith(
@@ -304,10 +696,147 @@ describe("membership management UI", () => {
         MEMBER_ID,
         {
           branchIds: [BRANCH_ID],
-          expectedUpdatedAt: membership.updatedAt,
           role: "CASHIER",
+          expectedUpdatedAt: membership.updatedAt,
         },
       ),
     );
+  });
+
+  it("locks member mutations while a request is pending", async () => {
+    const { promise, resolve: finish } =
+      Promise.withResolvers<typeof membership>();
+    vi.mocked(replaceMembership).mockReturnValueOnce(promise);
+    renderManagement();
+    await screen.findByRole("button", { name: "Deactivate" });
+    fireEvent.change(screen.getAllByLabelText("Role")[1]!, {
+      target: { value: "INVENTORY_STAFF" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save access" }));
+    await screen.findByRole("button", { name: "Saving…" });
+    expect(
+      screen.getByRole("button", { name: "Deactivate" }).matches(":disabled"),
+    ).toBe(true);
+    expect(screen.getAllByLabelText("Role")[1]!.matches(":disabled")).toBe(
+      true,
+    );
+    const card = screen
+      .getByRole("heading", { name: "Cashier" })
+      .closest("article")!;
+    const scope = within(card).getByRole("checkbox");
+    expect(scope.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(scope);
+    expect(scope.getAttribute("aria-checked")).toBe("true");
+    finish(membership);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Saving…" })).toBeNull(),
+    );
+  });
+
+  it("reissues using persisted invitation branches rather than workspace selection", async () => {
+    const otherId = "20000000-0000-4000-8000-000000000002";
+    vi.mocked(fetchInvitations).mockResolvedValue({
+      data: [
+        {
+          ...invitation,
+          branchScopes: [
+            {
+              ...invitation.branchScopes[0]!,
+              id: otherId,
+              code: "OTHER",
+              name: "Other branch",
+            },
+          ],
+        },
+      ],
+      meta: { nextCursor: null },
+    });
+    renderManagement();
+    fireEvent.click(await screen.findByRole("button", { name: "Reissue" }));
+    await waitFor(() =>
+      expect(createInvitation).toHaveBeenCalledWith(ORGANIZATION_ID, {
+        branchIds: [otherId],
+        email: invitation.invitedEmail,
+        role: "CASHIER",
+      }),
+    );
+  });
+
+  it("removes a privileged draft when actor or authority changes", async () => {
+    const client = renderManagement();
+    await screen.findByRole("button", { name: "Deactivate" });
+    fireEvent.change(screen.getAllByLabelText("Role")[1]!, {
+      target: { value: "ADMIN" },
+    });
+    client.setQueryData(["access-context"], {
+      ...context(),
+      user: { ...context().user, id: "60000000-0000-4000-8000-000000000002" },
+    });
+    await waitFor(() =>
+      expect(
+        (screen.getAllByLabelText("Role")[1] as HTMLSelectElement).value,
+      ).toBe("CASHIER"),
+    );
+    fireEvent.change(screen.getAllByLabelText("Role")[1]!, {
+      target: { value: "ADMIN" },
+    });
+    client.setQueryData(["access-context"], context("CASHIER"));
+    await screen.findByRole("heading", {
+      name: "Member management unavailable",
+    });
+    expect(screen.queryByLabelText("Role")).toBeNull();
+    expect(replaceMembership).not.toHaveBeenCalled();
+  });
+
+  it("localizes interactive team controls into Thai", async () => {
+    localStorage.setItem("stockwise.language", "th");
+    renderManagement();
+    await screen.findByRole("heading", { name: th.teamTitle });
+    await screen.findByRole("heading", { name: "Cashier" });
+    fireEvent.change(screen.getAllByLabelText(th.teamRole)[1]!, {
+      target: { value: "ADMIN" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: th.teamSave }));
+    await waitFor(() =>
+      expect(window.confirm).toHaveBeenCalledWith(th.teamConfirmSave),
+    );
+  });
+
+  it("recovers from a failed list request without showing an empty-success state", async () => {
+    vi.mocked(fetchMemberships).mockRejectedValueOnce(
+      new MembershipApiError("unavailable"),
+    );
+    renderManagement();
+    const failure = await screen.findByRole("alert");
+    expect(failure.textContent).toContain("could not be loaded");
+    expect(screen.queryByText("No members match this view.")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await screen.findByRole("heading", { name: "Cashier" });
+  });
+  it("does not carry an invitation draft across organizations for the same actor", async () => {
+    const client = renderManagement();
+    await screen.findByRole("heading", { name: "Cashier" });
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "private-draft@example.test" },
+    });
+    requestedOrganizationId = "10000000-0000-4000-8000-000000000002";
+    const next = {
+      ...context(),
+      organizations: [
+        ...context().organizations,
+        {
+          ...context().organizations[0]!,
+          id: requestedOrganizationId,
+          name: "Other Store",
+        },
+      ],
+    };
+    client.setQueryData(["access-context"], next);
+    await waitFor(() =>
+      expect((screen.getByLabelText("Email") as HTMLInputElement).value).toBe(
+        "",
+      ),
+    );
+    expect(createInvitation).not.toHaveBeenCalled();
   });
 });

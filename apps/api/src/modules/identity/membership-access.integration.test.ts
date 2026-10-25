@@ -1,5 +1,7 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
-
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { Router } from "express";
+import { createApp } from "../../app.ts";
+import { createMembershipAccessRouter } from "./membership-access-router.ts";
 import { createPrismaBranchRepository } from "../organizations/branch-repository.ts";
 import {
   createRecordingEmailProvider,
@@ -7,8 +9,10 @@ import {
 } from "./email-provider.ts";
 import type { RecordingIdentityEmailProvider } from "./email-provider.ts";
 import { createPrismaMembershipAccessRepository } from "./membership-access-repository.ts";
+import type { MembershipAccessService } from "./membership-access-service.ts";
 import { createMembershipAccessService } from "./membership-access-service.ts";
 import { secureOneTimeTokenProvider } from "./one-time-token.ts";
+import { createSessionAuthenticationMiddleware } from "./authentication-context.ts";
 import { loadTestDatabaseEnvironment } from "../../test/database-environment.ts";
 import {
   createTestPrismaClient,
@@ -81,6 +85,72 @@ function invitationToken(provider: RecordingIdentityEmailProvider): string {
   const token = new URL(message.url).searchParams.get("token");
   if (token === null) throw new Error("Invitation token missing.");
   return token;
+}
+
+async function postInvitationViaHttp(
+  access: MembershipAccessService,
+  actors: ReadonlyMap<
+    string,
+    { displayName: string | null; email: string; id: string }
+  >,
+  input: Parameters<MembershipAccessService["createInvitation"]>[0],
+): Promise<number> {
+  const router = Router();
+  router.use(
+    createMembershipAccessRouter({
+      authenticationMiddleware: createSessionAuthenticationMiddleware(
+        async (request) => {
+          const actorId = request.header("x-test-actor");
+          const actor = actorId === undefined ? undefined : actors.get(actorId);
+          return actor === undefined
+            ? null
+            : {
+                actor: {
+                  displayName: actor.displayName,
+                  email: actor.email,
+                  id: actor.id,
+                },
+                sessionId: `synthetic-${actor.id}`,
+              };
+        },
+      ),
+      membershipAccessService: access,
+      publicWebOrigin: "http://localhost:3000",
+    }),
+  );
+  const app = createApp({
+    apiRouter: router,
+    logger: { error() {}, info() {} },
+  });
+  const server = app.listen(0, "127.0.0.1");
+  try {
+    const listening = Promise.withResolvers<void>();
+    server.once("listening", listening.resolve);
+    server.once("error", listening.reject);
+    await listening.promise;
+    const address = server.address();
+    if (address === null || typeof address === "string")
+      throw new Error("Expected a TCP listener.");
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/v1/organizations/${input.organizationId}/invitations`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-test-actor": input.actorUserId,
+        },
+        body: JSON.stringify(input.invitation),
+      },
+    );
+    return response.status;
+  } finally {
+    const closed = Promise.withResolvers<void>();
+    server.close((error) => {
+      if (error === undefined) closed.resolve();
+      else closed.reject(error);
+    });
+    await closed.promise;
+  }
 }
 
 describe("membership invitation and access management with PostgreSQL", () => {
@@ -767,5 +837,217 @@ describe("membership invitation and access management with PostgreSQL", () => {
       kind: "success",
       page: { items: [expect.any(Object)] },
     });
+  });
+
+  it("denies an ADMIN replacing an OWNER invitation over the real HTTP stack without mutating or delivering", async () => {
+    const store = await organization();
+    const ownerUser = await user("owner-http@example.com");
+    const adminUser = await user("admin-http@example.com");
+    const invitedUser = await user("protected-invitee@example.com");
+    await membership(store.id, ownerUser, "OWNER");
+    await membership(store.id, adminUser, "ADMIN");
+    const recording = createRecordingEmailProvider();
+    const send = vi.spyOn(recording, "send");
+    const access = service(recording).value;
+    const issued = await access.createInvitation({
+      actorUserId: ownerUser.id,
+      invitation: {
+        branchIds: [],
+        email: invitedUser.email,
+        role: "OWNER",
+      },
+      organizationId: store.id,
+    });
+    if (issued.kind !== "success") throw new Error("Expected invitation.");
+    const originalToken = invitationToken(recording);
+    const before = await prisma.invitation.findUniqueOrThrow({
+      where: { id: issued.invitationId },
+      include: { branchScopes: true },
+    });
+    const sentBefore = recording.messages.length;
+    const actors = new Map([
+      [ownerUser.id, ownerUser],
+      [adminUser.id, adminUser],
+    ]);
+    const status = await postInvitationViaHttp(access, actors, {
+      actorUserId: adminUser.id,
+      invitation: { branchIds: [], email: invitedUser.email, role: "ADMIN" },
+      organizationId: store.id,
+    });
+    expect(status).toBe(403);
+    const after = await prisma.invitation.findUniqueOrThrow({
+      where: { id: issued.invitationId },
+      include: { branchScopes: true },
+    });
+    expect(after).toEqual(before);
+    expect(
+      await prisma.invitation.count({
+        where: {
+          invitedEmail: invitedUser.email,
+          organizationId: store.id,
+        },
+      }),
+    ).toBe(1);
+    expect(recording.messages).toHaveLength(sentBefore);
+    expect(send).toHaveBeenCalledTimes(sentBefore);
+    await expect(
+      access.acceptInvitation({
+        actorEmail: invitedUser.email,
+        actorUserId: invitedUser.id,
+        rawToken: originalToken,
+      }),
+    ).resolves.toMatchObject({
+      kind: "success",
+      membership: { role: "OWNER" },
+    });
+  });
+  it("authorizes every replaceable role, preserves exact replacement semantics, and serializes protected successors", async () => {
+    const store = await organization();
+    const otherStore = await organization("Other Membership Store");
+    const main = await branch(store.id, "MAIN");
+    const ownerUser = await user("owner-role-reissue@example.com");
+    const adminUser = await user("admin-role-reissue@example.com");
+    const foreignAdmin = await user("foreign-role-reissue@example.com");
+    await membership(store.id, ownerUser, "OWNER");
+    await membership(store.id, adminUser, "ADMIN");
+    await membership(otherStore.id, foreignAdmin, "ADMIN");
+    const recording = createRecordingEmailProvider();
+    const access = service(recording).value;
+    const actors = new Map([
+      [ownerUser.id, ownerUser],
+      [adminUser.id, adminUser],
+      [foreignAdmin.id, foreignAdmin],
+    ]);
+    const issue = async (
+      actorUserId: string,
+      email: string,
+      role:
+        "OWNER" | "ADMIN" | "BRANCH_MANAGER" | "INVENTORY_STAFF" | "CASHIER",
+      branchIds: string[] = [],
+    ) =>
+      access.createInvitation({
+        actorUserId,
+        invitation: { branchIds, email, role },
+        organizationId: store.id,
+      });
+    const post = (
+      actorUserId: string,
+      email: string,
+      role:
+        "OWNER" | "ADMIN" | "BRANCH_MANAGER" | "INVENTORY_STAFF" | "CASHIER",
+      branchIds: string[] = [],
+    ) =>
+      postInvitationViaHttp(access, actors, {
+        actorUserId,
+        invitation: { branchIds, email, role },
+        organizationId: store.id,
+      });
+    const ownerTarget = "owner-role-target@example.com";
+    const ownerTargetUser = await user(ownerTarget);
+    const firstOwner = await issue(ownerUser.id, ownerTarget, "OWNER");
+    if (firstOwner.kind !== "success") throw new Error("Expected invitation.");
+    const originalOwnerToken = invitationToken(recording);
+    const originalOwnerRow = await prisma.invitation.findUniqueOrThrow({
+      where: { id: firstOwner.invitationId },
+      include: { branchScopes: true },
+    });
+    expect(await post(adminUser.id, ownerTarget, "ADMIN")).toBe(403);
+    expect(
+      await post(adminUser.id, ownerTarget, "BRANCH_MANAGER", [main.id]),
+    ).toBe(403);
+    expect(
+      await prisma.invitation.findUniqueOrThrow({
+        where: { id: firstOwner.invitationId },
+        include: { branchScopes: true },
+      }),
+    ).toEqual(originalOwnerRow);
+
+    expect(await post(ownerUser.id, ownerTarget, "ADMIN")).toBe(201);
+    expect(
+      await prisma.invitation.findUniqueOrThrow({
+        where: { id: firstOwner.invitationId },
+      }),
+    ).toMatchObject({ replacedAt: NOW, revocationReason: "REPLACED" });
+    await expect(
+      access.acceptInvitation({
+        actorEmail: ownerTargetUser.email,
+        actorUserId: ownerTargetUser.id,
+        rawToken: originalOwnerToken,
+      }),
+    ).resolves.toEqual({ kind: "invalid_invitation" });
+
+    const adminTarget = "admin-non-owner-target@example.com";
+    const adminBase = await issue(ownerUser.id, adminTarget, "ADMIN");
+    if (adminBase.kind !== "success") throw new Error("Expected invitation.");
+    expect(await post(adminUser.id, adminTarget, "OWNER")).toBe(403);
+    expect(await post(adminUser.id, adminTarget, "CASHIER", [main.id])).toBe(
+      201,
+    );
+    expect(
+      await prisma.invitation.findMany({
+        where: { invitedEmail: adminTarget, organizationId: store.id },
+        include: { branchScopes: true },
+        orderBy: { intendedRole: "asc" },
+      }),
+    ).toMatchObject([
+      { intendedRole: "ADMIN", replacedAt: NOW },
+      { branchScopes: [{ branchId: main.id }], intendedRole: "CASHIER" },
+    ]);
+
+    const expiredTarget = "expired-owner-target@example.com";
+    const expiredAccess = service(
+      createRecordingEmailProvider(),
+      () => new Date(NOW.getTime() - 8 * 24 * 60 * 60 * 1000),
+    ).value;
+    const expired = await expiredAccess.createInvitation({
+      actorUserId: ownerUser.id,
+      invitation: { branchIds: [], email: expiredTarget, role: "OWNER" },
+      organizationId: store.id,
+    });
+    if (expired.kind !== "success") throw new Error("Expected invitation.");
+    expect(await post(adminUser.id, expiredTarget, "ADMIN")).toBe(403);
+    expect(
+      await prisma.invitation.findUniqueOrThrow({
+        where: { id: expired.invitationId },
+      }),
+    ).toMatchObject({ replacedAt: null, revokedAt: null });
+    const foreignTarget = "cross-org-owner-target@example.com";
+
+    const foreignProtected = await issue(ownerUser.id, foreignTarget, "OWNER");
+    if (foreignProtected.kind !== "success")
+      throw new Error("Expected invitation.");
+    expect(await post(foreignAdmin.id, foreignTarget, "ADMIN")).toBe(403);
+    expect(
+      await prisma.invitation.findUniqueOrThrow({
+        where: { id: foreignProtected.invitationId },
+      }),
+    ).toMatchObject({ replacedAt: null, revokedAt: null });
+    const raceTarget = "race-protected-owner@example.com";
+
+    const initial = await issue(ownerUser.id, raceTarget, "OWNER");
+    if (initial.kind !== "success") throw new Error("Expected invitation.");
+    const [ownerSuccessor, unauthorizedReissue] = await Promise.all([
+      post(ownerUser.id, raceTarget, "OWNER"),
+      post(adminUser.id, raceTarget, "ADMIN"),
+    ]);
+    expect(ownerSuccessor).toBe(201);
+    expect(unauthorizedReissue).toBe(403);
+    expect(
+      await prisma.invitation.count({
+        where: {
+          consumedAt: null,
+          invitedEmail: raceTarget,
+          organizationId: store.id,
+          replacedAt: null,
+          revokedAt: null,
+          intendedRole: "OWNER",
+        },
+      }),
+    ).toBe(1);
+    expect(
+      await prisma.invitation.count({
+        where: { invitedEmail: raceTarget, organizationId: store.id },
+      }),
+    ).toBe(2);
   });
 });

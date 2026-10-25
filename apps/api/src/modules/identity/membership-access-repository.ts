@@ -598,14 +598,33 @@ export function createPrismaMembershipAccessRepository(
             return { kind: "membership_exists" } as const;
           }
 
+          const replaceableInvitationWhere = {
+            consumedAt: null,
+            invitedEmail: input.invitation.email,
+            organizationId: input.organizationId,
+            replacedAt: null,
+            revokedAt: null,
+          };
+          const replaceableInvitations = await transaction.invitation.findMany({
+            where: replaceableInvitationWhere,
+            select: { intendedRole: true },
+          });
+          if (
+            replaceableInvitations.some(
+              ({ intendedRole }) =>
+                !canManageRole(
+                  actor.context,
+                  input.organizationId,
+                  intendedRole,
+                  input.invitation.role,
+                ),
+            )
+          ) {
+            return { kind: "forbidden" } as const;
+          }
+
           await transaction.invitation.updateMany({
-            where: {
-              consumedAt: null,
-              invitedEmail: input.invitation.email,
-              organizationId: input.organizationId,
-              replacedAt: null,
-              revokedAt: null,
-            },
+            where: replaceableInvitationWhere,
             data: {
               replacedAt: input.issuedAt,
               revocationReason: "REPLACED",

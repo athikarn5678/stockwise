@@ -330,6 +330,112 @@ export const en = {
     "Create an account, verify your email and set up your organization to begin.",
   marketingSignIn: "Sign in",
   marketingCurrency: "THB",
+  teamTitle: "Team & permissions",
+  teamMembers: "Organization members",
+  teamInvitations: "Open invitations",
+  teamInvite: "Invite member",
+  teamEmail: "Email",
+  teamRole: "Role",
+  teamSend: "Send invitation",
+  teamSending: "Sending…",
+  teamInviteConfirm:
+    "Invite {email} as {role} with {scope}? Any existing open invitation for this email will be replaced and its old link invalidated.",
+  teamSave: "Save access",
+  teamReactivate: "Reactivate with this access",
+  teamDeactivate: "Deactivate",
+  teamRevoke: "Revoke",
+  teamReissue: "Reissue",
+  teamIncludeInactive: "Include inactive",
+  teamUnavailable: "Member management unavailable",
+  teamOwnerOnly: "Only an owner may change owner access.",
+  teamOrganizationScope: "Organization-wide scope",
+  teamBranchScope: "Branch scope",
+  teamNoAssignments: "No branches assigned",
+  teamActive: "Active",
+  teamInactive: "Inactive",
+  teamPending: "Pending",
+  teamExpired: "Expired",
+  teamAccepted: "Accepted",
+  teamRevoked: "Revoked",
+  teamReplaced: "Replaced",
+  teamRetry: "Try again",
+  teamRefresh: "Refresh team",
+  teamReload: "Reload latest access",
+  teamMoreMembers: "Load more members",
+  teamMoreInvitations: "Load more invitations",
+  teamLoadingMembers: "Loading members…",
+  teamLoadingInvitations: "Loading invitations…",
+  teamLoadingBranches: "Loading branches…",
+  teamMembersError: "Members could not be loaded.",
+  teamInvitationsError: "Open invitations could not be loaded.",
+  teamBranchesError:
+    "Branches could not be loaded. Retry before changing branch access.",
+  teamNoMembers: "No members match this view.",
+  teamNoInvitations:
+    "No open invitations. Invite a team member to get started.",
+  teamSelectBranch: "Select at least one active branch for this role.",
+  teamNoBranches:
+    "No active branches are available. An owner or administrator must activate a branch first.",
+  teamScopeLegend: "Active branch scope",
+  teamScopeHelp:
+    "Branch roles need explicit assignments. Inactive branches and assignments grant no active operational access; retained assignments may still allow authorized historical reads.",
+  teamDescription: "Manage roles, branch assignments and invitations for",
+  teamDenied:
+    "Owner or administrator access is required for this organization.",
+  teamRules: "Access rules",
+  teamRulesHelp:
+    "Owners manage all five roles. Administrators manage non-owner roles only. At least one active owner must remain. The server checks every change.",
+  teamRoleGuide: "Fixed role guide",
+  teamRoleOwner:
+    "Full organization operations and visibility; manages all roles, including owners.",
+  teamRoleAdmin:
+    "Organization-wide operations; manages branches and non-owner team access. Cannot change owners.",
+  teamRoleManager:
+    "Assigned-branch operations, checkout, refunds, reporting and AI summaries. Cannot administer team access or branches.",
+  teamRoleInventory:
+    "Assigned-branch inventory, purchasing, receiving and forecast/reorder. No checkout, refunds, sales history, cost-derived analytics or AI summaries.",
+  teamRoleCashier:
+    "Assigned-branch checkout and sales/refund history. No discounts, refund creation, catalog edits, stock adjustments or analytics.",
+  teamSaved: "Team access updated.",
+  teamInvited: "Invitation sent.",
+  teamInvitationUpdated: "Invitation updated.",
+  teamWorking: "Saving…",
+  teamConfirmSave:
+    "Apply this role and branch access? This changes what the member can do.",
+  teamConfirmDeactivate:
+    "Deactivate this membership? Organization access ends immediately; other organizations and sessions are not removed.",
+  teamConfirmReactivate:
+    "Reactivate this member with the displayed role and branch access?",
+  teamConfirmRevoke:
+    "Revoke this invitation? The current invitation link will stop working.",
+  teamConfirmReissue:
+    "Reissue this invitation? The previous link will stop working and a new seven-day invitation will be sent.",
+  teamExpires: "Expires",
+  teamAccessChanged:
+    "This membership changed. Reload latest access before trying again. Your unsaved selection has not been applied.",
+  teamReloadConfirm:
+    "Discard this unsaved selection and reload the latest access?",
+  teamErrorAuthentication: "Sign in again to continue.",
+  teamErrorDelivery: "The invitation could not be delivered. Try again.",
+  teamErrorFinalized: "That invitation has already been accepted.",
+  teamErrorForbidden:
+    "You do not have permission for this change. Refresh your access.",
+  teamErrorBranch: "Choose valid active branches for this role.",
+  teamErrorInvitation: "This invitation is invalid or expired.",
+  teamErrorInvitationScope:
+    "The invitation branch scope is no longer active. Reissue with active branches.",
+  teamErrorOwner: "An organization must retain one active owner.",
+  teamErrorExists:
+    "That email already has a membership in this organization. Use Include inactive to find deactivated members.",
+  teamErrorNotFound: "The membership no longer exists.",
+  teamErrorState:
+    "This membership is not in the required state. Refresh the team.",
+  teamErrorUnavailable: "The membership service is unavailable. Try again.",
+  teamErrorValidation: "Check the submitted values and try again.",
+  teamInviteOwnerOnly: "Only an owner may manage owner invitations.",
+  teamReadOnlyInvitation: "This invitation is final and cannot be changed.",
+  teamUnsaved: "Unsaved access changes",
+  teamCancel: "Cancel changes",
 } as const;
 
 export type TranslationKey = keyof typeof en;

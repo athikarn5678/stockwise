@@ -1,10 +1,13 @@
 import { Suspense } from "react";
 
-import { MembershipManagement } from "@/components/membership-management";
+import {
+  MembershipManagement,
+  MembershipManagementFallback,
+} from "@/components/membership-management";
 
 export default function MembershipManagementPage() {
   return (
-    <Suspense fallback={<p aria-live="polite">Loading members…</p>}>
+    <Suspense fallback={<MembershipManagementFallback />}>
       <MembershipManagement />
     </Suspense>
   );

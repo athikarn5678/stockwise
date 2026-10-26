@@ -3,108 +3,366 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { notifySessionChange } from "@/session-lifecycle";
-import { type FormEvent, useLayoutEffect, useRef, useState } from "react";
-
-import { acceptInvitation, MembershipApiError } from "@/membership-api-client";
-import type { CredentialLinkWindow } from "@/credential-link-entry";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useLanguage } from "@/providers/language-provider";
+import type { CredentialLinkWindow } from "@/credential-link-entry";
+import { notifySessionChange } from "@/session-lifecycle";
+import {
+  acquireInvitationFlowLock,
+  clearInvitationContinuation,
+  clearInvitationContinuationForFlow,
+  clearInvitationRecoveryRequired,
+  createInvitationFlowId,
+  loadInvitationContinuation,
+  markInvitationRecoveryRequired,
+  releaseInvitationFlowLock,
+  saveInvitationContinuation,
+  type InvitationFlowLock,
+} from "@/invitation-continuation";
+import {
+  acceptInvitationContinuation,
+  cancelInvitationContinuation,
+  captureInvitationContinuation,
+  InvitationContinuationApiError,
+  resumeInvitationContinuation,
+} from "@/invitation-continuation-api-client";
 
 export function InvitationAcceptanceForm() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const token = useRef<string | null>(null);
+  const { t } = useLanguage();
   const mounted = useRef(false);
+  const generation = useRef(0);
   const initialized = useRef(false);
+  const flow = useRef<string | null>(null);
+  const lock = useRef<InvitationFlowLock | null>(null);
+  const pendingCapture = useRef<{
+    flowId: string;
+    settled: Promise<boolean>;
+  } | null>(null);
+  const [ready, setReady] = useState(false);
+  const [guest, setGuest] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [needsAuthentication, setNeedsAuthentication] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     mounted.current = true;
+
+    const storeMatches = (flowId: string) => {
+      const selected = loadInvitationContinuation();
+      return (
+        selected.status === "ready" && selected.continuation.flowId === flowId
+      );
+    };
+    const currentRequest = (
+      flowId: string,
+      revision: number,
+      requireStore = true,
+    ) =>
+      mounted.current &&
+      generation.current === revision &&
+      flow.current === flowId &&
+      (!requireStore || storeMatches(flowId));
+    const resume = async (flowId: string, revision: number) => {
+      try {
+        const result = await resumeInvitationContinuation(flowId);
+        if (!currentRequest(flowId, revision)) return;
+        saveInvitationContinuation({
+          version: 1,
+          flowId,
+          expiresAt: result.data.expiresAt,
+        });
+        setGuest(false);
+        setReady(true);
+        setError(null);
+      } catch (cause) {
+        if (!currentRequest(flowId, revision)) return;
+        if (
+          cause instanceof InvitationContinuationApiError &&
+          cause.kind === "authentication_required"
+        ) {
+          setGuest(true);
+          setReady(false);
+          setError(t("invitationGuestGuidance"));
+        } else if (
+          cause instanceof InvitationContinuationApiError &&
+          cause.kind === "unavailable"
+        ) {
+          setError(t("invitationRetry"));
+        } else {
+          markInvitationRecoveryRequired();
+          clearInvitationContinuation();
+          flow.current = null;
+          lock.current = null;
+          setReady(false);
+          setError(t("invitationInvalid"));
+        }
+      }
+    };
+
+    const initialize = async () => {
+      const revision = generation.current;
+      let token = (() => {
+        const captured = (
+          window as CredentialLinkWindow
+        ).__stockwiseTakeCredentialLink?.();
+        return captured?.route === "/accept-invitation" ? captured.token : null;
+      })();
+      const saved = loadInvitationContinuation();
+      const flowId = token
+        ? createInvitationFlowId()
+        : saved.status === "ready"
+          ? saved.continuation.flowId
+          : null;
+      if (!flowId) {
+        setError(token ? t("invitationRecovery") : t("invitationInvalid"));
+        return;
+      }
+      if (token) clearInvitationContinuation();
+      flow.current = flowId;
+      const held = await acquireInvitationFlowLock(flowId);
+      if (!currentRequest(flowId, revision, false)) return;
+      if (!held) {
+        if (token) markInvitationRecoveryRequired();
+        else clearInvitationContinuationForFlow(flowId);
+        flow.current = null;
+        setError(t("invitationRecovery"));
+        return;
+      }
+      lock.current = held;
+
+      if (token) {
+        try {
+          const capture = captureInvitationContinuation(flowId, token);
+          const pending = {
+            flowId,
+            settled: capture.then(
+              () => true,
+              () => false,
+            ),
+          };
+          pendingCapture.current = pending;
+          token = null;
+          const captured = await capture;
+          if (pendingCapture.current === pending) pendingCapture.current = null;
+          if (!currentRequest(flowId, revision, false)) return;
+          const stored = loadInvitationContinuation();
+          if (
+            stored.status !== "missing" &&
+            (stored.status !== "ready" || stored.continuation.flowId !== flowId)
+          ) {
+            markInvitationRecoveryRequired();
+            clearInvitationContinuation();
+            flow.current = null;
+            lock.current = null;
+            setError(t("invitationRecovery"));
+            return;
+          }
+          if (
+            !saveInvitationContinuation({
+              version: 1,
+              flowId,
+              expiresAt: captured.data.expiresAt,
+            })
+          ) {
+            throw new InvitationContinuationApiError(
+              "invalid_invitation_continuation",
+            );
+          }
+        } catch (cause) {
+          if (pendingCapture.current?.flowId === flowId)
+            pendingCapture.current = null;
+          if (!currentRequest(flowId, revision, false)) return;
+          markInvitationRecoveryRequired();
+          clearInvitationContinuation();
+          flow.current = null;
+          lock.current = null;
+          setError(
+            cause instanceof InvitationContinuationApiError &&
+              cause.kind === "invalid_invitation"
+              ? t("invitationInvalid")
+              : t("invitationRecovery"),
+          );
+          return;
+        }
+      } else if (!storeMatches(flowId)) {
+        flow.current = null;
+        setError(t("invitationInvalid"));
+        return;
+      }
+      await resume(flowId, revision);
+    };
+
     if (!initialized.current) {
       initialized.current = true;
-      const captured = (
-        window as CredentialLinkWindow
-      ).__stockwiseTakeCredentialLink?.();
-      token.current =
-        captured?.route === "/accept-invitation" ? captured.token : null;
-      if (token.current === null)
-        setError("This invitation is invalid or expired.");
+      void initialize();
     }
-    function abandon() {
-      mounted.current = false;
-      token.current = null;
-      setIsSubmitting(false);
-    }
-    window.addEventListener("pagehide", abandon);
-    return () => {
-      mounted.current = false;
-      window.removeEventListener("pagehide", abandon);
-      queueMicrotask(() => {
-        if (!mounted.current) token.current = null;
+
+    let hiddenForPageTransition = false;
+    const onPageHide = () => {
+      hiddenForPageTransition = true;
+      generation.current++;
+      releaseInvitationFlowLock();
+      lock.current = null;
+      setReady(false);
+      setBusy(false);
+    };
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted && !hiddenForPageTransition) return;
+      hiddenForPageTransition = false;
+      mounted.current = true;
+      const selected = loadInvitationContinuation();
+      const flowId =
+        selected.status === "ready" ? selected.continuation.flowId : null;
+      if (!flowId) {
+        if (flow.current || pendingCapture.current)
+          markInvitationRecoveryRequired();
+        generation.current++;
+        flow.current = null;
+        setReady(false);
+        setBusy(false);
+        setError(t("invitationRecovery"));
+        return;
+      }
+      flow.current = flowId;
+      setReady(false);
+      setBusy(false);
+      const revision = ++generation.current;
+      void acquireInvitationFlowLock(flowId).then((held) => {
+        if (!currentRequest(flowId, revision)) return;
+        if (!held) {
+          clearInvitationContinuationForFlow(flowId);
+          flow.current = null;
+          setError(t("invitationRecovery"));
+          return;
+        }
+        lock.current = held;
+        void resume(flowId, revision);
       });
     };
-  }, []);
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      mounted.current = false;
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
+      queueMicrotask(() => {
+        if (!mounted.current) generation.current++;
+      });
+    };
+  }, [t]);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isSubmitting) return;
-    const credential = token.current;
-    if (!credential) {
-      setError("This invitation is invalid or expired.");
+    const flowId = flow.current;
+    const selected = loadInvitationContinuation();
+    if (busy || !ready) return;
+    if (
+      !flowId ||
+      selected.status !== "ready" ||
+      selected.continuation.flowId !== flowId
+    ) {
+      if (selected.status !== "ready") markInvitationRecoveryRequired();
+      flow.current = null;
+      lock.current?.release();
+      lock.current = null;
+      setReady(false);
+      setError(t("invitationRecovery"));
       return;
     }
+    const revision = generation.current;
+    setBusy(true);
     setError(null);
-    setNeedsAuthentication(false);
-    setIsSubmitting(true);
     try {
-      const result = await acceptInvitation(credential);
-      if (!mounted.current || token.current !== credential) return;
-      token.current = null;
-      // The accepted invitation changes membership authority; discard all
-      // cached roles, organizations and branch state before navigating.
+      const result = await acceptInvitationContinuation(flowId);
+      if (
+        !mounted.current ||
+        generation.current !== revision ||
+        flow.current !== flowId
+      )
+        return;
+      const stored = loadInvitationContinuation();
+      if (stored.status !== "ready" || stored.continuation.flowId !== flowId)
+        return;
+      clearInvitationContinuation();
+      clearInvitationRecoveryRequired();
+      flow.current = null;
+      lock.current = null;
       notifySessionChange(queryClient);
       router.replace(
-        `/app?organizationId=${encodeURIComponent(result.membership.organization.id)}`,
+        `/app?organizationId=${encodeURIComponent(result.data.membership.organization.id)}`,
       );
-    } catch (requestError: unknown) {
-      if (!mounted.current || token.current !== credential) return;
+    } catch (cause) {
       if (
-        requestError instanceof MembershipApiError &&
-        requestError.kind === "authentication_required"
+        !mounted.current ||
+        generation.current !== revision ||
+        flow.current !== flowId
+      )
+        return;
+      const stored = loadInvitationContinuation();
+      if (stored.status !== "ready" || stored.continuation.flowId !== flowId)
+        return;
+      if (
+        cause instanceof InvitationContinuationApiError &&
+        cause.kind === "authentication_required"
       ) {
-        setNeedsAuthentication(true);
-        setError(
-          "Sign in or register with the invited email, verify it, then reopen this invitation link.",
-        );
+        setReady(false);
+        setGuest(true);
+        setError(t("invitationGuestGuidance"));
+      } else if (
+        cause instanceof InvitationContinuationApiError &&
+        cause.kind === "unavailable"
+      ) {
+        setError(t("invitationRetry"));
+      } else if (
+        cause instanceof InvitationContinuationApiError &&
+        cause.kind === "invitation_scope_invalid"
+      ) {
+        setError(t("invitationScopeInvalid"));
       } else {
-        if (
-          requestError instanceof MembershipApiError &&
-          (requestError.kind === "invalid_invitation" ||
-            requestError.kind === "invitation_scope_invalid")
-        ) {
-          token.current = null;
-        }
-        setError(
-          requestError instanceof MembershipApiError &&
-            requestError.kind === "invitation_scope_invalid"
-            ? "The invitation branch access is not currently available. Ask an organization administrator to review it."
-            : requestError instanceof MembershipApiError &&
-                requestError.kind === "invalid_invitation"
-              ? "This invitation is invalid or expired."
-              : "Unable to accept this invitation right now. Please try again.",
-        );
+        markInvitationRecoveryRequired();
+        clearInvitationContinuation();
+        flow.current = null;
+        lock.current = null;
+        setReady(false);
+        setError(t("invitationInvalid"));
       }
     } finally {
-      if (mounted.current) setIsSubmitting(false);
+      if (mounted.current && generation.current === revision) setBusy(false);
     }
   }
 
+  function cancel() {
+    const flowId = flow.current;
+    ++generation.current;
+    const selected = loadInvitationContinuation();
+    const pending = pendingCapture.current;
+    if (flowId && pending?.flowId === flowId) {
+      void pending.settled.then((captured) => {
+        if (captured)
+          void cancelInvitationContinuation(flowId).catch(() => undefined);
+      });
+    } else if (
+      flowId &&
+      selected.status === "ready" &&
+      selected.continuation.flowId === flowId
+    ) {
+      void cancelInvitationContinuation(flowId).catch(() => undefined);
+    }
+    clearInvitationContinuation();
+    clearInvitationRecoveryRequired();
+    flow.current = null;
+    lock.current = null;
+    setReady(false);
+    setBusy(false);
+    router.replace("/");
+  }
+
   return (
-    <form className="space-y-5" onSubmit={handleSubmit}>
+    <form className="space-y-5" onSubmit={submit}>
       <p className="text-sm leading-6 text-muted-foreground">
-        Accept this invitation while signed in with the verified invited email.
+        {t("invitationDescription")}
       </p>
       {error === null ? null : (
         <p
@@ -115,19 +373,30 @@ export function InvitationAcceptanceForm() {
           {error}
         </p>
       )}
-      <Button className="w-full" disabled={isSubmitting} type="submit">
-        {isSubmitting ? "Accepting invitation…" : "Accept invitation"}
-      </Button>
-      {needsAuthentication ? (
+      {guest ? (
         <div className="flex justify-center gap-4 text-sm">
-          <Link className="font-medium underline" href="/login" replace>
-            Sign in
+          <Link className="font-medium underline" href="/login">
+            {t("invitationLogin")}
           </Link>
-          <Link className="font-medium underline" href="/register" replace>
-            Register
+          <Link className="font-medium underline" href="/register">
+            {t("invitationCreateAccount")}
           </Link>
         </div>
       ) : null}
+      {ready ? (
+        <Button className="w-full" disabled={busy} type="submit">
+          {busy ? t("invitationAccepting") : t("invitationAccept")}
+        </Button>
+      ) : null}
+      <Button
+        className="w-full"
+        disabled={busy}
+        onClick={cancel}
+        type="button"
+        variant="outline"
+      >
+        {t("invitationCancel")}
+      </Button>
     </form>
   );
 }

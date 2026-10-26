@@ -98,18 +98,82 @@ export function journey(
     if (Number(id) >= 11) test.setTimeout(120_000);
     input.scenarioId = id;
     input.stage = "scenario";
+    const invitationDiagnostics = Number(id) >= 31 && Number(id) <= 41;
+    const http: { path: string; status: number }[] = [];
+    if (invitationDiagnostics) {
+      input.page.on("response", (response) => {
+        const path = new URL(response.url()).pathname;
+        if (path.startsWith("/api/v1/")) {
+          http.push({ path, status: response.status() });
+          if (http.length > 30) http.shift();
+        }
+      });
+    }
     const failedAt = await body(input).then(
       () => null,
       (error: unknown) =>
         error instanceof Error
-          ? (error.stack?.match(/session-gaps\.spec\.ts:(\d+):\d+/)?.[1] ??
-            "unknown")
+          ? (error.stack?.match(
+              /(?:session-gaps|invitation-continuation)\.spec\.ts:(\d+):\d+/,
+            )?.[1] ?? "unknown")
           : "unknown",
     );
-    if (failedAt !== null)
+    if (failedAt !== null) {
+      if (invitationDiagnostics) {
+        const state = await input.page
+          .evaluate(() => {
+            const redact = (text: string) =>
+              text
+                .replace(/[A-Za-z0-9_-]{43,}/g, "[redacted]")
+                .replace(/[^\s@]+@[^\s@]+/g, "[synthetic account]");
+            return {
+              path: location.pathname,
+              main: redact(
+                document.querySelector("main")?.textContent?.slice(0, 2000) ??
+                  "",
+              ),
+              alerts: [...document.querySelectorAll('[role="alert"]')].map(
+                (node) => redact(node.textContent ?? ""),
+              ),
+              selectorPresent:
+                sessionStorage.getItem("stockwise_invitation_continuation") !==
+                null,
+              recoveryRequired:
+                sessionStorage.getItem("stockwise_invitation_recovery") === "1",
+            };
+          })
+          .catch(() => ({ unavailable: true }));
+        const cookies = await input.context.cookies().catch(() => []);
+        const invitationCookies = cookies.filter((cookie) =>
+          cookie.name.startsWith("__Host-stockwise_invitation_"),
+        );
+        const directory = "test-results/better-auth-integration/operator";
+        await mkdir(directory, { recursive: true });
+        await writeFile(
+          `${directory}/invitation-${id}-failure.json`,
+          JSON.stringify(
+            {
+              stage: input.stage,
+              line: failedAt,
+              state,
+              http,
+              invitationCookieCount: invitationCookies.length,
+              cookieProtection: invitationCookies.every(
+                (cookie) =>
+                  cookie.secure &&
+                  cookie.httpOnly &&
+                  cookie.sameSite === "Strict",
+              ),
+            },
+            null,
+            2,
+          ),
+        );
+      }
       throw new Error(
         `D4N3_STAGE:journey-${input.scenarioId}-${input.stage}-line-${failedAt}`,
       );
+    }
   });
 }
 export async function register(input: Scenario) {

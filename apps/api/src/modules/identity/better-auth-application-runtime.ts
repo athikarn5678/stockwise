@@ -1,3 +1,8 @@
+import { parseInvitationContinuationKey } from "./invitation-continuation-cookie.ts";
+import { createInvitationContinuationRouter } from "./invitation-continuation-router.ts";
+import { createPrismaInvitationContinuationRepository } from "./invitation-continuation-repository.ts";
+import { createPrismaMembershipAccessRepository } from "./membership-access-repository.ts";
+import { createMembershipAccessService } from "./membership-access-service.ts";
 import { Router } from "express";
 import type { ApiEnvironment } from "../../environment.ts";
 import type { PrismaClient } from "../../generated/prisma/client.ts";
@@ -56,6 +61,9 @@ export function createBetterAuthApplicationRuntime(input: {
     failure?: VerificationDeliveryFailure,
   ) => void;
 }) {
+  parseInvitationContinuationKey(
+    input.environment.STOCKWISE_INVITATION_CONTINUATION_KEY,
+  );
   const { environment, prisma, emailProvider, onDeliveryFailure } = input;
   const secret = requireBetterAuthSecret(environment);
 
@@ -123,11 +131,26 @@ export function createBetterAuthApplicationRuntime(input: {
       publicWebOrigin,
     }),
   );
+  const membershipAccessService = createMembershipAccessService({
+    emailProvider,
+    publicWebOrigin,
+    repository: createPrismaMembershipAccessRepository(prisma),
+    tokenProvider: secureOneTimeTokenProvider,
+  });
 
   const router = Router();
   router.use(
     createPendingRegistrationRouter({
       pendingRegistrationService,
+      publicWebOrigin,
+    }),
+  );
+  router.use(
+    createInvitationContinuationRouter({
+      authenticationMiddleware,
+      key: environment.STOCKWISE_INVITATION_CONTINUATION_KEY!,
+      membershipAccessService,
+      repository: createPrismaInvitationContinuationRepository(prisma),
       publicWebOrigin,
     }),
   );
@@ -141,6 +164,7 @@ export function createBetterAuthApplicationRuntime(input: {
         pendingRegistrationService: pending,
         limiter,
       }),
+      continuationKey: environment.STOCKWISE_INVITATION_CONTINUATION_KEY!,
       publicWebOrigin,
     }),
   );

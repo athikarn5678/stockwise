@@ -2875,6 +2875,68 @@ VAT, timezone, status, ownership, membership, credentials, sessions, contact,
 tax/legal and billing fields are not editable. Branch Settings retains branch
 phone/address. Product-ACCESS-01 and Native Live are not authorized by this ADR.
 
+## ADR-038 — Preserve invitation onboarding with isolated encrypted continuation
+
+- **Date:** 2026-10-26
+- **Status:** Accepted design; implementation verification and independent acceptance tracked externally
+- **Authority:** Explicit Product-INVITE-UX-01 OWNER DECISION approving Option 1
+
+### Context
+
+The invitation bootstrap scrubs the URL and keeps the credential only in component
+memory. Auth navigation loses it; memory alone cannot survive reload or same-tab
+verification-link document replacement. The invitation hash cannot reconstruct
+the original credential needed for acceptance.
+
+### Decision
+
+Allow authenticated-encrypted HttpOnly continuation cookies, selected by separately
+owned per-tab flow IDs. Each has a 30-minute absolute maximum bounded by invitation
+expiry, Secure/HttpOnly/Strict host-only transport, dedicated AES-256-GCM key,
+purpose/origin/flow binding and fresh-session binding. Browser-wide cookies are
+not tab-specific: requests require the tab selector and matching cookie, with
+exclusive document ownership rejecting concurrent cloned selectors. Unsupported
+storage/ownership fails closed. API §7 owns exact transport and cleanup details.
+
+This narrowly extends ADR-021's transient transport: an encrypted credential copy
+may persist in the HttpOnly cookie, never raw in web storage, history/router state,
+logs or UI. Preserve hash-only database persistence, seven-day invitation expiry,
+replacement/revocation, single-use membership creation, same-user read-only replay,
+email binding, organization locks, role/branch/tenant authorization and provenance.
+No new authentication authority or public acceptance-by-email/ID is introduced.
+
+Verification still requires both accepted proofs and ends at explicit Sign in.
+Flow-aware successful sign-in resumes the invitation; explicit Accept alone
+creates membership. Navigation uses the returned membership organization, never
+implicit organization creation. Ordinary OWNER onboarding remains unchanged.
+
+### Consequences and gates
+
+No database schema change is approved or required. Dedicated server key
+provisioning is required; replacement invalidates outstanding continuations.
+Logout, account switching and browser-wide session changes invalidate old flow
+bindings. Cancellation removes continuation, not the original invitation;
+there is no durable stateless-envelope blacklist. Existing session and invitation
+checks remain mandatory on every protected use.
+
+Cookie-capacity remediation replaces dynamic flow-named issuance with four fixed
+encrypted slots (API §7), each with a 512-byte value bound. This independently
+bounds namespace growth under overlapping requests. Exact slot/name/flow AAD
+prevents substituting another invitation; ordinary browser mutations coordinate
+under a separate origin-wide Web Lock without treating it as a cookie-store CAS.
+The owner explicitly selected fail-closed original-link recovery after interrupted-
+write collisions: an otherwise valid affected tab may need its original invitation
+or admin reissue. This is a scoped availability tradeoff, not new authentication,
+acceptance or tenant authority. Four ordinary independent flows remain supported;
+session-transition invalidation remains intentional. Legacy dynamic cookies are
+invalidated with bounded cleanup, not positively migrated/reissued. Existing
+oversized jars require explicit browser recovery/expiry and old-writer drain.
+
+Crypto/API/security and real browser regressions must prove OTP/link/reload
+navigation, tab ownership, explicit actions, wrong-account/session rejection and
+unchanged authorization. No real sends, Native Live, D5-P5, AWS, commit or push.
+Independent acceptance and separate publication authorization remain required.
+
 ## 2. Explicitly superseded planning directions
 
 The current ADRs supersede these earlier, unimplemented ideas:

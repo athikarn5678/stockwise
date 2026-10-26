@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { createPrismaClient } from "../../../apps/api/src/prisma/client.ts";
 import { createApp } from "../../../apps/api/src/app.ts";
 import { startApiServer } from "../../../apps/api/src/server.ts";
@@ -35,6 +36,8 @@ try {
     ...process.env,
     DATABASE_URL: database.TEST_DATABASE_URL,
     STOCKWISE_API_PORT: "3103",
+    STOCKWISE_INVITATION_CONTINUATION_KEY:
+      randomBytes(32).toString("base64url"),
   });
   prisma = createPrismaClient({ DATABASE_URL: environment.DATABASE_URL });
   const marker = await prisma.$queryRaw<

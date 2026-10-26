@@ -144,6 +144,7 @@ export function createIdentityBackendTestFixture(
       configuration,
       limiter: createLoginLimiter(),
       loginService,
+      continuationKey: Buffer.alloc(32).toString("base64url"),
       publicWebOrigin: TEST_PUBLIC_WEB_ORIGIN,
     }),
   );

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -9,36 +10,53 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-
-import { acceptInvitation, MembershipApiError } from "@/membership-api-client";
-
+import {
+  acceptInvitationContinuation,
+  cancelInvitationContinuation,
+  captureInvitationContinuation,
+  InvitationContinuationApiError,
+  resumeInvitationContinuation,
+} from "@/invitation-continuation-api-client";
+import {
+  clearInvitationRecoveryRequired,
+  releaseInvitationFlowLock,
+  saveInvitationContinuation,
+} from "@/invitation-continuation";
 import { InvitationAcceptanceForm } from "./invitation-acceptance-form";
-
-const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
+const organizationId = "10000000-0000-4000-8000-000000000001";
 const replace = vi.fn();
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace }),
+vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
+vi.mock("@/invitation-continuation-api-client", () => ({
+  acceptInvitationContinuation: vi.fn(),
+  cancelInvitationContinuation: vi.fn(),
+  captureInvitationContinuation: vi.fn(),
+  resumeInvitationContinuation: vi.fn(),
+  InvitationContinuationApiError: class InvitationContinuationApiError extends Error {
+    constructor(readonly kind: string) {
+      super(kind);
+    }
+  },
 }));
 
-vi.mock("@/membership-api-client", async (importOriginal) => {
-  const original =
-    await importOriginal<typeof import("@/membership-api-client")>();
-  return { ...original, acceptInvitation: vi.fn() };
-});
-
-afterEach(() => {
-  cleanup();
-  replace.mockReset();
-  vi.mocked(acceptInvitation).mockReset();
-  window.history.replaceState(null, "", "/");
-  localStorage.clear();
-  sessionStorage.clear();
-  delete (window as Window & { __stockwiseTakeCredentialLink?: unknown })
-    .__stockwiseTakeCredentialLink;
-});
-
-function renderInvitation() {
+function setCredential(token: string) {
+  Object.defineProperty(window, "__stockwiseTakeCredentialLink", {
+    configurable: true,
+    value: vi.fn(() => ({ route: "/accept-invitation", token })),
+  });
+}
+function allowFlowLock() {
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: {
+      request: (
+        _name: string,
+        _options: unknown,
+        callback: (lock: object) => Promise<void>,
+      ) => Promise.resolve(callback({})),
+    },
+  });
+}
+function renderForm() {
   const client = new QueryClient();
   render(
     <QueryClientProvider client={client}>
@@ -48,126 +66,256 @@ function renderInvitation() {
   return client;
 }
 
-describe("invitation acceptance form", () => {
-  it("submits the transient token, removes it, and navigates to accepted organization", async () => {
-    Object.defineProperty(window, "__stockwiseTakeCredentialLink", {
-      configurable: true,
-      value: vi.fn(() => ({
-        route: "/accept-invitation",
-        token: "opaque-invitation-token",
-      })),
-    });
-    vi.mocked(acceptInvitation).mockResolvedValue({
-      membership: {
-        branchAssignments: [],
-        createdAt: "2026-08-24T12:00:00.000Z",
-        id: "20000000-0000-4000-8000-000000000001",
-        organization: { id: ORGANIZATION_ID, name: "Store" },
-        role: "ADMIN",
-        status: "ACTIVE",
-        updatedAt: "2026-08-24T12:00:00.000Z",
-        user: {
-          displayName: null,
-          email: "invitee@example.com",
-          id: "30000000-0000-4000-8000-000000000001",
-        },
-      },
-      replayed: false,
-    });
-    const client = renderInvitation();
-    client.setQueryData(["access-context"], {
-      organizations: [{ id: "old-org" }],
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Accept invitation" }));
+afterEach(() => {
+  cleanup();
+  replace.mockReset();
+  vi.mocked(captureInvitationContinuation).mockReset();
+  vi.mocked(resumeInvitationContinuation).mockReset();
+  vi.mocked(acceptInvitationContinuation).mockReset();
+  vi.mocked(cancelInvitationContinuation).mockReset();
+  sessionStorage.clear();
+  localStorage.clear();
+  releaseInvitationFlowLock();
+  clearInvitationRecoveryRequired();
+  delete (window as Window & { __stockwiseTakeCredentialLink?: unknown })
+    .__stockwiseTakeCredentialLink;
+  Reflect.deleteProperty(navigator, "locks");
+});
 
-    await waitFor(() =>
-      expect(acceptInvitation).toHaveBeenCalledWith("opaque-invitation-token"),
+describe("invitation continuation form", () => {
+  it("captures a one-use link, keeps only selector data, and requires explicit acceptance", async () => {
+    allowFlowLock();
+    setCredential("private-token");
+    vi.mocked(captureInvitationContinuation).mockResolvedValue({
+      data: { expiresAt: new Date(Date.now() + 60_000).toISOString() },
+    });
+    vi.mocked(resumeInvitationContinuation).mockResolvedValue({
+      data: {
+        status: "ready",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      },
+    });
+    vi.mocked(acceptInvitationContinuation).mockResolvedValue({
+      data: {
+        membership: { organization: { id: organizationId } },
+        replayed: false,
+      },
+    });
+    const client = renderForm();
+    await screen.findByRole("button", { name: "Accept invitation" });
+    expect(captureInvitationContinuation).toHaveBeenCalledWith(
+      expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+      "private-token",
     );
-    expect(window.location.search).toBe("");
+    expect(
+      sessionStorage.getItem("stockwise_invitation_continuation"),
+    ).not.toContain("private-token");
+    expect(
+      screen.getByRole("button", { name: "Accept invitation" }),
+    ).toBeTruthy();
+    expect(acceptInvitationContinuation).not.toHaveBeenCalled();
+    client.setQueryData(["access-context"], { organizations: [{ id: "old" }] });
+    fireEvent.click(screen.getByRole("button", { name: "Accept invitation" }));
+    await waitFor(() =>
+      expect(acceptInvitationContinuation).toHaveBeenCalledTimes(1),
+    );
     expect(replace).toHaveBeenCalledWith(
-      `/app?organizationId=${ORGANIZATION_ID}`,
+      `/app?organizationId=${organizationId}`,
     );
     expect(client.getQueryData(["access-context"])).toBeUndefined();
-    // No SessionLifecycleProvider is mounted in this focused form test;
-    // it verifies local cache discard. Browser E2E verifies cross-tab hints.
-    expect(localStorage.length).toBe(0);
-    expect(sessionStorage.length).toBe(0);
   });
 
-  it("guides unauthenticated users without persisting or displaying the token", async () => {
-    Object.defineProperty(window, "__stockwiseTakeCredentialLink", {
-      configurable: true,
-      value: vi.fn(() => ({
-        route: "/accept-invitation",
-        token: "secret-token-value",
-      })),
+  it("provides immediate sign-in and account creation recovery for anonymous recipients", async () => {
+    allowFlowLock();
+    setCredential("private-token");
+    vi.mocked(captureInvitationContinuation).mockResolvedValue({
+      data: { expiresAt: new Date(Date.now() + 60_000).toISOString() },
     });
-    vi.mocked(acceptInvitation).mockRejectedValue(
-      new MembershipApiError("authentication_required"),
+    vi.mocked(resumeInvitationContinuation).mockRejectedValue(
+      new InvitationContinuationApiError("authentication_required"),
     );
-    renderInvitation();
-    fireEvent.click(screen.getByRole("button", { name: "Accept invitation" }));
-
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "reopen this invitation link",
-    );
-    expect(screen.getByRole("link", { name: "Sign in" })).toBeTruthy();
-    expect(document.body.textContent).not.toContain("secret-token-value");
-    expect(localStorage.length).toBe(0);
-    expect(sessionStorage.length).toBe(0);
+    renderForm();
+    expect(await screen.findByRole("link", { name: "Sign in" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Create account" })).toBeTruthy();
+    expect(document.body.textContent).not.toContain("private-token");
+    expect(acceptInvitationContinuation).not.toHaveBeenCalled();
   });
 
-  it("uses generic invalid UX and removes an unusable token", async () => {
-    Object.defineProperty(window, "__stockwiseTakeCredentialLink", {
-      configurable: true,
-      value: vi.fn(() => ({
-        route: "/accept-invitation",
-        token: "invalid-token",
-      })),
-    });
-    vi.mocked(acceptInvitation).mockRejectedValue(
-      new MembershipApiError("invalid_invitation"),
-    );
-    renderInvitation();
-    fireEvent.click(screen.getByRole("button", { name: "Accept invitation" }));
-
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "invalid or expired",
-    );
-    expect(window.location.search).toBe("");
+  it("fails closed when exclusive per-tab locks are unavailable", async () => {
+    setCredential("private-token");
+    renderForm();
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(captureInvitationContinuation).not.toHaveBeenCalled();
+    expect(
+      sessionStorage.getItem("stockwise_invitation_continuation"),
+    ).toBeNull();
   });
-
-  it("retains a transient invitation across retryable outages without claiming expiry", async () => {
-    Object.defineProperty(window, "__stockwiseTakeCredentialLink", {
-      configurable: true,
-      value: vi.fn(() => ({
-        route: "/accept-invitation",
-        token: "synthetic-private-invitation",
-      })),
-    });
-    vi.mocked(acceptInvitation).mockRejectedValue(
-      new MembershipApiError("unavailable"),
-    );
-    renderInvitation();
-    fireEvent.click(screen.getByRole("button", { name: "Accept invitation" }));
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "Please try again",
-    );
-    expect(document.body.textContent).not.toContain(
-      "synthetic-private-invitation",
-    );
+  it("ignores a delayed capture response after pagehide invalidates its generation", async () => {
+    allowFlowLock();
+    setCredential("private-token");
+    const delayed = Promise.withResolvers<{ data: { expiresAt: string } }>();
+    vi.mocked(captureInvitationContinuation).mockReturnValue(delayed.promise);
+    renderForm();
     await waitFor(() =>
+      expect(captureInvitationContinuation).toHaveBeenCalledTimes(1),
+    );
+    act(() => window.dispatchEvent(new Event("pagehide")));
+    await act(async () => {
+      delayed.resolve({
+        data: { expiresAt: new Date(Date.now() + 60_000).toISOString() },
+      });
+      await delayed.promise;
+    });
+    expect(
+      sessionStorage.getItem("stockwise_invitation_continuation"),
+    ).toBeNull();
+    expect(resumeInvitationContinuation).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: "Accept invitation" }),
+    ).toBeNull();
+  });
+  it("does not expose acceptance from a delayed resume response after pagehide", async () => {
+    allowFlowLock();
+    const flowId = "C".repeat(43);
+    saveInvitationContinuation({
+      version: 1,
+      flowId,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+    const delayed = Promise.withResolvers<{
+      data: { status: "ready"; expiresAt: string };
+    }>();
+    vi.mocked(resumeInvitationContinuation).mockReturnValue(delayed.promise);
+    renderForm();
+    await waitFor(() =>
+      expect(resumeInvitationContinuation).toHaveBeenCalledWith(flowId),
+    );
+    act(() => window.dispatchEvent(new Event("pagehide")));
+    await act(async () => {
+      delayed.resolve({
+        data: {
+          status: "ready",
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        },
+      });
+      await delayed.promise;
+    });
+    expect(
+      screen.queryByRole("button", { name: "Accept invitation" }),
+    ).toBeNull();
+    expect(
+      sessionStorage.getItem("stockwise_invitation_continuation"),
+    ).toContain(flowId);
+  });
+  it("retains the ready invitation after a retryable acceptance outage", async () => {
+    allowFlowLock();
+    const flowId = "D".repeat(43);
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    saveInvitationContinuation({ version: 1, flowId, expiresAt });
+    vi.mocked(resumeInvitationContinuation).mockResolvedValue({
+      data: { status: "ready", expiresAt },
+    });
+    vi.mocked(acceptInvitationContinuation)
+      .mockRejectedValueOnce(new InvitationContinuationApiError("unavailable"))
+      .mockResolvedValueOnce({
+        data: {
+          membership: { organization: { id: organizationId } },
+          replayed: false,
+        },
+      });
+    renderForm();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Accept invitation" }),
+    );
+    await screen.findByRole("alert");
+    expect(replace).not.toHaveBeenCalled();
+    expect(
+      sessionStorage.getItem("stockwise_invitation_continuation"),
+    ).toContain(flowId);
+    const retry = screen.getByRole("button", { name: "Accept invitation" });
+    await waitFor(() => expect(retry.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(retry);
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith(
+        `/app?organizationId=${organizationId}`,
+      ),
+    );
+  });
+
+  it("cancels a capture-created cookie only after a pending capture settles", async () => {
+    allowFlowLock();
+    setCredential("private-token");
+    const delayed = Promise.withResolvers<{ data: { expiresAt: string } }>();
+    vi.mocked(captureInvitationContinuation).mockReturnValue(delayed.promise);
+    vi.mocked(cancelInvitationContinuation).mockResolvedValue(undefined);
+    renderForm();
+    await waitFor(() =>
+      expect(captureInvitationContinuation).toHaveBeenCalledTimes(1),
+    );
+    const captureCall = vi.mocked(captureInvitationContinuation).mock.calls[0];
+    if (!captureCall) throw new Error("Expected pending capture.");
+    const [flowId] = captureCall;
+    fireEvent.click(screen.getByRole("button", { name: "Cancel invitation" }));
+    expect(cancelInvitationContinuation).not.toHaveBeenCalled();
+    expect(replace).toHaveBeenCalledWith("/");
+    await act(async () => {
+      delayed.resolve({
+        data: { expiresAt: new Date(Date.now() + 60_000).toISOString() },
+      });
+      await delayed.promise;
+    });
+    await waitFor(() =>
+      expect(cancelInvitationContinuation).toHaveBeenCalledWith(flowId),
+    );
+    expect(
+      sessionStorage.getItem("stockwise_invitation_continuation"),
+    ).toBeNull();
+  });
+  it("discards a terminal invitation instead of leaving acceptance available", async () => {
+    allowFlowLock();
+    const flowId = "E".repeat(43);
+    saveInvitationContinuation({
+      version: 1,
+      flowId,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+    vi.mocked(resumeInvitationContinuation).mockRejectedValue(
+      new InvitationContinuationApiError("invalid_invitation"),
+    );
+    renderForm();
+    await screen.findByRole("alert");
+    expect(
+      screen.queryByRole("button", { name: "Accept invitation" }),
+    ).toBeNull();
+    expect(
+      sessionStorage.getItem("stockwise_invitation_continuation"),
+    ).toBeNull();
+    expect(acceptInvitationContinuation).not.toHaveBeenCalled();
+  });
+  it("shows recovery instead of silently ignoring acceptance after continuation expiry", async () => {
+    allowFlowLock();
+    const flowId = "F".repeat(43);
+    const expiry = Date.now() + 60_000;
+    const expiresAt = new Date(expiry).toISOString();
+    saveInvitationContinuation({ version: 1, flowId, expiresAt });
+    vi.mocked(resumeInvitationContinuation).mockResolvedValue({
+      data: { status: "ready", expiresAt },
+    });
+    renderForm();
+    const accept = await screen.findByRole("button", {
+      name: "Accept invitation",
+    });
+    const clock = vi.spyOn(Date, "now").mockReturnValue(expiry);
+    try {
+      fireEvent.click(accept);
+      expect(screen.getByRole("alert")).toBeTruthy();
       expect(
-        screen
-          .getByRole("button", { name: "Accept invitation" })
-          .hasAttribute("disabled"),
-      ).toBe(false),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Accept invitation" }));
-    await waitFor(() => expect(acceptInvitation).toHaveBeenCalledTimes(2));
-    expect(acceptInvitation).toHaveBeenNthCalledWith(
-      2,
-      "synthetic-private-invitation",
-    );
+        screen.queryByRole("button", { name: "Accept invitation" }),
+      ).toBeNull();
+      expect(acceptInvitationContinuation).not.toHaveBeenCalled();
+      expect(replace).not.toHaveBeenCalled();
+    } finally {
+      clock.mockRestore();
+    }
   });
 });

@@ -7,6 +7,10 @@ export default defineConfig({
     reporters: ["default", "json"],
     outputFile: { json: "test-results/native-database-results.json" },
     include: [
+      "apps/api/src/modules/identity/invitation-continuation.integration.test.ts",
+      "apps/api/src/modules/identity/membership-access.integration.test.ts",
+      "apps/api/src/modules/identity/first-organization-onboarding.integration.test.ts",
+      "apps/api/src/modules/identity/authorization-policy.test.ts",
       "apps/api/src/modules/identity/pending-registration.integration.test.ts",
       "apps/api/src/modules/identity/pending-registration-suppression.integration.test.ts",
       "apps/api/src/modules/identity/better-auth-application-session.integration.test.ts",

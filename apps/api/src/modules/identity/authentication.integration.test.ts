@@ -105,6 +105,7 @@ describe("login and authenticated sessions with PostgreSQL", () => {
       configuration,
       limiter: createLoginLimiter(),
       loginService,
+      continuationKey: Buffer.alloc(32).toString("base64url"),
       publicWebOrigin: "http://localhost:3000",
     });
     const app = createApp({ apiRouter, logger });

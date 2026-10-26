@@ -1,3 +1,7 @@
+import {
+  loginContinuationCookies,
+  parseInvitationContinuationKey,
+} from "./invitation-continuation-cookie.ts";
 import { Router, type Response } from "express";
 import { z } from "zod";
 
@@ -42,13 +46,16 @@ export function createLoginRouter({
   limiter,
   loginService,
   publicWebOrigin,
+  continuationKey,
 }: {
   configuration: SessionConfiguration;
   limiter: LoginLimiter;
   loginService: LoginService;
   publicWebOrigin: string;
+  continuationKey: string;
 }): Router {
   const router = Router();
+  const parsedContinuationKey = parseInvitationContinuationKey(continuationKey);
   const protectProof = createCrossSiteRequestProtection(publicWebOrigin, true);
 
   for (const fallback of [false, true]) {
@@ -131,6 +138,15 @@ export function createLoginRouter({
             "Set-Cookie",
             serializeClearedVerificationProofCookie(),
           );
+          for (const cookie of loginContinuationCookies({
+            cookieHeader: request.headers.cookie,
+            flowHeader: request.get("X-Stockwise-Invitation-Flow"),
+            key: parsedContinuationKey,
+            newSessionCredential: result.rawSessionToken,
+            origin: publicWebOrigin,
+          })) {
+            response.append("Set-Cookie", cookie);
+          }
           response.status(200).json({
             data: { user: result.user },
             meta: { requestId: requestId(response) },

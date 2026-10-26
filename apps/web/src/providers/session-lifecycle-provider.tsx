@@ -19,8 +19,9 @@ import {
   SESSION_UNAUTHORIZED_EVENT,
   type SessionChangeHint,
 } from "@/session-lifecycle";
-import { clearContinuation } from "@/verification-continuation-browser";
+import { clearInvitationContinuation } from "@/invitation-continuation";
 import { isGuestRoute, routeAccessPolicy } from "@/route-access-policy";
+import { clearContinuation } from "@/verification-continuation-browser";
 import { AccountDraftContext, createAccountDraftStore } from "./account-draft";
 import type { AccessContext } from "@/branch-api-client";
 
@@ -77,8 +78,8 @@ export function SessionLifecycleProvider({
       const changed = authenticatedActor.current !== null;
       authenticatedActor.current = actorId;
       if (changed) {
-        accountDraft.clear();
         clearContinuation();
+        clearInvitationContinuation();
         discardPrivateSession(client);
       }
       // Called from the shell's pre-paint authority boundary. Do not flushSync
@@ -130,7 +131,7 @@ export function SessionLifecycleProvider({
       if (!isSessionChangeHint(value) || value.id === lastHint) return;
       lastHint = value.id;
       clearContinuation();
-      // A received hint is never rebroadcast or treated as authenticated state.
+      clearInvitationContinuation();
       reset();
     };
     const onStorage = (event: StorageEvent) => {
@@ -163,6 +164,7 @@ export function SessionLifecycleProvider({
     };
     const onUnauthorized = () => {
       clearContinuation();
+      clearInvitationContinuation();
       reset(true);
     };
     const suspend = () => {

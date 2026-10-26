@@ -58,6 +58,16 @@ import { useLanguage } from "@/providers/language-provider";
 import { isGuestRoute, routeAccessPolicy } from "@/route-access-policy";
 import type { VerificationLinkWindow } from "@/verification-link-entry";
 import type { CredentialLinkWindow } from "@/credential-link-entry";
+import {
+  acquireInvitationFlowLock,
+  clearInvitationContinuationForFlow,
+  isInvitationRecoveryRequired,
+  loadInvitationContinuation,
+} from "@/invitation-continuation";
+import {
+  InvitationContinuationApiError,
+  resumeInvitationContinuation,
+} from "@/invitation-continuation-api-client";
 import { useSessionLifecycle } from "@/providers/session-lifecycle-provider";
 import { discardPrivateSession } from "@/session-lifecycle";
 import type {
@@ -192,8 +202,18 @@ function WorkspaceShell({ children }: AppShellProps) {
   const homeUrl = organization
     ? applicationContextUrl(organization.id, branch?.id ?? null)
     : "/app";
+  const activeInvitationFlow =
+    loadInvitationContinuation().status === "ready" ||
+    isInvitationRecoveryRequired();
+  const invitationAuthRoute =
+    pathname === "/login" ||
+    pathname === "/register" ||
+    pathname === "/verify-email";
   const openingWorkspace =
-    context !== undefined && guestRoute && !mailboxLinkVisit.current;
+    context !== undefined &&
+    guestRoute &&
+    !mailboxLinkVisit.current &&
+    !(activeInvitationFlow && invitationAuthRoute);
   const checkingSession = contextQuery.isPending || contextQuery.isFetching;
   const signedOut =
     contextQuery.error instanceof BranchApiError &&
@@ -214,6 +234,55 @@ function WorkspaceShell({ children }: AppShellProps) {
       router.replace("/login");
     }
   }, [signedOut, protectedRoute, checkingSession, queryClient, router]);
+
+  useEffect(() => {
+    // A reload may land after login installed its cookie but before the SPA
+    // redirect. Only a protected resume can recognize that completed sign-in.
+    if (
+      pathname !== "/login" ||
+      context === undefined ||
+      checkingSession ||
+      lifecycle.unauthorized
+    )
+      return;
+    const selected = loadInvitationContinuation();
+    if (selected.status !== "ready") return;
+    const flowId = selected.continuation.flowId;
+    let current = true;
+    const stillSelected = () => {
+      const saved = loadInvitationContinuation();
+      return (
+        current &&
+        saved.status === "ready" &&
+        saved.continuation.flowId === flowId
+      );
+    };
+    void (async () => {
+      const held = await acquireInvitationFlowLock(flowId);
+      if (!stillSelected()) return;
+      if (!held) {
+        clearInvitationContinuationForFlow(flowId);
+        router.replace("/accept-invitation");
+        return;
+      }
+      try {
+        await resumeInvitationContinuation(flowId);
+        if (stillSelected()) router.replace("/accept-invitation");
+      } catch (cause) {
+        if (
+          stillSelected() &&
+          cause instanceof InvitationContinuationApiError &&
+          cause.kind !== "unavailable"
+        ) {
+          clearInvitationContinuationForFlow(flowId);
+          router.replace("/accept-invitation");
+        }
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [checkingSession, context, lifecycle.unauthorized, pathname, router]);
 
   useEffect(() => {
     // A resource 401 is only a revocation hint. An explicit, fresh and

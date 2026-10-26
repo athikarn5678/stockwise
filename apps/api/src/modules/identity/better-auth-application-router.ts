@@ -1,3 +1,9 @@
+import {
+  loginContinuationCookies,
+  parseInvitationContinuationKey,
+} from "./invitation-continuation-cookie.ts";
+import { BETTER_AUTH_NATIVE_COOKIE_NAME } from "./better-auth-native.ts";
+import { clearPresentedInvitationContinuationCookies } from "./invitation-continuation-cookie.ts";
 import { Router, type Response } from "express";
 import type { BetterAuthApplicationSessionService } from "./better-auth-application-session.ts";
 import { createCrossSiteRequestProtection } from "./credential-lifecycle-router.ts";
@@ -8,8 +14,10 @@ import {
 export function createBetterAuthApplicationRouter(input: {
   service: BetterAuthApplicationSessionService;
   publicWebOrigin: string;
+  continuationKey: string;
 }): Router {
   const router = Router();
+  const key = parseInvitationContinuationKey(input.continuationKey);
   const protect = createCrossSiteRequestProtection(input.publicWebOrigin, true);
   function error(
     response: Response,
@@ -70,9 +78,28 @@ export function createBetterAuthApplicationRouter(input: {
           },
         });
       } else {
+        const sessionCookie = result.cookies.find((cookie) =>
+          cookie.includes(`${BETTER_AUTH_NATIVE_COOKIE_NAME}=`),
+        );
+        const separator = sessionCookie?.indexOf("=") ?? -1;
+        const sessionCredential =
+          separator < 0
+            ? null
+            : (sessionCookie!.slice(separator + 1).split(";", 1)[0] ?? null);
+        const continuationCookies =
+          sessionCredential === null
+            ? []
+            : loginContinuationCookies({
+                cookieHeader: request.headers.cookie,
+                flowHeader: request.get("X-Stockwise-Invitation-Flow"),
+                key,
+                newSessionCredential: sessionCredential,
+                origin: input.publicWebOrigin,
+              });
         response.setHeader("Set-Cookie", [
           ...result.cookies,
           serializeClearedVerificationProofCookie(),
+          ...continuationCookies,
         ]);
         response.status(200).json({
           data: { user: result.user },
@@ -99,6 +126,9 @@ export function createBetterAuthApplicationRouter(input: {
       } else {
         response.setHeader("Set-Cookie", [
           ...result.cookies,
+          ...clearPresentedInvitationContinuationCookies(
+            request.headers.cookie,
+          ),
           serializeClearedVerificationProofCookie(),
         ]);
         response.status(204).end();
@@ -128,6 +158,9 @@ export function createBetterAuthApplicationRouter(input: {
       } else {
         response.setHeader("Set-Cookie", [
           ...result.cookies,
+          ...clearPresentedInvitationContinuationCookies(
+            request.headers.cookie,
+          ),
           serializeClearedVerificationProofCookie(),
         ]);
         response.status(204).end();

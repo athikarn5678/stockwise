@@ -178,6 +178,23 @@ export const en = {
     "Your password has been reset. Sign in with your new password.",
   authResetOpenError: "Unable to open this secure link. Request a new link.",
   authResetJavascript: "JavaScript is required to open this secure link.",
+  invitationDescription:
+    "Continue with the secure invitation link sent to your email. You must sign in with the invited email before accepting.",
+  invitationLogin: "Sign in",
+  invitationCreateAccount: "Create account",
+  invitationAccept: "Accept invitation",
+  invitationAccepting: "Accepting invitation…",
+  invitationCancel: "Cancel invitation",
+  invitationGuestGuidance:
+    "Sign in or create an account with the invited email, then return here. Verify your email and explicitly accept the invitation.",
+  invitationInvalid:
+    "This invitation is invalid or expired. Ask the organization administrator to send a new invitation.",
+  invitationRecovery:
+    "This invitation cannot continue safely in this tab. Open the invitation link again or ask the organization administrator to send a new one.",
+  invitationRetry:
+    "Unable to continue this invitation right now. Please try again.",
+  invitationScopeInvalid:
+    "The invitation's requested branch access is not currently available. Ask an organization administrator to review it, then retry.",
   pricingBadge: "Pre-launch plan concepts",
   pricingTitle: "A starting point for every stage.",
   pricingIntro:

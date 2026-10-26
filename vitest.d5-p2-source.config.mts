@@ -5,6 +5,9 @@ export default defineConfig({
   test: {
     fileParallelism: false,
     include: [
+      "apps/api/src/modules/identity/invitation-continuation-cookie.test.ts",
+      "apps/api/src/modules/identity/login-router.test.ts",
+      "apps/api/src/modules/identity/session-cookie.test.ts",
       "apps/api/src/modules/identity/authentication-authority-selection.test.ts",
       "apps/api/src/modules/identity/better-auth-application-runtime.test.ts",
       "apps/api/src/modules/identity/better-auth-application-session.test.ts",

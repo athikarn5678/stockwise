@@ -1,3 +1,4 @@
+import { clearPresentedInvitationContinuationCookies } from "./invitation-continuation-cookie.ts";
 import { Router, type RequestHandler, type Response } from "express";
 import { z } from "zod";
 
@@ -329,6 +330,11 @@ export function createCredentialLifecycleRouter({
           "Set-Cookie",
           serializeClearedVerificationProofCookie(),
         );
+        for (const cookie of clearPresentedInvitationContinuationCookies(
+          request.headers.cookie,
+        )) {
+          response.append("Set-Cookie", cookie);
+        }
         response.status(204).end();
       } catch (error: unknown) {
         next(error);
@@ -340,7 +346,7 @@ export function createCredentialLifecycleRouter({
     "/auth/logout-all",
     crossSiteRequestProtection,
     authenticationMiddleware,
-    async (_request, response, next) => {
+    async (request, response, next) => {
       const context = getTrustedAuthenticationContext(response);
       if (context === null) {
         response.status(401).json({
@@ -363,6 +369,11 @@ export function createCredentialLifecycleRouter({
           "Set-Cookie",
           serializeClearedVerificationProofCookie(),
         );
+        for (const cookie of clearPresentedInvitationContinuationCookies(
+          request.headers.cookie,
+        )) {
+          response.append("Set-Cookie", cookie);
+        }
         response.status(204).end();
       } catch (error: unknown) {
         next(error);

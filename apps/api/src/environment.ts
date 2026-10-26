@@ -67,6 +67,14 @@ export const apiEnvironmentSchema = z
     // Inactive Native configuration cannot prevent Legacy startup.
     // The Native composition validates this dedicated key before construction.
     STOCKWISE_BETTER_AUTH_SECRET: z.string().optional(),
+    STOCKWISE_INVITATION_CONTINUATION_KEY: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]{43}$/)
+      .refine((value) => {
+        const bytes = Buffer.from(value, "base64url");
+        return bytes.length === 32 && bytes.toString("base64url") === value;
+      })
+      .optional(),
     STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: analyticsCursorKeySchema,
     STOCKWISE_VERIFICATION_OTP_KEY: verificationOtpKeySchema,
     STOCKWISE_VERIFICATION_OTP_KEY_ID: verificationOtpKeyIdSchema,
@@ -160,6 +168,31 @@ export const apiEnvironmentSchema = z
           "Verification OTP and proof keys must be distinct dedicated keys.",
         path: ["STOCKWISE_VERIFICATION_PROOF_KEY"],
       });
+    }
+    const continuationKey = environment.STOCKWISE_INVITATION_CONTINUATION_KEY;
+    if (continuationKey !== undefined) {
+      const continuationBytes = Buffer.from(continuationKey, "base64url");
+      const otherKeys = [
+        environment.STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY,
+        environment.STOCKWISE_VERIFICATION_OTP_KEY,
+        environment.STOCKWISE_VERIFICATION_PROOF_KEY,
+        environment.STOCKWISE_VERIFICATION_PREVIOUS_PROOF_KEY,
+        environment.STOCKWISE_BETTER_AUTH_SECRET,
+      ].filter((value): value is string => value !== undefined);
+      if (
+        otherKeys.some(
+          (value) =>
+            value === continuationKey ||
+            Buffer.from(value, "base64url").equals(continuationBytes),
+        )
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Invitation continuation key must be distinct from all other application keys.",
+          path: ["STOCKWISE_INVITATION_CONTINUATION_KEY"],
+        });
+      }
     }
     const analyticsKeyBytes = Buffer.from(
       environment.STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY,
@@ -300,6 +333,8 @@ export function loadApiEnvironment(
     OPENROUTER_API_KEY: environment.OPENROUTER_API_KEY,
     RESEND_API_KEY: environment.RESEND_API_KEY,
     STOCKWISE_BETTER_AUTH_SECRET: environment.STOCKWISE_BETTER_AUTH_SECRET,
+    STOCKWISE_INVITATION_CONTINUATION_KEY:
+      environment.STOCKWISE_INVITATION_CONTINUATION_KEY,
     STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY:
       environment.STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY,
     STOCKWISE_VERIFICATION_OTP_KEY: environment.STOCKWISE_VERIFICATION_OTP_KEY,

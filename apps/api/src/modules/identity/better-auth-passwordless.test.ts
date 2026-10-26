@@ -94,6 +94,7 @@ describe("Better Auth passwordless legacy rejection", () => {
           configuration,
           limiter: createLoginLimiter(),
           loginService: service,
+          continuationKey: Buffer.alloc(32).toString("base64url"),
           publicWebOrigin: "http://localhost:3000",
         }),
         logger: { info() {}, error() {} },

@@ -944,6 +944,115 @@ once, prevents repeated prompts/submissions while pending and is invalidated by
 actor/organization/effective-authority or private-session changes. Reissue retains
 its separate confirmation; neither confirmation is backend authorization.
 
+### Invitation authentication continuation (ADR-038)
+
+Continuation never authenticates, verifies email, accepts an invitation, or
+creates an organization. Original `/invitations/accept` behavior is unchanged.
+All new endpoints require exact configured Origin, strict JSON bodies and exactly
+one `X-Stockwise-Invitation-Flow` header containing a canonical 32-byte base64url
+selector. Missing/null/foreign Origin and cross-site requests are rejected before
+work. Responses are no-store/no-referrer. No arbitrary return destination or
+client actor/organization/role is accepted.
+
+| POST path | Exact body | Authority | Success data |
+| --- | --- | --- | --- |
+| `/invitations/continuations` | `{token}` | Original usable invitation credential; no authenticated authority granted | `200 {expiresAt}` and encrypted flow cookie |
+| `/invitations/continuations/resume` | `{}` | Fresh verified authentication, matching flow cookie/session and invited email | `200 {status: "ready", expiresAt}`; no consumption |
+| `/invitations/continuations/accept` | `{}` | Same checks; explicit user action | Existing `200 {membership, replayed}` |
+| `/invitations/continuations/cancel` | `{}` | Protected same-origin selected flow; authentication not required | `204`, selected cookie cleared; invitation unchanged |
+
+Canonical request-ID envelopes remain. Invalid continuation uses
+`400 INVALID_INVITATION_CONTINUATION`; unusable/wrong-email invitation retains
+`400 INVALID_INVITATION`; missing authenticated authority is `401`.
+Capture at four occupied usable slots returns `409 INVITATION_CONTINUATION_LIMIT`
+without deliberately evicting another presented flow. Admission uses the incoming
+snapshot, not an atomic browser-cookie reservation: overlapping callers can
+collide in a free slot but cannot create additional continuation cookie names.
+Scope conflicts and retryable outages preserve their existing meaning.
+
+The fixed namespace is `__Host-stockwise_invitation_slot_0` through
+`__Host-stockwise_invitation_slot_3`, Secure always, HttpOnly, SameSite=Strict,
+Path=/, no Domain. Each issued/accepted value is at most 512 ASCII bytes; the
+four pairs and separators contribute at most 2194 bytes to the Cookie header,
+excluding authentication, proof, other and legacy cookies. Cookies remain
+browser-wide, not tab-specific. Canonical version/slot/flow metadata selects
+the envelope but grants no authority. AES-256-GCM uses a random 12-byte nonce
+and 16-byte tag; AAD authenticates purpose, public origin, version, exact slot
+and flow. Moving an envelope between slot names fails closed.
+The dedicated API-only `STOCKWISE_INVITATION_CONTINUATION_KEY` encodes exactly
+32 canonical base64url bytes, distinct from other application secrets.
+Auth-runtime construction requires it: no fallback or key reuse. Replacement
+invalidates outstanding continuations; retain it through the 30-minute window
+or deliberately invalidate. No previous-key fallback. The per-process 2^24
+encryption ceiling fails closed; fleet accounting remains Phase 8 work.
+
+The payload contains the encrypted original invitation credential, flow, issuance/
+absolute expiry and session-credential binding. Expiry is bounded by capture plus
+30 minutes and invitation expiry; reload/login never extend it. Malformed or
+duplicate selected occupancy, tampering, foreign slot/flow/origin, future issuance
+and expiration fail closed without selecting or clearing an unrelated occupant.
+The envelope never replaces fresh application authentication or the existing
+organization/invitation-locked acceptance transaction.
+
+The tab stores `{version: 1, flowId, expiresAt}` in sessionStorage, plus an optional
+nonsecret `stockwise_invitation_recovery=1` marker after invalidation. This marker
+survives reload to prevent expired invitation login from becoming unrelated OWNER
+onboarding; explicit Cancel, successful Accept or fresh capture clears it.
+Raw invitation, cookie ciphertext, OTP, password, proof and session credentials
+never enter web storage, router/history state, HTML, logs, analytics or UI text.
+Requests select only that flow, never discover one by scanning shared cookies.
+An exclusive Web Lock owns the selector while the document is active. Concurrent
+duplicated/opener-cloned selectors fail closed: only the contender's local
+selector is discarded, never the original cookie. Pagehide releases ownership;
+reload/pageshow reacquires it. Missing storage/locks or competing ownership gives
+safe recovery. Same-origin malicious scripts are not isolated by browser tabs.
+
+A separate origin-wide Web Lock coordinates ordinary cooperative continuation,
+login and logout cookie mutations through response processing. It is not the
+server-side namespace bound or a browser cookie-store compare-and-swap.
+After an interrupted document's older response affects a reused slot, even an
+otherwise valid selected flow may need original-link/admin-reissue recovery.
+The owner explicitly accepts this fail-closed availability tradeoff; it never
+permits substituting another flow, signing in, accepting or creating an
+organization automatically. Ordinary independent flows remain supported up to
+four occupied slots. Existing account-transition invalidations still apply.
+
+Capture binds to the current session-cookie digest or anonymous state. Only
+explicit successful verified login with the selected flow and matching prior
+binding may rebind it to the newly issued session credential. Successful login
+clears other presented fixed-slot continuations and performs bounded legacy
+cleanup, preventing another tab from inheriting a shared browser session transition.
+Pending registration/login proof/
+verification grant no application-session binding. Resume/Accept require the
+exact bound valid session and actual canonical invited email server-side.
+Expiry, revocation, disablement, account switching, logout and received cross-tab
+session hints cannot grant continuation authority.
+
+Successful logout/logout-all clear presented fixed continuation cookies. Cancel
+clears only matching selected occupancy and its local selector, not the invitation.
+Legacy dynamically named v1 cookies are never positively reissued or resumed;
+they fail closed into original-link/admin-reissue recovery. Valid legacy names
+are cleared in batches of at most 16 per response and never confused with fixed
+slot names. An already oversized jar rejected before middleware requires explicit
+browser cookie removal or expiry after old writers drain; application cleanup
+cannot repair an incoming HTTP 431. No broad Clear-Site-Data is used.
+No durable stateless-envelope blacklist is claimed: copied envelopes still require
+their bound valid session and durable invitation lifecycle checks. Same accepted-
+user replay remains read-only.
+
+The browser captures/scrubs the original URL before hydration, persists through
+the protected capture POST, then discards raw memory. Register and OTP/link
+verification retain their contracts and end at explicit Sign in. Flow-aware
+login resumes literal `/accept-invitation`; reload and same-tab email-link
+document navigation recover the selector. Only explicit Accept mutates membership.
+A login document restored after the session cookie was installed but before the
+SPA redirect may resume only after fresh access-context and the protected resume
+endpoint confirm the selected flow/session. This never performs sign-in itself;
+verification without an authenticated application session still requires Sign in.
+The acceptance response determines `/app?organizationId=...`, never implicit organization
+creation. Missing/invalid/expired/cancelled state offers original-link/admin-
+reissue recovery without open redirects. Ordinary OWNER onboarding is unchanged.
+
 ### First organization onboarding contract
 
 `POST /organizations` is the one-time first-organization command, not a generic

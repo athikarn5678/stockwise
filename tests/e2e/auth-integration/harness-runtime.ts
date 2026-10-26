@@ -74,6 +74,8 @@ export async function startHarness() {
       STOCKWISE_VERIFICATION_OTP_KEY_ID: "1",
       STOCKWISE_VERIFICATION_PROOF_KEY: randomBytes(32).toString("base64url"),
       STOCKWISE_VERIFICATION_PROOF_KEY_ID: "1",
+      STOCKWISE_INVITATION_CONTINUATION_KEY:
+        randomBytes(32).toString("base64url"),
     });
     const runtime = createAuthenticationRuntime({
       environment,

@@ -191,6 +191,8 @@ async function startNative() {
     STOCKWISE_API_PORT: "3103",
     STOCKWISE_PUBLIC_WEB_ORIGIN: origin,
     STOCKWISE_BETTER_AUTH_SECRET: nativeSecret,
+    STOCKWISE_INVITATION_CONTINUATION_KEY:
+      randomBytes(32).toString("base64url"),
     STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: randomBytes(32).toString("base64url"),
     STOCKWISE_VERIFICATION_OTP_KEY: randomBytes(32).toString("base64url"),
     STOCKWISE_VERIFICATION_OTP_KEY_ID: "1",
@@ -273,6 +275,7 @@ async function startLegacy() {
     },
     limiter: createLoginLimiter(),
     loginService,
+    continuationKey: Buffer.alloc(32).toString("base64url"),
     publicWebOrigin: origin,
   });
   return startApiServer(

@@ -93,6 +93,7 @@ describe("POST /api/v1/auth/login", () => {
           throw new Error("Fallback is not used by this login-route fixture.");
         },
       },
+      continuationKey: Buffer.alloc(32).toString("base64url"),
       publicWebOrigin: "http://localhost:3000",
     });
     const app = createApp({ apiRouter, logger });

@@ -100,6 +100,11 @@ export function createApp({
     next();
   });
 
+  app.use("/api/v1/invitations/continuations", (_request, response, next) => {
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Referrer-Policy", "no-referrer");
+    next();
+  });
   app.use(express.json());
 
   app.get("/health", (_request, response) => {

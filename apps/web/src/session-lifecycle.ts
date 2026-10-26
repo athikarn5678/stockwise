@@ -1,5 +1,9 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { clearContinuation } from "@/verification-continuation-browser";
+import {
+  clearInvitationContinuation,
+  loadInvitationContinuation,
+} from "@/invitation-continuation";
 
 export const SESSION_CHANGE_EVENT = "stockwise:session-change";
 export const SESSION_UNAUTHORIZED_EVENT = "stockwise:session-unauthorized";
@@ -10,6 +14,37 @@ export interface SessionChangeHint {
   id: string;
 }
 
+export class CookieMutationLockUnavailable extends Error {
+  constructor() {
+    super("Cookie mutation coordination is unavailable");
+  }
+}
+
+export async function withOriginCookieMutationLock<T>(
+  operation: () => Promise<T>,
+  allowUncoordinatedFallback = false,
+): Promise<T> {
+  const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
+  if (!locks) {
+    if (allowUncoordinatedFallback) return operation();
+    throw new CookieMutationLockUnavailable();
+  }
+  let entered = false;
+  try {
+    return await locks.request(
+      "stockwise-cookie-mutations",
+      { mode: "exclusive" },
+      async () => {
+        entered = true;
+        return operation();
+      },
+    );
+  } catch (error) {
+    if (entered) throw error;
+    if (allowUncoordinatedFallback) return operation();
+    throw new CookieMutationLockUnavailable();
+  }
+}
 let privateRequests: AbortController | undefined;
 const responseSignals = new WeakMap<Response, AbortSignal>();
 
@@ -22,9 +57,19 @@ export function discardPrivateSession(client: QueryClient) {
   client.clear();
 }
 
-export function notifySessionChange(client: QueryClient) {
+export function notifySessionChange(
+  client: QueryClient,
+  options?: { preserveInvitationFlowId?: string },
+) {
   discardPrivateSession(client);
   clearContinuation();
+  const selected = loadInvitationContinuation();
+  if (
+    options?.preserveInvitationFlowId === undefined ||
+    selected.status !== "ready" ||
+    selected.continuation.flowId !== options.preserveInvitationFlowId
+  )
+    clearInvitationContinuation();
   window.dispatchEvent(new Event(SESSION_CHANGE_EVENT));
 }
 

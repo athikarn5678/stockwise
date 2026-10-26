@@ -385,7 +385,11 @@ describe("native APPLICATION lifecycle on guarded PostgreSQL", () => {
       app.use(express.json());
       app.use(
         "/api/v1",
-        createBetterAuthApplicationRouter({ service, publicWebOrigin: origin }),
+        createBetterAuthApplicationRouter({
+          service,
+          continuationKey: Buffer.alloc(32).toString("base64url"),
+          publicWebOrigin: origin,
+        }),
       );
       const fail: ErrorRequestHandler = (_error, _request, response, _next) => {
         void _next; // Express requires four parameters to recognize error middleware.

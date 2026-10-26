@@ -19,6 +19,8 @@ function environment(
     STOCKWISE_API_PORT: "3103",
     STOCKWISE_PUBLIC_WEB_ORIGIN: "http://localhost:3102",
     STOCKWISE_BETTER_AUTH_SECRET: secret,
+    STOCKWISE_INVITATION_CONTINUATION_KEY:
+      randomBytes(32).toString("base64url"),
     STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: randomBytes(32).toString("base64url"),
     STOCKWISE_VERIFICATION_OTP_KEY: randomBytes(32).toString("base64url"),
     STOCKWISE_VERIFICATION_OTP_KEY_ID: "1",

@@ -27,6 +27,10 @@ import {
   saveContinuation,
 } from "@/verification-continuation-browser";
 
+import {
+  clearInvitationRecoveryRequired,
+  releaseInvitationFlowLock,
+} from "@/invitation-continuation";
 import { passwordValidationMessage } from "./auth-form-support";
 import { EmailRequestForm } from "./email-request-form";
 import { LoginForm } from "./login-form";
@@ -71,6 +75,8 @@ afterEach(() => {
   delete (window as Window & { __stockwiseTakeCredentialLink?: unknown })
     .__stockwiseTakeCredentialLink;
   sessionStorage.clear();
+  clearInvitationRecoveryRequired();
+  releaseInvitationFlowLock();
 });
 
 function fillCredentials(password = "  password with Unicode Ω  ") {
@@ -351,6 +357,34 @@ describe("login form", () => {
     expect(queryClient.getQueryData(["access-context"])).toBeUndefined();
   });
 
+  it("routes an expired invitation login to safe invitation recovery instead of onboarding", async () => {
+    sessionStorage.setItem(
+      "stockwise_invitation_continuation",
+      JSON.stringify({
+        version: 1,
+        flowId: "E".repeat(43),
+        expiresAt: new Date(Date.now() - 1).toISOString(),
+      }),
+    );
+    vi.mocked(login).mockResolvedValue({
+      outcome: "authenticated",
+      user: { displayName: null, email: "person@example.com", id: "user-id" },
+    });
+    renderLoginForm();
+    fillCredentials();
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Sign in" }).closest("form")!,
+    );
+    await waitFor(() =>
+      expect(routerReplace).toHaveBeenCalledWith("/accept-invitation"),
+    );
+    expect(login).toHaveBeenCalledWith(
+      expect.objectContaining({ email: "person@example.com" }),
+    );
+    expect(
+      sessionStorage.getItem("stockwise_invitation_continuation"),
+    ).toBeNull();
+  });
   it("shows generic invalid credentials and rate-limit states", async () => {
     vi.mocked(login).mockRejectedValue(new AuthApiError("invalid_credentials"));
     renderLoginForm();

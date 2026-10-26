@@ -1,3 +1,9 @@
+import { createInvitationContinuationRouter } from "./invitation-continuation-router.ts";
+import { createPrismaInvitationContinuationRepository } from "./invitation-continuation-repository.ts";
+import { createPrismaMembershipAccessRepository } from "./membership-access-repository.ts";
+import { createMembershipAccessService } from "./membership-access-service.ts";
+import { secureOneTimeTokenProvider } from "./one-time-token.ts";
+import { parseInvitationContinuationKey } from "./invitation-continuation-cookie.ts";
 import { Router } from "express";
 
 import type { ApiEnvironment } from "../../environment.ts";
@@ -15,7 +21,6 @@ import { createEmailRequestLimiter } from "./email-request-limiter.ts";
 import { createLoginLimiter } from "./login-limiter.ts";
 import { createLoginRouter } from "./login-router.ts";
 import { createLoginService } from "./login-service.ts";
-import { secureOneTimeTokenProvider } from "./one-time-token.ts";
 import {
   argon2PasswordHasher,
   argon2PasswordVerifier,
@@ -55,7 +60,16 @@ export function createAuthenticationRuntime({
     failure?: VerificationDeliveryFailure,
   ) => void;
 }) {
+  parseInvitationContinuationKey(
+    environment.STOCKWISE_INVITATION_CONTINUATION_KEY,
+  );
   const configuration = createSessionConfiguration(environment);
+  const membershipAccessService = createMembershipAccessService({
+    emailProvider,
+    publicWebOrigin: environment.STOCKWISE_PUBLIC_WEB_ORIGIN,
+    repository: createPrismaMembershipAccessRepository(prisma),
+    tokenProvider: secureOneTimeTokenProvider,
+  });
   const repository = createPrismaVerificationRepository(prisma);
   const security = createVerificationSecurity(
     verificationSecurityConfiguration(environment),
@@ -118,8 +132,18 @@ export function createAuthenticationRuntime({
     }),
   );
   router.use(
+    createInvitationContinuationRouter({
+      authenticationMiddleware,
+      key: environment.STOCKWISE_INVITATION_CONTINUATION_KEY!,
+      membershipAccessService,
+      repository: createPrismaInvitationContinuationRepository(prisma),
+      publicWebOrigin: environment.STOCKWISE_PUBLIC_WEB_ORIGIN,
+    }),
+  );
+  router.use(
     createLoginRouter({
       configuration,
+      continuationKey: environment.STOCKWISE_INVITATION_CONTINUATION_KEY!,
       limiter: createLoginLimiter(),
       loginService,
       publicWebOrigin: environment.STOCKWISE_PUBLIC_WEB_ORIGIN,

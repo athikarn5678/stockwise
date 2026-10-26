@@ -1,4 +1,8 @@
-import { privateFetch, readPrivateJson } from "@/session-lifecycle";
+import {
+  privateFetch,
+  readPrivateJson,
+  withOriginCookieMutationLock,
+} from "@/session-lifecycle";
 import { z } from "zod";
 
 import { API_HEALTH_PATH } from "./api-proxy";
@@ -133,34 +137,45 @@ async function postAuth(
   path: string,
   body: Record<string, string> | undefined = undefined,
   signal?: AbortSignal,
+  invitationFlowId?: string,
 ): Promise<{ status: number; body: unknown }> {
-  let response: Response;
+  const send = async (): Promise<{ status: number; body: unknown }> => {
+    let response: Response;
 
-  try {
-    response = await fetch(`/api/v1/auth/${path}`, {
-      credentials: "same-origin",
-      headers:
-        body === undefined
-          ? { accept: "application/json" }
-          : { accept: "application/json", "content-type": "application/json" },
-      method: "POST",
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      ...(signal === undefined ? {} : { signal }),
-    });
-  } catch {
-    throw new AuthApiError("unavailable");
-  }
+    try {
+      response = await fetch(`/api/v1/auth/${path}`, {
+        credentials: "same-origin",
+        headers: {
+          ...(body === undefined
+            ? { accept: "application/json" }
+            : {
+                accept: "application/json",
+                "content-type": "application/json",
+              }),
+          ...(invitationFlowId === undefined
+            ? {}
+            : { "X-Stockwise-Invitation-Flow": invitationFlowId }),
+        },
+        method: "POST",
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        ...(signal === undefined ? {} : { signal }),
+      });
+    } catch {
+      throw new AuthApiError("unavailable");
+    }
 
-  if (response.status === 204) {
-    return { status: 204, body: undefined };
-  }
+    if (response.status === 204) {
+      return { status: 204, body: undefined };
+    }
 
-  const responseBody = await readResponseBody(response);
-  if (!response.ok) {
-    throw authErrorFromResponse(response, responseBody);
-  }
+    const responseBody = await readResponseBody(response);
+    if (!response.ok) {
+      throw authErrorFromResponse(response, responseBody);
+    }
 
-  return { status: response.status, body: responseBody };
+    return { status: response.status, body: responseBody };
+  };
+  return send();
 }
 
 async function postAuthBody(
@@ -263,17 +278,28 @@ export async function register(input: { email: string; password: string }) {
 export async function login(input: {
   email: string;
   password: string;
+  invitationFlowId?: string;
 }): Promise<LoginResult> {
-  const response = await postAuth("login", input);
-  const verified = loginVerifiedResponseSchema.safeParse(response.body);
-  if (response.status === 200 && verified.success) {
-    return { outcome: "authenticated", ...verified.data.data };
-  }
-  const unverified = loginUnverifiedResponseSchema.safeParse(response.body);
-  if (response.status === 202 && unverified.success) {
-    return { outcome: "verification_required", ...unverified.data.data };
-  }
-  throw new AuthApiError("unavailable");
+  return withOriginCookieMutationLock(async () => {
+    const response = await postAuth(
+      "login",
+      {
+        email: input.email,
+        password: input.password,
+      },
+      undefined,
+      input.invitationFlowId,
+    );
+    const verified = loginVerifiedResponseSchema.safeParse(response.body);
+    if (response.status === 200 && verified.success) {
+      return { outcome: "authenticated", ...verified.data.data };
+    }
+    const unverified = loginUnverifiedResponseSchema.safeParse(response.body);
+    if (response.status === 202 && unverified.success) {
+      return { outcome: "verification_required", ...unverified.data.data };
+    }
+    throw new AuthApiError("unavailable");
+  }, true);
 }
 
 export async function resendVerification(
@@ -346,8 +372,10 @@ export async function resetPassword(input: {
 }
 
 export async function logout() {
-  const response = await postAuth("logout", {});
-  if (response.status !== 204) throw new AuthApiError("unavailable");
+  return withOriginCookieMutationLock(async () => {
+    const response = await postAuth("logout", {});
+    if (response.status !== 204) throw new AuthApiError("unavailable");
+  }, true);
 }
 
 export interface FirstOrganizationOnboardingRequest {

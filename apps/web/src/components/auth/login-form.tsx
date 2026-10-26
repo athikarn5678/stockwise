@@ -17,6 +17,13 @@ import {
 } from "@/verification-continuation-browser";
 import { getContinuationRevision } from "@/verification-continuation-browser";
 import {
+  acquireInvitationFlowLock,
+  clearInvitationContinuationForFlow,
+  isInvitationRecoveryRequired,
+  loadInvitationContinuation,
+  type InvitationFlowLock,
+} from "@/invitation-continuation";
+import {
   discardPrivateSession,
   notifySessionChange,
 } from "@/session-lifecycle";
@@ -31,6 +38,7 @@ export function LoginForm() {
   const pending = useRef(false);
   const mounted = useRef(false);
   const requestId = useRef(0);
+  const invitationLock = useRef<InvitationFlowLock | null>(null);
   const errorMessage = useRef<HTMLDivElement>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -46,6 +54,7 @@ export function LoginForm() {
     const invalidate = () => {
       mounted.current = false;
       requestId.current += 1;
+      invitationLock.current = null;
     };
     restore();
     window.addEventListener("pagehide", invalidate);
@@ -88,14 +97,51 @@ export function LoginForm() {
       id === requestId.current &&
       revision === getContinuationRevision();
 
+    let invitationFlowId: string | undefined;
+    const savedInvitation = loadInvitationContinuation();
+    if (savedInvitation.status === "ready") {
+      const held =
+        invitationLock.current?.flowId === savedInvitation.continuation.flowId
+          ? invitationLock.current
+          : await acquireInvitationFlowLock(
+              savedInvitation.continuation.flowId,
+            );
+      if (!held) {
+        if (isCurrent()) {
+          clearInvitationContinuationForFlow(
+            savedInvitation.continuation.flowId,
+          );
+          setError(t("invitationRecovery"));
+        }
+        setIsSubmitting(false);
+        pending.current = false;
+        return;
+      }
+      invitationLock.current = held;
+      invitationFlowId = held.flowId;
+    }
     try {
-      const result = await login({ email, password });
+      const result = await login({
+        email,
+        password,
+        ...(invitationFlowId === undefined ? {} : { invitationFlowId }),
+      });
       const current = isCurrent();
       if (result.outcome === "authenticated") {
-        // Do not abort login and infer its cookie was unchanged. Even a late
-        // accepted response invalidates authority in every live tab.
-        notifySessionChange(queryClient);
-        if (current) router.replace("/app");
+        notifySessionChange(
+          queryClient,
+          current && invitationFlowId !== undefined
+            ? { preserveInvitationFlowId: invitationFlowId }
+            : undefined,
+        );
+        if (current) {
+          invitationLock.current = null;
+          router.replace(
+            invitationFlowId !== undefined || isInvitationRecoveryRequired()
+              ? "/accept-invitation"
+              : "/app",
+          );
+        }
         return;
       }
       if (!current) return;

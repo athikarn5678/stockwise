@@ -1,5 +1,7 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { createApp } from "../../app.ts";
+import { startApiServer, type RunningApiServer } from "../../server.ts";
 import { loadTestDatabaseEnvironment } from "../../test/database-environment.ts";
 import {
   createTestPrismaClient,
@@ -8,10 +10,16 @@ import {
 import { createPrismaOrganizationSettingsRepository } from "./organization-settings-repository.ts";
 import { organizationNameUpdateSchema } from "./organization-settings-schema.ts";
 import { hashSessionToken } from "../identity/session-token.ts";
+import { createAuthenticationMiddleware } from "../identity/authentication-context.ts";
+import { createPrismaAuthenticationSessionRepository } from "../identity/authentication-repository.ts";
+import { SESSION_COOKIE_NAME } from "../identity/session-cookie.ts";
+import { createOrganizationSettingsRouter } from "./organization-settings-router.ts";
+import { createOrganizationSettingsService } from "./organization-settings-service.ts";
 
 const environment = loadTestDatabaseEnvironment();
 const prisma = createTestPrismaClient(environment);
 const now = new Date("2026-10-25T12:00:00.000Z");
+const token = "A".repeat(43);
 
 async function user(email: string, verified = true) {
   return prisma.user.create({
@@ -43,6 +51,35 @@ const repository = createPrismaOrganizationSettingsRepository(
 );
 
 describe("organization settings with PostgreSQL", () => {
+  let server: RunningApiServer | undefined;
+  async function start(clock = now) {
+    const router = createOrganizationSettingsRouter({
+      authenticationMiddleware: createAuthenticationMiddleware({
+        configuration: {
+          absoluteTimeoutMilliseconds: 86_400_000,
+          idleTimeoutMilliseconds: 3_600_000,
+          secureCookie: false,
+          touchIntervalMilliseconds: 900_000,
+        },
+        now: () => clock,
+        repository: createPrismaAuthenticationSessionRepository(prisma),
+      }),
+      organizationSettingsService: createOrganizationSettingsService({
+        repository,
+      }),
+      publicWebOrigin: "http://localhost:3000",
+    });
+    server = await startApiServer(
+      createApp({ apiRouter: router, logger: { error() {}, info() {} } }),
+      { host: "127.0.0.1", port: 0 },
+    );
+    return `http://${server.address.host}:${server.address.port}/api/v1`;
+  }
+
+  afterEach(async () => {
+    await server?.stop();
+    server = undefined;
+  });
   beforeEach(async () => resetTestDatabase(environment));
   afterAll(async () => {
     await resetTestDatabase(environment);
@@ -61,11 +98,14 @@ describe("organization settings with PostgreSQL", () => {
       });
       const session = await prisma.session.create({
         data: {
+          // Own every session timestamp; database now() outlives this frozen clock.
+          createdAt: now,
+          updatedAt: now,
+          issuedAt: now,
+          lastUsedAt: now,
           absoluteExpiresAt: new Date(now.getTime() + 86_400_000),
           idleExpiresAt: new Date(now.getTime() + 3_600_000),
-          tokenHash: hashSessionToken(
-            `${role.toLowerCase()} organization settings fixture`,
-          ),
+          tokenHash: hashSessionToken(token),
           userId: actor.id,
         },
       });
@@ -90,6 +130,14 @@ describe("organization settings with PostgreSQL", () => {
             },
           },
         });
+      const base = await start();
+      const response = await fetch(`${base}/organizations/${target.id}`, {
+        headers: { cookie: `${SESSION_COOKIE_NAME}=${token}` },
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        data: { id: target.id, name: "連鎖店 🏪" },
+      });
       const current = await repository.get(actor.id, target.id);
       expect(current).toMatchObject({
         kind: "success",
@@ -145,6 +193,45 @@ describe("organization settings with PostgreSQL", () => {
       expect(sessionAfter).toEqual(sessionBefore);
       expect(branchAfter).toEqual(branchBefore);
       expect(memberAfter).toEqual(memberBefore);
+    },
+  );
+  it.each(["idle", "absolute", "revoked", "unknown"] as const)(
+    "rejects a %s session before organization settings access",
+    async (state) => {
+      const target = await organization();
+      const actor = await user("expired-settings@example.com");
+      await membership(target.id, actor.id, "OWNER");
+      const expiresAt = new Date(now.getTime() + 3_600_000);
+      await prisma.session.create({
+        data: {
+          createdAt: now,
+          updatedAt: now,
+          issuedAt: now,
+          lastUsedAt: now,
+          idleExpiresAt: expiresAt,
+          absoluteExpiresAt:
+            state === "absolute"
+              ? expiresAt
+              : new Date(now.getTime() + 86_400_000),
+          revokedAt: state === "revoked" ? now : null,
+          tokenHash: hashSessionToken(token),
+          userId: actor.id,
+        },
+      });
+      const base = await start(
+        state === "idle" || state === "absolute" ? expiresAt : now,
+      );
+      const response = await fetch(`${base}/organizations/${target.id}`, {
+        headers: {
+          cookie: `${SESSION_COOKIE_NAME}=${state === "unknown" ? "B".repeat(43) : token}`,
+        },
+      });
+      expect(response.status).toBe(401);
+      expect(
+        await prisma.organization.findUniqueOrThrow({
+          where: { id: target.id },
+        }),
+      ).toMatchObject({ name: "Original" });
     },
   );
 

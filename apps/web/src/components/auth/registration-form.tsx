@@ -1,4 +1,5 @@
 "use client";
+import type { TranslationKey } from "@/i18n/en";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -28,7 +29,9 @@ export function RegistrationForm() {
   const errorMessage = useRef<HTMLDivElement>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<
+    { key: TranslationKey } | { cause: unknown } | null
+  >(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   useEffect(() => {
     const restore = () => {
@@ -61,13 +64,13 @@ export function RegistrationForm() {
     }
 
     if (!hasEmailShape(email)) {
-      setError(t("authInvalidEmail"));
+      setError({ key: "authInvalidEmail" });
       return;
     }
 
     const passwordError = passwordValidationMessage(password);
     if (passwordError !== null) {
-      setError(t("authPasswordLength"));
+      setError({ key: "authPasswordLength" });
       return;
     }
 
@@ -95,12 +98,12 @@ export function RegistrationForm() {
       if (!saved) {
         // Cannot safely recover the OTP challenge without the one-use
         // continuation. Preserve the generic enrollment response.
-        setError(t("authRecovery"));
+        setError({ key: "authRecovery" });
         return;
       }
       router.replace("/verify-email");
     } catch (requestError: unknown) {
-      if (isCurrent()) setError(verificationErrorMessage(requestError, t));
+      if (isCurrent()) setError({ cause: requestError });
     } finally {
       if (mounted.current && id === requestId.current) {
         setIsSubmitting(false);
@@ -158,7 +161,11 @@ export function RegistrationForm() {
           tabIndex={-1}
         >
           <AlertDescription className="text-foreground">
-            {error}
+            {error === null
+              ? null
+              : "key" in error
+                ? t(error.key)
+                : verificationErrorMessage(error.cause, t)}
           </AlertDescription>
         </Alert>
       )}

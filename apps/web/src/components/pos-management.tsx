@@ -1,4 +1,5 @@
 "use client";
+import type { TranslationKey } from "@/i18n/en";
 import { useLanguage } from "@/providers/language-provider";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -144,44 +145,39 @@ function createIdempotencyKey(): string {
   return crypto.randomUUID();
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage(error: unknown): TranslationKey {
   if (!(error instanceof SalesApiError)) {
-    return "Checkout is temporarily unavailable. Your cart was kept unchanged.";
+    return "uiCheckoutIsTemporarilyUnavailableYourCartWasKeptUnchanged";
   }
-  const messages: Record<SalesApiErrorKind, string> = {
-    authentication_required: "Sign in again to continue.",
-    branch_inactive: "This branch is inactive. Choose another active branch.",
-    forbidden: "Checkout is not available for your current access.",
+  const messages: Record<SalesApiErrorKind, TranslationKey> = {
+    authentication_required: "branchErrAuth",
+    branch_inactive: "uiThisBranchIsInactiveChooseAnotherActiveBranch",
+    forbidden: "uiCheckoutIsNotAvailableForYourCurrentAccess",
     idempotency_conflict:
-      "This checkout key represents different sale details. Review the cart before starting a new sale.",
-    insufficient_stock:
-      "Stock is no longer sufficient for this cart. Adjust the quantities and try again.",
-    invalid_cursor: "The product results changed. Search again.",
-    price_changed:
-      "A product price changed. The latest product prices were refreshed; review the cart before retrying.",
-    product_inactive:
-      "A product in this cart is inactive. Remove it and try again.",
-    product_not_found:
-      "A product in this cart no longer exists. Remove it and try again.",
+      "uiThisCheckoutKeyRepresentsDifferentSaleDetailsReviewThe",
+    insufficient_stock: "uiStockIsNoLongerSufficientForThisCartAdjust",
+    invalid_cursor: "uiTheProductResultsChangedSearchAgain",
+    price_changed: "uiAProductPriceChangedTheLatestProductPricesWere",
+    product_inactive: "uiAProductInThisCartIsInactiveRemoveIt",
+    product_not_found: "uiAProductInThisCartNoLongerExistsRemove",
     sale_not_found:
-      "Checkout is temporarily unavailable. Your cart was kept unchanged.",
+      "uiCheckoutIsTemporarilyUnavailableYourCartWasKeptUnchanged",
     sale_already_fully_refunded:
-      "Checkout is temporarily unavailable. Your cart was kept unchanged.",
+      "uiCheckoutIsTemporarilyUnavailableYourCartWasKeptUnchanged",
     refund_quantity_exceeded:
-      "Checkout is temporarily unavailable. Your cart was kept unchanged.",
-    stale_vat_profile:
-      "The VAT profile changed. Refresh the latest VAT settings.",
-    unavailable:
-      "Checkout is temporarily unavailable. Your cart was kept unchanged.",
-    validation:
-      "Check the cart, discount, and payment details before trying again.",
+      "uiCheckoutIsTemporarilyUnavailableYourCartWasKeptUnchanged",
+    stale_vat_profile: "uiTheVATProfileChangedRefreshTheLatestVATSettings",
+    unavailable: "uiCheckoutIsTemporarilyUnavailableYourCartWasKeptUnchanged",
+    validation: "uiCheckTheCartDiscountAndPaymentDetailsBeforeTrying",
     vat_configuration_required:
-      "Checkout is blocked until the organization sales VAT profile is configured.",
+      "uiCheckoutIsBlockedUntilTheOrganizationSalesVATProfile",
   };
   return messages[error.kind];
 }
 
 export function PosManagement() {
+  const { t } = useLanguage();
+
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedOrganizationId = searchParams.get("organizationId");
@@ -209,18 +205,21 @@ export function PosManagement() {
     if (canonical !== current) router.replace(canonical);
   }, [requestedBranchId, requestedOrganizationId, resolved, router]);
 
-  if (contextQuery.isPending) return <p aria-live="polite">Loading access…</p>;
+  if (contextQuery.isPending)
+    return <p aria-live="polite">{t("loadingAccess")}</p>;
   if (contextQuery.isError)
     return (
       <p className="form-message" role="alert">
-        Your access context could not be loaded.
+        {t("accessError")}
       </p>
     );
   if (resolved?.organization === null) {
     return (
       <ContextUnavailable
-        heading="POS unavailable"
-        message="Choose an active organization from the workspace before starting a sale."
+        heading={t("uiPOSUnavailable")}
+        message={t(
+          "uiChooseAnActiveOrganizationFromTheWorkspaceBeforeStarting",
+        )}
       />
     );
   }
@@ -228,16 +227,16 @@ export function PosManagement() {
   if (resolved.branch === null) {
     return (
       <ContextUnavailable
-        heading="Branch context required"
-        message="Choose an active branch before starting a sale."
+        heading={t("uiBranchContextRequired")}
+        message={t("uiChooseAnActiveBranchBeforeStartingASale")}
       />
     );
   }
   if (!CHECKOUT_ROLES.has(resolved.organization.role)) {
     return (
       <ContextUnavailable
-        heading="POS unavailable"
-        message="Your current role cannot perform checkout."
+        heading={t("uiPOSUnavailable")}
+        message={t("uiYourCurrentRoleCannotPerformCheckout")}
       />
     );
   }
@@ -257,12 +256,14 @@ function ContextUnavailable({
   heading: string;
   message: string;
 }) {
+  const { t } = useLanguage();
+
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-semibold">{heading}</h1>
       <p className="text-muted-foreground">{message}</p>
       <Link className="underline" href="/app">
-        Return to workspace
+        {t("uiReturnToWorkspace")}
       </Link>
     </section>
   );
@@ -294,7 +295,7 @@ function PosContent({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
   const [amountTendered, setAmountTendered] = useState("");
   const [transferReference, setTransferReference] = useState("");
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<TranslationKey | null>(null);
   const [completedSale, setCompletedSale] = useState<CompletedSale | null>(
     null,
   );
@@ -437,10 +438,10 @@ function PosContent({
         >
           {t("backToWorkspace")}
         </Link>
-        <h1 className="text-2xl font-semibold">Point of sale</h1>
+        <h1 className="text-2xl font-semibold">{t("marketingFeaturePos")}</h1>
         <p className="text-muted-foreground">
-          {branch.code} — {branch.name}. Product prices and final totals are
-          confirmed by checkout.
+          {branch.code} — {branch.name}
+          {t("uiProductPricesAndFinalTotalsAreConfirmedByCheckout")}
         </p>
       </header>
 
@@ -459,20 +460,19 @@ function PosContent({
           className="rounded-md border border-destructive p-4 form-message"
           role="alert"
         >
-          Checkout is blocked until the organization sales VAT profile is
-          configured.
+          {t("uiCheckoutIsBlockedUntilTheOrganizationSalesVATProfile")}
         </p>
       ) : null}
       {notice ? (
         <p className="rounded-md border p-4 form-message" role="alert">
-          {notice}
+          {t(notice)}
         </p>
       ) : null}
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,0.8fr)]">
         <section aria-labelledby="pos-product-heading" className="space-y-4">
           <h2 className="text-xl font-semibold" id="pos-product-heading">
-            Products
+            {t("uiProducts")}
           </h2>
           <PosBarcodeScanner
             context={context}
@@ -484,7 +484,7 @@ function PosContent({
             }}
           />
           <form
-            aria-label="Search POS products"
+            aria-label={t("uiSearchPOSProducts")}
             className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]"
             onSubmit={(event) => {
               event.preventDefault();
@@ -495,16 +495,16 @@ function PosContent({
             }}
           >
             <Label className="form-field">
-              Search products
+              {t("uiSearchProducts")}
               <Input
                 className=""
                 defaultValue={search.q}
                 name="q"
-                placeholder="Name or SKU"
+                placeholder={t("uiNameOrSKU")}
               />
             </Label>
             <Button className="self-end" type="submit">
-              Search
+              {t("uiSearch")}
             </Button>
           </form>
           <ProductResults
@@ -525,10 +525,10 @@ function PosContent({
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold" id="pos-cart-heading">
-                Current sale
+                {t("uiCurrentSale")}
               </h2>
               <p className="text-sm text-muted-foreground">
-                Transient cart only; stock is confirmed at checkout.
+                {t("uiTransientCartOnlyStockIsConfirmedAtCheckout")}
               </p>
             </div>
             <Button
@@ -540,7 +540,7 @@ function PosContent({
               }}
               type="button"
             >
-              Clear cart
+              {t("uiClearCart")}
             </Button>
           </div>
           <fieldset
@@ -585,14 +585,15 @@ function PosContent({
               }}
             />
             <div className="flex items-center justify-between border-t pt-4">
-              <span className="font-medium">Current-price subtotal</span>
+              <span className="font-medium">{t("uiCurrentPriceSubtotal")}</span>
               <strong>
-                {subtotal === null ? "Check quantities" : formatThb(subtotal)}
+                {subtotal === null
+                  ? t("uiCheckQuantities")
+                  : formatThb(subtotal)}
               </strong>
             </div>
             <p className="text-xs text-muted-foreground">
-              This exact-decimal estimate is not a final total. VAT, discounts,
-              stock, and price are revalidated by the server.
+              {t("uiThisExactDecimalEstimateIsNotAFinalTotal")}
             </p>
             {canDiscount ? (
               <DiscountControls
@@ -620,7 +621,7 @@ function PosContent({
               method={paymentMethod}
             />
             <form
-              aria-label="Checkout current sale"
+              aria-label={t("uiCheckoutCurrentSale")}
               onSubmit={(event) => {
                 event.preventDefault();
                 if (checkoutPendingRef.current || scansPendingRef.current > 0)
@@ -646,8 +647,8 @@ function PosContent({
                 type="submit"
               >
                 {checkoutMutation.isPending
-                  ? "Completing sale…"
-                  : "Complete sale"}
+                  ? t("uiCompletingSale")
+                  : t("uiCompleteSale")}
               </Button>
             </form>
           </fieldset>
@@ -675,17 +676,18 @@ function ProductResults({
   products: PosProduct[];
 }) {
   const { t } = useLanguage();
-  if (isLoading) return <p aria-live="polite">Loading sellable products…</p>;
+  if (isLoading)
+    return <p aria-live="polite">{t("uiLoadingSellableProducts")}</p>;
   if (error)
     return (
       <p className="form-message" role="alert">
-        {errorMessage(error)}
+        {t(errorMessage(error))}
       </p>
     );
   if (products.length === 0)
     return (
       <p className="rounded-lg border p-5 text-muted-foreground">
-        No products match this POS search.
+        {t("uiNoProductsMatchThisPOSSearch")}
       </p>
     );
   return (
@@ -717,7 +719,9 @@ function ProductResults({
               onClick={() => onAdd(product)}
               type="button"
             >
-              {product.available ? `Add ${product.name}` : t("posUnavailable")}
+              {product.available
+                ? t("uiAddProductName").replace("{name}", product.name)
+                : t("posUnavailable")}
             </Button>
           </article>
         ))}
@@ -729,7 +733,7 @@ function ProductResults({
           onClick={onLoadMore}
           type="button"
         >
-          {isLoadingNext ? "Loading more…" : "Load more products"}
+          {isLoadingNext ? t("inventoryLoadingMore") : t("inventoryLoadMore")}
         </Button>
       ) : null}
     </div>
@@ -749,14 +753,16 @@ function CartLines({
   onIncrement: (productId: string) => void;
   onRemove: (productId: string) => void;
 }) {
+  const { t } = useLanguage();
+
   if (lines.length === 0)
     return (
       <p className="rounded-md border p-4 text-sm text-muted-foreground">
-        Add an available product to begin a sale.
+        {t("uiAddAnAvailableProductToBeginASale")}
       </p>
     );
   return (
-    <ul aria-label="Cart items" className="space-y-4">
+    <ul aria-label={t("uiCartItems")} className="space-y-4">
       {lines.map((line) => {
         const estimate = lineEstimate(line);
         const valid = quantityIsValid(line.quantity, line.unit);
@@ -770,20 +776,23 @@ function CartLines({
                 </p>
               </div>
               <strong>
-                {estimate === null ? "Check quantity" : formatThb(estimate)}
+                {estimate === null ? t("uiCheckQuantity") : formatThb(estimate)}
               </strong>
             </div>
             <div className="flex flex-wrap items-end gap-2">
               <Button
                 variant="outline"
-                aria-label={`Decrease ${line.name} quantity`}
+                aria-label={t("uiDecreaseQuantity").replace(
+                  "{name}",
+                  line.name,
+                )}
                 onClick={() => onDecrement(line.id)}
                 type="button"
               >
                 −
               </Button>
               <Label className="form-field max-w-48 basis-32 flex-1">
-                Quantity for {line.name} ({line.unit})
+                {t("uiQuantityFor")} {line.name} ({line.unit})
                 <Input
                   aria-invalid={!valid}
                   className="form-control--numeric"
@@ -796,7 +805,10 @@ function CartLines({
               </Label>
               <Button
                 variant="outline"
-                aria-label={`Increase ${line.name} quantity`}
+                aria-label={t("uiIncreaseQuantity").replace(
+                  "{name}",
+                  line.name,
+                )}
                 onClick={() => onIncrement(line.id)}
                 type="button"
               >
@@ -804,16 +816,16 @@ function CartLines({
               </Button>
               <Button
                 variant="outline"
-                aria-label={`Remove ${line.name} from cart`}
+                aria-label={t("uiRemoveFromCart").replace("{name}", line.name)}
                 onClick={() => onRemove(line.id)}
                 type="button"
               >
-                Remove
+                {t("uiRemove")}
               </Button>
             </div>
             {!valid ? (
               <p className="text-sm text-destructive form-message" role="alert">
-                Enter a positive quantity with no more than four decimal places.
+                {t("uiEnterAPositiveQuantityWithNoMoreThanFour")}
               </p>
             ) : null}
           </li>
@@ -834,11 +846,13 @@ function DiscountControls({
   type: DiscountType;
   value: string;
 }) {
+  const { t } = useLanguage();
+
   return (
     <fieldset className="space-y-3 border-t pt-4">
-      <legend className="font-medium">Whole-sale discount</legend>
+      <legend className="font-medium">{t("uiWholeSaleDiscount")}</legend>
       <Label className="form-field">
-        Discount type
+        {t("uiDiscountType")}
         <NativeSelect
           className="w-full "
           onChange={(event) =>
@@ -846,15 +860,23 @@ function DiscountControls({
           }
           value={type}
         >
-          <NativeSelectOption value="NONE">No discount</NativeSelectOption>
-          <NativeSelectOption value="AMOUNT">Amount (THB)</NativeSelectOption>
-          <NativeSelectOption value="PERCENT">Percent</NativeSelectOption>
+          <NativeSelectOption value="NONE">
+            {t("uiNoDiscount")}
+          </NativeSelectOption>
+          <NativeSelectOption value="AMOUNT">
+            {t("uiAmountTHB")}
+          </NativeSelectOption>
+          <NativeSelectOption value="PERCENT">
+            {t("uiPercent")}
+          </NativeSelectOption>
         </NativeSelect>
       </Label>
       {type !== "NONE" ? (
         <>
           <Label className="form-field">
-            {type === "AMOUNT" ? "Discount amount (THB)" : "Discount percent"}
+            {type === "AMOUNT"
+              ? t("uiDiscountAmountTHB")
+              : t("uiDiscountPercent")}
             <Input
               className="form-control--numeric"
               inputMode="decimal"
@@ -863,7 +885,7 @@ function DiscountControls({
             />
           </Label>
           <Label className="form-field">
-            Discount reason
+            {t("uiDiscountReason")}
             <Input
               className=""
               onChange={(event) => onChange(type, value, event.target.value)}
@@ -893,6 +915,8 @@ function PaymentControls({
   reference: string;
   subtotal: string | null;
 }) {
+  const { t } = useLanguage();
+
   const tendered = decimalToScaled(amountTendered, 2);
   const subtotalCents = subtotal === null ? null : decimalToScaled(subtotal, 2);
   const change =
@@ -901,7 +925,7 @@ function PaymentControls({
       : null;
   return (
     <fieldset className="space-y-3 border-t pt-4">
-      <legend className="font-medium">Payment</legend>
+      <legend className="font-medium">{t("uiPayment")}</legend>
       <div className="flex flex-wrap gap-4">
         <Label className="flex min-h-11 items-center gap-2 text-sm font-medium">
           <Input
@@ -912,7 +936,7 @@ function PaymentControls({
             type="radio"
             value="CASH"
           />
-          Cash
+          {t("paymentCash")}
         </Label>
         <Label className="flex items-center gap-2">
           <Input
@@ -923,13 +947,13 @@ function PaymentControls({
             type="radio"
             value="TRANSFER"
           />
-          Transfer
+          {t("paymentTransfer")}
         </Label>
       </div>
       {method === "CASH" ? (
         <>
           <Label className="form-field">
-            Amount tendered (THB)
+            {t("uiAmountTenderedTHB")}
             <Input
               className="form-control--numeric"
               inputMode="decimal"
@@ -942,13 +966,13 @@ function PaymentControls({
           </Label>
           <p className="text-sm text-muted-foreground">
             {change === null
-              ? "Enter tendered cash at or above the current-price subtotal."
-              : `Estimated change: ${formatThb(change)}. Final change is server-confirmed.`}
+              ? t("uiEnterTenderedCashAtOrAboveTheCurrentPrice")
+              : t("uiEstimatedChange").replace("{amount}", formatThb(change))}
           </p>
         </>
       ) : (
         <Label className="form-field">
-          Transfer reference (optional)
+          {t("uiTransferReferenceOptional")}
           <Input
             className=""
             onChange={(event) =>
@@ -1004,10 +1028,12 @@ function VatProfilePanel({
   organizationId: string;
   profile: SalesVatProfile | undefined;
 }) {
+  const { t } = useLanguage();
+
   const [status, setStatus] =
     useState<SalesVatProfile["salesVatStatus"]>("NOT_REGISTERED");
   const [rate, setRate] = useState("");
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<TranslationKey | null>(null);
   const mutation = useMutation({
     mutationFn: (input: {
       expectedUpdatedAt: string;
@@ -1030,22 +1056,23 @@ function VatProfilePanel({
       setRate(profile.salesVatRate ?? "");
     }
   }, [profile]);
-  if (isLoading) return <p aria-live="polite">Loading sales VAT profile…</p>;
+  if (isLoading)
+    return <p aria-live="polite">{t("uiLoadingSalesVATProfile")}</p>;
   if (error)
     return (
       <p className="form-message" role="alert">
-        {errorMessage(error)}
+        {t(errorMessage(error))}
       </p>
     );
   if (!profile) return null;
   return (
     <form
-      aria-label="Sales VAT profile"
+      aria-label={t("uiSalesVATProfile")}
       className="grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
       onSubmit={(event) => {
         event.preventDefault();
         if (status === "REGISTERED" && decimalToScaled(rate, 6) === null) {
-          setNotice("Enter a valid VAT rate before saving.");
+          setNotice("uiEnterAValidVATRateBeforeSaving");
           return;
         }
         void mutation
@@ -1058,7 +1085,7 @@ function VatProfilePanel({
       }}
     >
       <Label className="form-field">
-        Sales VAT status
+        {t("uiSalesVATStatus")}
         <NativeSelect
           className="w-full "
           onChange={(event) =>
@@ -1067,14 +1094,16 @@ function VatProfilePanel({
           value={status}
         >
           <NativeSelectOption value="NOT_REGISTERED">
-            Not registered
+            {t("uiNotRegistered")}
           </NativeSelectOption>
-          <NativeSelectOption value="REGISTERED">Registered</NativeSelectOption>
+          <NativeSelectOption value="REGISTERED">
+            {t("uiRegistered")}
+          </NativeSelectOption>
         </NativeSelect>
       </Label>
       {status === "REGISTERED" ? (
         <Label className="form-field">
-          VAT rate (%)
+          {t("uiVATRate")}
           <Input
             className="form-control--numeric"
             inputMode="decimal"
@@ -1087,7 +1116,7 @@ function VatProfilePanel({
       )}
       {notice ? (
         <p className="sm:col-span-2 form-message" role="alert">
-          {notice}
+          {t(notice)}
         </p>
       ) : null}
       <Button
@@ -1096,7 +1125,7 @@ function VatProfilePanel({
         disabled={mutation.isPending}
         type="submit"
       >
-        {mutation.isPending ? "Saving VAT…" : "Save VAT profile"}
+        {mutation.isPending ? t("uiSavingVAT") : t("uiSaveVATProfile")}
       </Button>
     </form>
   );
@@ -1109,28 +1138,36 @@ function SaleComplete({
   onNewSale: () => void;
   sale: CompletedSale;
 }) {
+  const { t } = useLanguage();
+
   return (
     <section
       aria-live="polite"
       className="w-full max-w-2xl space-y-5 rounded-lg border bg-card p-5 sm:p-7"
     >
-      <h1 className="text-2xl font-semibold">Sale completed</h1>
+      <h1 className="text-2xl font-semibold">{t("uiSaleCompleted")}</h1>
       <p className="text-muted-foreground">
         {sale.reference} · {sale.branchCodeSnapshot} — {sale.branchNameSnapshot}
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
         <p>
-          <span className="text-muted-foreground">Total</span>
+          <span className="text-muted-foreground">{t("receiptTotal")}</span>
           <br />
           <strong className="text-xl">{formatThb(sale.totalAmount)}</strong>
         </p>
         <p>
-          <span className="text-muted-foreground">Payment</span>
+          <span className="text-muted-foreground">{t("uiPayment")}</span>
           <br />
           <strong>
             {sale.payment.method === "CASH"
-              ? `Cash · change ${formatThb(sale.payment.changeAmount)}`
-              : `Transfer${sale.payment.reference ? ` · ${sale.payment.reference}` : ""}`}
+              ? t("paymentCash") +
+                " · " +
+                t("uiChangeAmount").replace(
+                  "{amount}",
+                  formatThb(sale.payment.changeAmount),
+                )
+              : t("paymentTransfer") +
+                (sale.payment.reference ? ` · ${sale.payment.reference}` : "")}
           </strong>
         </p>
       </div>
@@ -1148,10 +1185,10 @@ function SaleComplete({
         ))}
       </ul>
       <Button onClick={onNewSale} type="button">
-        New sale
+        {t("uiNewSale")}
       </Button>
       <Button onClick={() => window.print()} type="button">
-        Print receipt
+        {t("uiPrintReceipt")}
       </Button>
       <SaleReceipt sale={sale} />
     </section>

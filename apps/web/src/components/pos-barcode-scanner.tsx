@@ -12,18 +12,18 @@ import {
   type SalesRequestContext,
 } from "@/sales-api-client";
 
+import type { TranslationKey } from "@/i18n/en";
+import { useLanguage } from "@/providers/language-provider";
 import { PosCameraScanner } from "./pos-camera-scanner";
 
-function lookupError(error: unknown, barcode: string): string {
+function lookupError(error: unknown): TranslationKey {
   if (error instanceof SalesApiError) {
-    if (error.kind === "authentication_required")
-      return "Sign in again to scan products.";
+    if (error.kind === "authentication_required") return "scanErrAuth";
     if (error.kind === "forbidden" || error.kind === "branch_inactive")
-      return "Scanning is unavailable for this branch or your current access.";
-    if (error.kind === "validation")
-      return `Invalid barcode: ${barcode}. Check the value and scan again.`;
+      return "scanErrUnavailable";
+    if (error.kind === "validation") return "scanErrInvalid";
   }
-  return `Could not look up barcode ${barcode}. Your cart was kept. Scan again to retry.`;
+  return "scanErrLookup";
 }
 
 export function PosBarcodeScanner({
@@ -37,11 +37,14 @@ export function PosBarcodeScanner({
   onAdd: (product: PosProduct) => void;
   onPendingChange: (count: number) => void;
 }) {
+  const { t } = useLanguage();
   const input = useRef<HTMLInputElement>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const cameraOpenRef = useRef(false);
   const [pending, setPending] = useState(0);
-  const [results, setResults] = useState<string[]>([]);
+  const [results, setResults] = useState<
+    Array<{ key: TranslationKey; barcode?: string; name?: string }>
+  >([]);
   const queue = useRef<string[]>([]);
   const controller = useRef<AbortController | null>(null);
   const generation = useRef(0);
@@ -68,7 +71,11 @@ export function PosBarcodeScanner({
     );
   }
 
-  function showResult(message: string) {
+  function showResult(message: {
+    key: TranslationKey;
+    barcode?: string;
+    name?: string;
+  }) {
     setResults((current) => [...current.slice(-4), message]);
   }
 
@@ -83,7 +90,8 @@ export function PosBarcodeScanner({
         () => requestController.abort(),
         15_000,
       );
-      let message: string;
+      let message: TranslationKey;
+      let name = "";
       try {
         const response = await searchPosProducts(context, {
           barcode,
@@ -92,24 +100,25 @@ export function PosBarcodeScanner({
         if (currentGeneration !== generation.current) return;
         const product = response.data.products[0];
         if (response.data.products.length === 0) {
-          message = `No product found for barcode ${barcode}.`;
+          message = "scanNotFound";
         } else if (response.data.products.length !== 1) {
-          message = `Could not look up barcode ${barcode}. Scan again to retry.`;
+          message = "scanAmbiguous";
         } else if (!product?.available) {
-          message = `Product for barcode ${barcode} is unavailable in this branch.`;
+          message = "scanUnavailableProduct";
         } else if (callbacks.current.disabled) {
-          message = `Barcode ${barcode} was not added during checkout. Scan again afterward.`;
+          message = "scanDuringCheckout";
         } else {
           callbacks.current.onAdd(product);
-          message = `Added ${product.name} — barcode ${barcode}.`;
+          message = "scanAdded";
+          name = product.name;
         }
       } catch (error) {
         if (currentGeneration !== generation.current) return;
-        message = lookupError(error, barcode);
+        message = lookupError(error);
       } finally {
         window.clearTimeout(timeout);
       }
-      showResult(message);
+      showResult({ key: message, barcode, name });
       queue.current.shift();
       reportPending();
     }
@@ -120,7 +129,7 @@ export function PosBarcodeScanner({
     const barcode = value.trim();
     if (barcode === "") return; // Ignore extra Enter/CR/LF terminators after the field is cleared.
     if (callbacks.current.disabled) {
-      showResult("Wait for checkout to finish, then scan again.");
+      showResult({ key: "scanWaitCheckout" });
       return;
     }
     if (input.current) input.current.value = "";
@@ -138,11 +147,11 @@ export function PosBarcodeScanner({
 
   return (
     <section
-      aria-label="Barcode scanning"
+      aria-label={t("scanRegion")}
       className="min-w-0 space-y-3 rounded-lg border p-4"
     >
       <form
-        aria-label="Scan POS barcode"
+        aria-label={t("scanForm")}
         className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]"
         onSubmit={(event) => {
           event.preventDefault();
@@ -151,7 +160,7 @@ export function PosBarcodeScanner({
         }}
       >
         <Label className="form-field">
-          Scan or enter barcode
+          {t("scanLabel")}
           <Input
             autoComplete="off"
             spellCheck={false}
@@ -168,13 +177,10 @@ export function PosBarcodeScanner({
           disabled={disabled}
           type="submit"
         >
-          Add barcode
+          {t("scanAdd")}
         </Button>
       </form>
-      <p className="text-sm text-muted-foreground">
-        USB/Bluetooth keyboard scanner: keep this field focused and use Enter.
-        Other fields keep normal keyboard behavior.
-      </p>
+      <p className="text-sm text-muted-foreground">{t("scanKeyboardHelp")}</p>
       <Button
         variant="outline"
         className=""
@@ -186,7 +192,7 @@ export function PosBarcodeScanner({
           reportPending();
         }}
       >
-        Scan with camera
+        {t("scanCamera")}
       </Button>
       <div
         role="status"
@@ -196,13 +202,17 @@ export function PosBarcodeScanner({
       >
         <p>
           {pending > 0
-            ? `Looking up barcodes… ${pending} pending. Checkout waits for these scans.`
-            : "Ready to scan."}
+            ? t("scanPending").replace("{count}", String(pending))
+            : t("scanReady")}
         </p>
         {results.length > 0 ? (
-          <ul aria-label="Recent scans">
+          <ul aria-label={t("scanRecent")}>
             {results.map((message, index) => (
-              <li key={`${index}:${message}`}>{message}</li>
+              <li key={index}>
+                {t(message.key)
+                  .replace("{barcode}", message.barcode ?? "")
+                  .replace("{name}", message.name ?? "")}
+              </li>
             ))}
           </ul>
         ) : null}

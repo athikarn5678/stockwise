@@ -8,6 +8,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import type { CatalogProduct } from "@/catalog-api-client";
+import { useLanguage } from "@/providers/language-provider";
 
 // One generic sheet-label preset; widen long symbols rather than compress bars.
 const MODULE_WIDTH_MM = 0.33;
@@ -19,24 +20,23 @@ const MAX_QUANTITY = 100;
 
 export function encodeProductLabel(barcode: string | null) {
   if (barcode === null || barcode === "") {
-    return { error: "Set and save a barcode before printing labels." };
+    return { error: "barcodeErrNone" as const };
   }
   // ADR-022 permits Unicode identifiers. Code 128 labels support printable ASCII;
   // preserve other stored identifiers instead of substituting or normalizing them.
   if (barcode.length > 128 || !/^[\x20-\x7e]+$/.test(barcode)) {
     return {
-      error:
-        "Code 128 labels support printable ASCII characters only. The saved barcode is unchanged.",
+      error: "barcodeErrAscii" as const,
     };
   }
   const target: { encodings?: { data: string }[] } = {};
   try {
     JsBarcode(target, barcode, { format: "CODE128", displayValue: false });
   } catch {
-    return { error: "This barcode cannot be rendered as a Code 128 label." };
+    return { error: "barcodeErrRender" as const };
   }
   const data = target.encodings?.map((encoding) => encoding.data).join("");
-  if (!data) return { error: "This barcode could not be rendered." };
+  if (!data) return { error: "barcodeErrNoData" as const };
   const modules = data.length + 2 * QUIET_ZONE_MODULES;
   const symbolWidthMm = modules * MODULE_WIDTH_MM;
   const labelWidthMm = Math.max(
@@ -45,8 +45,7 @@ export function encodeProductLabel(barcode: string | null) {
   );
   if (labelWidthMm > MAX_LABEL_WIDTH_MM) {
     return {
-      error:
-        "This barcode is too wide for the A4 label preset at a scannable bar size. Use a shorter internal identifier or a larger label format. The saved barcode is unchanged.",
+      error: "barcodeErrWide" as const,
     };
   }
   return { data, labelWidthMm, modules, symbolWidthMm };
@@ -57,6 +56,7 @@ export function ProductBarcodeLabels({
 }: {
   product: Pick<CatalogProduct, "name" | "sku" | "barcode">;
 }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   return (
@@ -69,11 +69,11 @@ export function ProductBarcodeLabels({
         ref={trigger}
         type="button"
       >
-        Preview barcode labels
+        {t("barcodePreviewButton")}
       </Button>
       {product.barcode === null ? (
         <p className="mt-2 text-sm text-muted-foreground">
-          No barcode set. Save a barcode to print labels.
+          {t("barcodeNotSet")}
         </p>
       ) : null}
       {open ? (
@@ -96,6 +96,7 @@ function LabelPreview({
   onClose: () => void;
   product: Pick<CatalogProduct, "name" | "sku" | "barcode">;
 }) {
+  const { t } = useLanguage();
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const quantityId = useId();
@@ -128,15 +129,13 @@ function LabelPreview({
       >
         <div className="barcode-label-controls space-y-4">
           <h2 className="text-xl font-semibold" id={titleId}>
-            Barcode label preview
+            {t("barcodePreviewTitle")}
           </h2>
           <p className="text-sm text-muted-foreground">
-            Labels use saved product details. Save edits before printing. Code
-            128, black on white; no price included. Print on A4 at 100% scale,
-            with browser headers and footers disabled.
+            {t("barcodePreviewHelp")}
           </p>
           <Label className="form-field" htmlFor={quantityId}>
-            Label quantity
+            {t("barcodeQuantity")}
             <Input
               aria-describedby={validQuantity ? undefined : quantityErrorId}
               aria-invalid={!validQuantity}
@@ -152,12 +151,12 @@ function LabelPreview({
           </Label>
           {!validQuantity ? (
             <p className="form-message" id={quantityErrorId} role="alert">
-              Enter a whole number from 1 to {MAX_QUANTITY}.
+              {t("barcodeQuantityError").replace("{max}", String(MAX_QUANTITY))}
             </p>
           ) : null}
           {encoding.error ? (
             <p className="form-message" role="alert">
-              {encoding.error}
+              {t(encoding.error)}
             </p>
           ) : null}
           <div className="flex flex-wrap gap-3">
@@ -167,7 +166,7 @@ function LabelPreview({
               onClick={() => window.print()}
               type="button"
             >
-              Print labels
+              {t("barcodePrint")}
             </Button>
             <Button
               variant="outline"
@@ -175,20 +174,19 @@ function LabelPreview({
               onClick={closePreview}
               type="button"
             >
-              Back to catalog
+              {t("barcodeBack")}
             </Button>
           </div>
           {encoding.labelWidthMm ? (
             <p className="text-sm text-muted-foreground">
-              Label: {encoding.labelWidthMm.toFixed(1)} mm wide, at least 50 mm
-              high. Long values widen the label up to 190 mm.
+              {t("barcodeLabelSize").replace(
+                "{width}",
+                encoding.labelWidthMm.toFixed(1),
+              )}
             </p>
           ) : null}
         </div>
-        <div
-          aria-label="Printable barcode labels"
-          className="barcode-label-sheet"
-        >
+        <div aria-label={t("barcodeSheetAria")} className="barcode-label-sheet">
           {encoding.data !== undefined && validQuantity
             ? Array.from({ length: count }, (_, index) => (
                 <article
@@ -198,7 +196,10 @@ function LabelPreview({
                 >
                   <p className="barcode-label-name">{product.name}</p>
                   <svg
-                    aria-label={`Code 128 barcode ${product.barcode}`}
+                    aria-label={t("barcodeSvgAria").replace(
+                      "{barcode}",
+                      product.barcode ?? "",
+                    )}
                     className="product-barcode-symbol"
                     height="20mm"
                     role="img"
@@ -219,7 +220,9 @@ function LabelPreview({
                   </svg>
                   <p className="barcode-label-value">{product.barcode}</p>
                   {product.sku !== product.barcode ? (
-                    <p className="barcode-label-sku">SKU: {product.sku}</p>
+                    <p className="barcode-label-sku">
+                      {t("barcodeSku").replace("{sku}", product.sku)}
+                    </p>
                   ) : null}
                 </article>
               ))

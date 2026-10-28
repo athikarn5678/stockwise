@@ -10,6 +10,7 @@ import { type FormEvent, useState } from "react";
 
 import { completeFirstOrganizationOnboarding } from "@/api-client";
 
+import { useLanguage } from "@/providers/language-provider";
 import { authErrorMessage } from "./auth-form-support";
 
 interface OnboardingFields {
@@ -37,10 +38,11 @@ function requiredFieldsArePresent(fields: OnboardingFields): boolean {
 }
 
 export function OnboardingForm() {
+  const { t } = useLanguage();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [fields, setFields] = useState(initialFields);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   function updateField(field: keyof OnboardingFields, value: string) {
@@ -54,7 +56,7 @@ export function OnboardingForm() {
     }
 
     if (!requiredFieldsArePresent(fields)) {
-      setError("Enter a display name, organization name, and branch name.");
+      setError("required");
       return;
     }
 
@@ -66,14 +68,7 @@ export function OnboardingForm() {
       queryClient.removeQueries({ queryKey: ["access-context"] });
       router.replace("/app");
     } catch (requestError: unknown) {
-      setError(
-        authErrorMessage(requestError, {
-          already_has_organization_access:
-            "This account already has organization access and cannot use first onboarding.",
-          already_onboarded:
-            "This account has already completed first organization setup.",
-        }),
-      );
+      setError(requestError);
     } finally {
       setIsSubmitting(false);
     }
@@ -85,7 +80,7 @@ export function OnboardingForm() {
         autoComplete="name"
         disabled={isSubmitting}
         id="onboarding-display-name"
-        label="Display name"
+        label={t("onboardingDisplayName")}
         maxLength={200}
         onChange={(value) => updateField("displayName", value)}
         required
@@ -95,7 +90,7 @@ export function OnboardingForm() {
         autoComplete="tel"
         disabled={isSubmitting}
         id="onboarding-profile-phone"
-        label="Profile phone (optional)"
+        label={t("onboardingProfilePhone")}
         maxLength={32}
         onChange={(value) => updateField("phone", value)}
         value={fields.phone}
@@ -104,7 +99,7 @@ export function OnboardingForm() {
         autoComplete="organization"
         disabled={isSubmitting}
         id="onboarding-organization-name"
-        label="Organization name"
+        label={t("onboardingOrgName")}
         maxLength={200}
         onChange={(value) => updateField("organizationName", value)}
         required
@@ -114,7 +109,7 @@ export function OnboardingForm() {
         autoComplete="organization"
         disabled={isSubmitting}
         id="onboarding-branch-name"
-        label="First branch name"
+        label={t("onboardingBranchName")}
         maxLength={200}
         onChange={(value) => updateField("branchName", value)}
         required
@@ -124,14 +119,14 @@ export function OnboardingForm() {
         autoComplete="tel"
         disabled={isSubmitting}
         id="onboarding-branch-phone"
-        label="Branch phone (optional)"
+        label={t("onboardingBranchPhone")}
         maxLength={32}
         onChange={(value) => updateField("branchPhone", value)}
         value={fields.branchPhone}
       />
       <div>
         <Label className="form-field" htmlFor="onboarding-address">
-          Branch address (optional)
+          {t("onboardingBranchAddress")}
         </Label>
         <Textarea
           className="mt-1"
@@ -149,11 +144,16 @@ export function OnboardingForm() {
           className="text-sm text-destructive form-message"
           role="alert"
         >
-          {error}
+          {error === "required"
+            ? t("onboardingRequired")
+            : authErrorMessage(error, t, {
+                already_has_organization_access: "onboardingHasAccess",
+                already_onboarded: "onboardingDone",
+              })}
         </p>
       )}
       <Button className="w-full" disabled={isSubmitting} type="submit">
-        {isSubmitting ? "Creating organization…" : "Create organization"}
+        {isSubmitting ? t("onboardingCreating") : t("onboardingCreate")}
       </Button>
     </form>
   );

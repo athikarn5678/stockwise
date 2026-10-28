@@ -1,4 +1,5 @@
 "use client";
+import type { TranslationKey } from "@/i18n/en";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -42,7 +43,9 @@ export function LoginForm() {
   const errorMessage = useRef<HTMLDivElement>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<
+    { key: TranslationKey } | { cause: unknown } | null
+  >(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   useEffect(() => {
     const restore = () => {
@@ -76,13 +79,13 @@ export function LoginForm() {
     }
 
     if (!hasEmailShape(email)) {
-      setError(t("authInvalidEmail"));
+      setError({ key: "authInvalidEmail" });
       return;
     }
 
     const passwordError = passwordValidationMessage(password);
     if (passwordError !== null) {
-      setError(t("authPasswordLength"));
+      setError({ key: "authPasswordLength" });
       return;
     }
 
@@ -111,7 +114,7 @@ export function LoginForm() {
           clearInvitationContinuationForFlow(
             savedInvitation.continuation.flowId,
           );
-          setError(t("invitationRecovery"));
+          setError({ key: "invitationRecovery" });
         }
         setIsSubmitting(false);
         pending.current = false;
@@ -155,7 +158,7 @@ export function LoginForm() {
       });
       router.replace("/verify-email");
     } catch (requestError: unknown) {
-      if (isCurrent()) setError(verificationErrorMessage(requestError, t));
+      if (isCurrent()) setError({ cause: requestError });
       if (
         requestError instanceof AuthApiError &&
         requestError.kind === "unavailable"
@@ -218,7 +221,13 @@ export function LoginForm() {
           ref={errorMessage}
           tabIndex={-1}
         >
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>
+            {error === null
+              ? null
+              : "key" in error
+                ? t(error.key)
+                : verificationErrorMessage(error.cause, t)}
+          </AlertDescription>
         </Alert>
       )}
       <Button className="w-full" disabled={isSubmitting} type="submit">

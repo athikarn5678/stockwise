@@ -1,4 +1,5 @@
 "use client";
+import type { TranslationKey } from "@/i18n/en";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -44,7 +45,7 @@ export function InvitationAcceptanceForm() {
   const [ready, setReady] = useState(false);
   const [guest, setGuest] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<TranslationKey | null>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -84,19 +85,19 @@ export function InvitationAcceptanceForm() {
         ) {
           setGuest(true);
           setReady(false);
-          setError(t("invitationGuestGuidance"));
+          setError("invitationGuestGuidance");
         } else if (
           cause instanceof InvitationContinuationApiError &&
           cause.kind === "unavailable"
         ) {
-          setError(t("invitationRetry"));
+          setError("invitationRetry");
         } else {
           markInvitationRecoveryRequired();
           clearInvitationContinuation();
           flow.current = null;
           lock.current = null;
           setReady(false);
-          setError(t("invitationInvalid"));
+          setError("invitationInvalid");
         }
       }
     };
@@ -116,7 +117,7 @@ export function InvitationAcceptanceForm() {
           ? saved.continuation.flowId
           : null;
       if (!flowId) {
-        setError(token ? t("invitationRecovery") : t("invitationInvalid"));
+        setError(token ? "invitationRecovery" : "invitationInvalid");
         return;
       }
       if (token) clearInvitationContinuation();
@@ -127,7 +128,7 @@ export function InvitationAcceptanceForm() {
         if (token) markInvitationRecoveryRequired();
         else clearInvitationContinuationForFlow(flowId);
         flow.current = null;
-        setError(t("invitationRecovery"));
+        setError("invitationRecovery");
         return;
       }
       lock.current = held;
@@ -156,7 +157,7 @@ export function InvitationAcceptanceForm() {
             clearInvitationContinuation();
             flow.current = null;
             lock.current = null;
-            setError(t("invitationRecovery"));
+            setError("invitationRecovery");
             return;
           }
           if (
@@ -181,14 +182,14 @@ export function InvitationAcceptanceForm() {
           setError(
             cause instanceof InvitationContinuationApiError &&
               cause.kind === "invalid_invitation"
-              ? t("invitationInvalid")
-              : t("invitationRecovery"),
+              ? "invitationInvalid"
+              : "invitationRecovery",
           );
           return;
         }
       } else if (!storeMatches(flowId)) {
         flow.current = null;
-        setError(t("invitationInvalid"));
+        setError("invitationInvalid");
         return;
       }
       await resume(flowId, revision);
@@ -222,7 +223,7 @@ export function InvitationAcceptanceForm() {
         flow.current = null;
         setReady(false);
         setBusy(false);
-        setError(t("invitationRecovery"));
+        setError("invitationRecovery");
         return;
       }
       flow.current = flowId;
@@ -234,7 +235,7 @@ export function InvitationAcceptanceForm() {
         if (!held) {
           clearInvitationContinuationForFlow(flowId);
           flow.current = null;
-          setError(t("invitationRecovery"));
+          setError("invitationRecovery");
           return;
         }
         lock.current = held;
@@ -251,7 +252,7 @@ export function InvitationAcceptanceForm() {
         if (!mounted.current) generation.current++;
       });
     };
-  }, [t]);
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -268,7 +269,7 @@ export function InvitationAcceptanceForm() {
       lock.current?.release();
       lock.current = null;
       setReady(false);
-      setError(t("invitationRecovery"));
+      setError("invitationRecovery");
       return;
     }
     const revision = generation.current;
@@ -309,24 +310,24 @@ export function InvitationAcceptanceForm() {
       ) {
         setReady(false);
         setGuest(true);
-        setError(t("invitationGuestGuidance"));
+        setError("invitationGuestGuidance");
       } else if (
         cause instanceof InvitationContinuationApiError &&
         cause.kind === "unavailable"
       ) {
-        setError(t("invitationRetry"));
+        setError("invitationRetry");
       } else if (
         cause instanceof InvitationContinuationApiError &&
         cause.kind === "invitation_scope_invalid"
       ) {
-        setError(t("invitationScopeInvalid"));
+        setError("invitationScopeInvalid");
       } else {
         markInvitationRecoveryRequired();
         clearInvitationContinuation();
         flow.current = null;
         lock.current = null;
         setReady(false);
-        setError(t("invitationInvalid"));
+        setError("invitationInvalid");
       }
     } finally {
       if (mounted.current && generation.current === revision) setBusy(false);
@@ -370,7 +371,7 @@ export function InvitationAcceptanceForm() {
           className="text-sm text-destructive form-message"
           role="alert"
         >
-          {error}
+          {t(error)}
         </p>
       )}
       {guest ? (

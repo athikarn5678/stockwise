@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
 
+import { LanguageProvider, useLanguage } from "@/providers/language-provider";
+import { en } from "@/i18n/en";
+import { th } from "@/i18n/th";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   cleanup,
@@ -110,13 +113,28 @@ const cancelledOrder = {
   updatedAt: "2026-09-01T00:00:02.000Z",
 };
 
-function renderManagement() {
+function TestLanguageToggle() {
+  const { language, setLanguage } = useLanguage();
+  return (
+    <button onClick={() => setLanguage(language === "en" ? "th" : "en")}>
+      Switch language
+    </button>
+  );
+}
+function renderManagement(localized = false) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   render(
     <QueryClientProvider client={queryClient}>
-      <PurchaseOrderManagement />
+      {localized ? (
+        <LanguageProvider>
+          <TestLanguageToggle />
+          <PurchaseOrderManagement />
+        </LanguageProvider>
+      ) : (
+        <PurchaseOrderManagement />
+      )}
     </QueryClientProvider>,
   );
   return queryClient;
@@ -857,4 +875,23 @@ describe("purchase order management UI", () => {
       screen.getByRole("button", { name: "Confirm receive" }),
     );
   });
+});
+
+it("retranslates draft validation while preserving entered values and avoiding writes", async () => {
+  localStorage.clear();
+  renderManagement(true);
+  const form = await screen.findByRole("form", {
+    name: en.uiCreateDraftPurchaseOrder,
+  });
+  fireEvent.submit(form);
+  expect(await screen.findByText(en.uiChooseAnActiveSupplier)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Switch language" }));
+  expect(screen.getByRole("alert").textContent).toBe(
+    th.uiChooseAnActiveSupplier,
+  );
+  expect(
+    screen.getByRole("form", { name: th.uiCreateDraftPurchaseOrder }),
+  ).toBeTruthy();
+  expect(createPurchaseOrder).not.toHaveBeenCalled();
+  localStorage.clear();
 });

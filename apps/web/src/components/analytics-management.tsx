@@ -1,4 +1,6 @@
 "use client";
+import type { TranslationKey } from "@/i18n/en";
+import { useLanguage } from "@/providers/language-provider";
 import {
   Table,
   TableHeader,
@@ -74,46 +76,57 @@ function money(value: string): string {
   return formatThb(value, true);
 }
 
-function reasonText(reason: string | null): string {
+function reasonText(
+  reason: string | null,
+  t: (key: TranslationKey) => string,
+): string {
   const messages: Record<string, string> = {
-    INCOMPLETE_COST_COVERAGE: "Cost coverage is incomplete",
-    NO_BASELINE: "No comparison baseline",
-    NON_COMPARABLE_PERIOD: "Period cannot be compared",
-    NON_POSITIVE_NET_SALES: "Net sales is not positive",
-    NO_REGISTERED_REFUNDS: "No registered refunds",
-    NO_REGISTERED_SALES: "No registered sales",
-    NO_SALES: "No sales",
+    INCOMPLETE_COST_COVERAGE: t("uiCostCoverageIsIncomplete"),
+    NO_BASELINE: t("uiNoComparisonBaseline"),
+    NON_COMPARABLE_PERIOD: t("uiPeriodCannotBeCompared"),
+    NON_POSITIVE_NET_SALES: t("uiNetSalesIsNotPositive"),
+    NO_REGISTERED_REFUNDS: t("uiNoRegisteredRefunds"),
+    NO_REGISTERED_SALES: t("uiNoRegisteredSales"),
+    NO_SALES: t("uiNoSales"),
   };
-  return reason === null ? "Unavailable" : (messages[reason] ?? "Unavailable");
+  return reason === null
+    ? t("posUnavailable")
+    : (messages[reason] ?? t("posUnavailable"));
 }
 
 function nullable(
   value: { value: string | null; reason: string | null },
   format: "money" | "percent",
+  t: (key: TranslationKey) => string,
 ) {
   return value.value === null
-    ? reasonText(value.reason)
+    ? reasonText(value.reason, t)
     : format === "money"
       ? money(value.value)
       : `${value.value}%`;
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage(
+  error: unknown,
+  t: (key: TranslationKey) => string,
+): string {
   if (!(error instanceof AnalyticsApiError))
-    return "Analytics could not be loaded. Try again.";
+    return t("uiAnalyticsCouldNotBeLoadedTryAgain");
   switch (error.kind) {
     case "authentication_required":
-      return "Sign in again to view analytics.";
+      return t("uiSignInAgainToViewAnalytics");
     case "forbidden":
-      return "Analytics is not available for your current access.";
+      return t("uiAnalyticsIsNotAvailableForYourCurrentAccess");
     case "invalid_cursor":
-      return "This page can no longer be continued. Restart this list.";
+      return t("uiThisPageCanNoLongerBeContinuedRestartThis");
     case "validation":
-      return "Check the period and scope, then try again. Week starts on Monday; month and year ranges must align with calendar boundaries and span at most 366 days.";
+      return t("uiCheckThePeriodAndScopeThenTryAgainWeek");
     case "configuration":
-      return "Analytics reporting time needs configuration. Ask an administrator to check it.";
+      return t(
+        "uiAnalyticsReportingTimeNeedsConfigurationAskAnAdministratorTo",
+      );
     default:
-      return "Analytics could not be loaded. Try again.";
+      return t("uiAnalyticsCouldNotBeLoadedTryAgain");
   }
 }
 
@@ -146,64 +159,81 @@ function DetailMetric({
 }
 
 function SalesMetrics({ bucket }: { bucket: AnalyticsSalesBucket }) {
+  const { t } = useLanguage();
+
   return (
     <>
       <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Net sales" value={money(bucket.netSalesAmount)} />
-        <Metric label="Gross sales" value={money(bucket.grossSalesAmount)} />
-        <Metric label="Refund amount" value={money(bucket.refundAmount)} />
-        <Metric label="Sales" value={bucket.saleCount} />
+        <Metric
+          label={t("marketingNetSales")}
+          value={money(bucket.netSalesAmount)}
+        />
+        <Metric
+          label={t("uiGrossSales")}
+          value={money(bucket.grossSalesAmount)}
+        />
+        <Metric
+          label={t("uiRefundAmount")}
+          value={money(bucket.refundAmount)}
+        />
+        <Metric label={t("marketingSales")} value={bucket.saleCount} />
       </dl>
       <dl className="grid gap-x-8 rounded-lg border bg-card px-4 py-2 text-sm sm:grid-cols-2">
-        <DetailMetric label="Discount" value={money(bucket.discountAmount)} />
         <DetailMetric
-          label="Sales after discount"
+          label={t("receiptDiscount")}
+          value={money(bucket.discountAmount)}
+        />
+        <DetailMetric
+          label={t("uiSalesAfterDiscount")}
           value={money(bucket.salesAfterDiscountAmount)}
         />
-        <DetailMetric label="Refunds" value={bucket.refundCount} />
-        <DetailMetric label="Refunded sales" value={bucket.refundedSaleCount} />
+        <DetailMetric label={t("uiRefunds")} value={bucket.refundCount} />
         <DetailMetric
-          label="Average order value"
-          value={nullable(bucket.averageOrderValue, "money")}
+          label={t("uiRefundedSales")}
+          value={bucket.refundedSaleCount}
         />
         <DetailMetric
-          label="Net sales growth"
-          value={nullable(bucket.netSalesGrowthPercent, "percent")}
+          label={t("uiAverageOrderValue")}
+          value={nullable(bucket.averageOrderValue, "money", t)}
         />
         <DetailMetric
-          label="Output VAT"
+          label={t("uiNetSalesGrowth")}
+          value={nullable(bucket.netSalesGrowthPercent, "percent", t)}
+        />
+        <DetailMetric
+          label={t("uiOutputVAT")}
           value={money(bucket.outputVatAmount)}
         />
         <DetailMetric
-          label="Net output VAT"
+          label={t("uiNetOutputVAT")}
           value={money(bucket.netOutputVatAmount)}
         />
       </dl>
       <details className="rounded-lg border bg-card p-4 text-sm">
         <summary className="cursor-pointer font-medium">
-          Tax and refund detail
+          {t("uiTaxAndRefundDetail")}
         </summary>
         <dl className="mt-3 grid gap-3 sm:grid-cols-2">
           <div>
-            <dt>Registered taxable sales</dt>
+            <dt>{t("uiRegisteredTaxableSales")}</dt>
             <dd className="font-medium">
-              {nullable(bucket.registeredTaxableSalesAmount, "money")}
+              {nullable(bucket.registeredTaxableSalesAmount, "money", t)}
             </dd>
           </div>
           <div>
-            <dt>Refunded registered taxable sales</dt>
+            <dt>{t("uiRefundedRegisteredTaxableSales")}</dt>
             <dd className="font-medium">
-              {nullable(bucket.refundedRegisteredTaxableAmount, "money")}
+              {nullable(bucket.refundedRegisteredTaxableAmount, "money", t)}
             </dd>
           </div>
           <div>
-            <dt>Refunded discount</dt>
+            <dt>{t("uiRefundedDiscount")}</dt>
             <dd className="font-medium">
               {money(bucket.refundedDiscountAmount)}
             </dd>
           </div>
           <div>
-            <dt>Refunded output VAT</dt>
+            <dt>{t("uiRefundedOutputVAT")}</dt>
             <dd className="font-medium">
               {money(bucket.refundedOutputVatAmount)}
             </dd>
@@ -211,50 +241,57 @@ function SalesMetrics({ bucket }: { bucket: AnalyticsSalesBucket }) {
         </dl>
       </details>
       {bucket.cost ? (
-        <section aria-label="Cost and profit" className="space-y-3">
+        <section aria-label={t("uiCostAndProfit")} className="space-y-3">
           <div>
-            <h3 className="font-semibold">Cost and profit</h3>
+            <h3 className="font-semibold">{t("uiCostAndProfit")}</h3>
             <p className="text-sm text-muted-foreground">
-              Cost coverage: {bucket.cost.costCoverage}
+              {t("uiCostCoverage")}{" "}
+              {t(
+                bucket.cost.costCoverage === "complete"
+                  ? "coverageComplete"
+                  : bucket.cost.costCoverage === "partial"
+                    ? "coveragePartial"
+                    : "coverageNone",
+              )}
             </p>
           </div>
           <dl className="grid gap-3 sm:grid-cols-3">
             <Metric
-              label="Net COGS"
-              value={nullable(bucket.cost.netCogsAmount, "money")}
+              label={t("uiNetCOGS")}
+              value={nullable(bucket.cost.netCogsAmount, "money", t)}
             />
             <Metric
-              label="Gross profit"
-              value={nullable(bucket.cost.grossProfitAmount, "money")}
+              label={t("uiGrossProfit")}
+              value={nullable(bucket.cost.grossProfitAmount, "money", t)}
             />
             <Metric
-              label="Gross margin"
-              value={nullable(bucket.cost.grossMarginPercent, "percent")}
+              label={t("uiGrossMargin")}
+              value={nullable(bucket.cost.grossMarginPercent, "percent", t)}
             />
           </dl>
           <details className="rounded-lg border bg-card p-4 text-sm">
             <summary className="cursor-pointer font-medium">
-              Cost detail
+              {t("uiCostDetail")}
             </summary>
             <dl className="mt-3 grid gap-x-8 sm:grid-cols-2">
               <DetailMetric
-                label="Sale COGS"
+                label={t("uiSaleCOGS")}
                 value={money(bucket.cost.saleCogsAmount)}
               />
               <DetailMetric
-                label="Refund COGS reversal"
+                label={t("uiRefundCOGSReversal")}
                 value={money(bucket.cost.refundCogsReversalAmount)}
               />
               <DetailMetric
-                label="Known net COGS"
+                label={t("uiKnownNetCOGS")}
                 value={money(bucket.cost.knownNetCogsAmount)}
               />
               <DetailMetric
-                label="Known cost lines"
+                label={t("uiKnownCostLines")}
                 value={bucket.cost.knownCostLineCount}
               />
               <DetailMetric
-                label="Unknown cost lines"
+                label={t("uiUnknownCostLines")}
                 value={bucket.cost.unknownCostLineCount}
               />
             </dl>
@@ -270,6 +307,8 @@ function NetSalesChart({
 }: {
   buckets: readonly AnalyticsSalesBucket[];
 }) {
+  const { t } = useLanguage();
+
   const chartData = buckets.map((bucket) => ({
     label: bucket.label,
     netSales: Number(bucket.netSalesAmount),
@@ -277,12 +316,12 @@ function NetSalesChart({
   }));
   return (
     <div className="rounded-lg border bg-card p-4">
-      <h2 className="font-semibold">Net sales trend</h2>
+      <h2 className="font-semibold">{t("uiNetSalesTrend")}</h2>
       <p className="mb-4 text-sm text-muted-foreground">
-        THB by reporting period. Exact values are in the table below.
+        {t("uiTHBByReportingPeriodExactValuesAreInThe")}
       </p>
       <div
-        aria-label="Net sales trend chart"
+        aria-label={t("uiNetSalesTrendChart")}
         role="img"
         className="h-64 w-full min-w-0"
       >
@@ -320,7 +359,7 @@ function NetSalesChart({
             <Line
               type="linear"
               dataKey="netSales"
-              name="Net sales"
+              name={t("marketingNetSales")}
               stroke="var(--foreground)"
               strokeWidth={2}
               dot={chartData.length <= 15}
@@ -338,20 +377,24 @@ function SalesSeriesTable({
 }: {
   buckets: readonly AnalyticsSalesBucket[];
 }) {
+  const { t } = useLanguage();
+
   return (
     <div className="overflow-x-auto rounded-lg border bg-card">
       <Table className="w-full min-w-[700px] text-left text-sm">
         <caption className="px-4 py-3 text-left font-semibold">
-          Sales by period
+          {t("uiSalesByPeriod")}
         </caption>
         <TableHeader className="border-y bg-muted text-muted-foreground">
           <TableRow>
-            <TableHead className="px-4 py-2">Period</TableHead>
-            <TableHead className="px-4 py-2">Net sales</TableHead>
-            <TableHead className="px-4 py-2">Gross sales</TableHead>
-            <TableHead className="px-4 py-2">Refunds</TableHead>
-            <TableHead className="px-4 py-2">Sales</TableHead>
-            <TableHead className="px-4 py-2">Status</TableHead>
+            <TableHead className="px-4 py-2">{t("uiPeriod")}</TableHead>
+            <TableHead className="px-4 py-2">
+              {t("marketingNetSales")}
+            </TableHead>
+            <TableHead className="px-4 py-2">{t("uiGrossSales")}</TableHead>
+            <TableHead className="px-4 py-2">{t("uiRefunds")}</TableHead>
+            <TableHead className="px-4 py-2">{t("marketingSales")}</TableHead>
+            <TableHead className="px-4 py-2">{t("commonStatus")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -375,7 +418,13 @@ function SalesSeriesTable({
               <TableCell className="px-4 py-2 tabular-nums">
                 {bucket.saleCount}
               </TableCell>
-              <TableCell className="px-4 py-2">{bucket.dataStatus}</TableCell>
+              <TableCell className="px-4 py-2">
+                {t(
+                  bucket.dataStatus === "complete"
+                    ? "coverageComplete"
+                    : "coveragePartial",
+                )}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -389,18 +438,24 @@ function CategorySeriesTable({
 }: {
   buckets: readonly AnalyticsCategoryBucket[];
 }) {
+  const { t } = useLanguage();
+
   return (
     <div className="overflow-x-auto">
       <Table className="mt-3 w-full min-w-[650px] text-left text-sm">
         <TableHeader className="border-y bg-muted">
           <TableRow>
-            <TableHead className="px-3 py-2">Period</TableHead>
-            <TableHead className="px-3 py-2">Gross sales</TableHead>
-            <TableHead className="px-3 py-2">Discount</TableHead>
-            <TableHead className="px-3 py-2">Sales after discount</TableHead>
-            <TableHead className="px-3 py-2">Refund</TableHead>
-            <TableHead className="px-3 py-2">Net sales</TableHead>
-            <TableHead className="px-3 py-2">Share</TableHead>
+            <TableHead className="px-3 py-2">{t("uiPeriod")}</TableHead>
+            <TableHead className="px-3 py-2">{t("uiGrossSales")}</TableHead>
+            <TableHead className="px-3 py-2">{t("receiptDiscount")}</TableHead>
+            <TableHead className="px-3 py-2">
+              {t("uiSalesAfterDiscount")}
+            </TableHead>
+            <TableHead className="px-3 py-2">{t("uiRefund")}</TableHead>
+            <TableHead className="px-3 py-2">
+              {t("marketingNetSales")}
+            </TableHead>
+            <TableHead className="px-3 py-2">{t("uiShare")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -426,7 +481,7 @@ function CategorySeriesTable({
                 {money(bucket.netSalesAmount)}
               </TableCell>
               <TableCell className="px-3 py-2">
-                {nullable(bucket.categorySharePercent, "percent")}
+                {nullable(bucket.categorySharePercent, "percent", t)}
               </TableCell>
             </TableRow>
           ))}
@@ -437,14 +492,16 @@ function CategorySeriesTable({
 }
 
 function PageFrame({ children }: { children: React.ReactNode }) {
+  const { t } = useLanguage();
+
   return (
     <section className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 sm:px-6">
       <div>
         <p className="text-sm font-medium text-muted-foreground">
-          StockWise / Reporting
+          {t("uiStockWiseReporting")}
         </p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">
-          Analytics
+          {t("marketingAnalytics")}
         </h1>
       </div>
       {children}
@@ -453,6 +510,8 @@ function PageFrame({ children }: { children: React.ReactNode }) {
 }
 
 export function AnalyticsManagement() {
+  const { t } = useLanguage();
+
   const searchParams = useSearchParams();
   const contextQuery = useQuery({
     queryKey: ["access-context"],
@@ -468,23 +527,23 @@ export function AnalyticsManagement() {
   if (contextQuery.isPending)
     return (
       <PageFrame>
-        <p aria-live="polite">Loading access…</p>
+        <p aria-live="polite">{t("loadingAccess")}</p>
       </PageFrame>
     );
   if (contextQuery.isError)
     return (
       <PageFrame>
         <p className="form-message" role="alert">
-          Your access context could not be loaded.
+          {t("accessError")}
         </p>
       </PageFrame>
     );
   if (!resolved?.organization)
     return (
       <PageFrame>
-        <p>Choose an active organization before viewing analytics.</p>
+        <p>{t("uiChooseAnActiveOrganizationBeforeViewingAnalytics")}</p>
         <Link href="/app" className="underline">
-          Return to workspace
+          {t("uiReturnToWorkspace")}
         </Link>
       </PageFrame>
     );
@@ -492,10 +551,10 @@ export function AnalyticsManagement() {
     return (
       <PageFrame>
         <p className="form-message" role="alert">
-          Analytics is not available for your current access.
+          {t("uiAnalyticsIsNotAvailableForYourCurrentAccess")}
         </p>
         <Link href="/app" className="underline">
-          Return to workspace
+          {t("uiReturnToWorkspace")}
         </Link>
       </PageFrame>
     );
@@ -515,6 +574,8 @@ function AnalyticsContent({
   organization: AccessibleOrganization;
   selectedBranchId: string | null;
 }) {
+  const { t } = useLanguage();
+
   const [draftPeriod, setDraftPeriod] =
     useState<AnalyticsPeriod>(initialPeriod);
   const [period, setPeriod] = useState<AnalyticsPeriod>(draftPeriod);
@@ -589,7 +650,7 @@ function AnalyticsContent({
   return (
     <PageFrame>
       <p className="text-sm text-muted-foreground">
-        Analytics for {organization.name}.
+        {t("uiAnalyticsFor")} {organization.name}.
       </p>
       <form
         hidden={view === "forecast-reorder" || view === "insights"}
@@ -602,7 +663,7 @@ function AnalyticsContent({
       >
         <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-[12rem_12rem_10rem_minmax(0,1fr)]">
           <Label className="form-field">
-            From (inclusive)
+            {t("uiFromInclusive")}
             <DateInput
               required
               value={draftPeriod.from}
@@ -613,7 +674,7 @@ function AnalyticsContent({
             />
           </Label>
           <Label className="form-field">
-            To (exclusive)
+            {t("uiToExclusive")}
             <DateInput
               required
               value={draftPeriod.to}
@@ -624,7 +685,7 @@ function AnalyticsContent({
             />
           </Label>
           <Label className="form-field">
-            Granularity
+            {t("uiGranularity")}
             <NativeSelect
               value={draftPeriod.granularity}
               onChange={(event) =>
@@ -636,16 +697,22 @@ function AnalyticsContent({
               }
               className="w-full "
             >
-              <NativeSelectOption value="day">Day</NativeSelectOption>
-              <NativeSelectOption value="week">Week</NativeSelectOption>
-              <NativeSelectOption value="month">Month</NativeSelectOption>
-              <NativeSelectOption value="year">Year</NativeSelectOption>
+              <NativeSelectOption value="day">{t("uiDay")}</NativeSelectOption>
+              <NativeSelectOption value="week">
+                {t("uiWeek")}
+              </NativeSelectOption>
+              <NativeSelectOption value="month">
+                {t("uiMonth")}
+              </NativeSelectOption>
+              <NativeSelectOption value="year">
+                {t("uiYear")}
+              </NativeSelectOption>
             </NativeSelect>
           </Label>
           <Label className="form-field">
-            Scope
+            {t("uiScope")}
             <NativeSelect
-              aria-label="Analytics scope"
+              aria-label={t("uiAnalyticsScope")}
               value={
                 effectiveScope.scope === "organization"
                   ? "organization"
@@ -656,7 +723,7 @@ function AnalyticsContent({
             >
               {isWideRole ? (
                 <NativeSelectOption value="organization">
-                  All organization branches
+                  {t("aiAllBranches")}
                 </NativeSelectOption>
               ) : null}
               {allowedBranches.map((branch) => (
@@ -669,15 +736,14 @@ function AnalyticsContent({
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <Button className="" type="submit">
-            Apply period
+            {t("uiApplyPeriod")}
           </Button>
           <p className="text-xs text-muted-foreground">
-            Dates use the organization reporting timezone. Weeks begin Monday.
-            Maximum span: 366 local dates.
+            {t("uiDatesUseTheOrganizationReportingTimezoneWeeksBeginMonday")}
           </p>
         </div>
       </form>
-      <nav aria-label="Analytics views" className="flex flex-wrap gap-2">
+      <nav aria-label={t("uiAnalyticsViews")} className="flex flex-wrap gap-2">
         {(organization.role === "INVENTORY_STAFF"
           ? (["inventory", "forecast-reorder"] as const)
           : ([
@@ -697,16 +763,16 @@ function AnalyticsContent({
             variant={view === item ? "secondary" : "outline"}
           >
             {item === "sales"
-              ? "Sales"
+              ? t("marketingSales")
               : item === "categories"
-                ? "Categories"
+                ? t("uiCategories")
                 : item === "branches"
-                  ? "Branches"
+                  ? t("branchTitle")
                   : item === "inventory"
-                    ? "Inventory"
+                    ? t("inventoryTitle")
                     : item === "insights"
-                      ? "AI insights"
-                      : "Forecast / Reorder"}
+                      ? t("aiTitle")
+                      : t("uiForecastReorder")}
           </Button>
         ))}
       </nav>
@@ -726,27 +792,34 @@ function AnalyticsContent({
         />
       ) : !enabled ? (
         <p className="form-message" role="alert">
-          Choose an accessible branch and a valid date range.
+          {t("uiChooseAnAccessibleBranchAndAValidDateRange")}
         </p>
       ) : salesQuery.isPending ? (
-        <p aria-live="polite">Loading sales analytics…</p>
+        <p aria-live="polite">{t("uiLoadingSalesAnalytics")}</p>
       ) : salesQuery.isError ? (
         <p className="form-message" role="alert">
-          {errorMessage(salesQuery.error)}
+          {errorMessage(salesQuery.error, t)}
         </p>
       ) : (
         <>
           <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
             <p>
-              Reporting timezone: {salesQuery.data.meta.reportingTimezone} ·{" "}
-              {salesQuery.data.meta.dataStatus} ·{" "}
-              {salesQuery.data.meta.includedBranchCount} branches
+              {t("uiReportingTimezone")}{" "}
+              {salesQuery.data.meta.reportingTimezone} ·{" "}
+              {t(
+                salesQuery.data.meta.dataStatus === "complete"
+                  ? "coverageComplete"
+                  : "coveragePartial",
+              )}{" "}
+              · {salesQuery.data.meta.includedBranchCount} {t("uiBranches")}
             </p>
-            <p>Data as of {salesQuery.data.meta.sourceCutoff}</p>
+            <p>
+              {t("uiDataAsOf")} {salesQuery.data.meta.sourceCutoff}
+            </p>
           </div>
           {buckets.length > 0 ? (
             <Label className="form-field max-w-xs">
-              Selected period
+              {t("uiSelectedPeriod")}
               <NativeSelect
                 value={activeBucket?.localStartInclusive ?? ""}
                 onChange={(event) => setSelectedBucket(event.target.value)}
@@ -764,9 +837,9 @@ function AnalyticsContent({
             </Label>
           ) : null}
           {view === "sales" ? (
-            <section className="space-y-5" aria-label="Sales analytics">
+            <section className="space-y-5" aria-label={t("uiSalesAnalytics")}>
               {buckets.length === 0 ? (
-                <p>No sales periods were returned.</p>
+                <p>{t("uiNoSalesPeriodsWereReturned")}</p>
               ) : (
                 <>
                   {activeBucket && <SalesMetrics bucket={activeBucket} />}
@@ -775,7 +848,7 @@ function AnalyticsContent({
                       bucket.saleCount === 0 && bucket.refundCount === 0,
                   ) ? (
                     <p className="rounded-lg border bg-card p-4 text-sm">
-                      No sales or refunds in this period.
+                      {t("uiNoSalesOrRefundsInThisPeriod")}
                     </p>
                   ) : null}
                   <NetSalesChart buckets={buckets} />
@@ -785,13 +858,16 @@ function AnalyticsContent({
             </section>
           ) : null}
           {view === "categories" ? (
-            <section className="space-y-4" aria-label="Category analytics">
-              <h2 className="text-xl font-semibold">Categories</h2>
+            <section
+              className="space-y-4"
+              aria-label={t("uiCategoryAnalytics")}
+            >
+              <h2 className="text-xl font-semibold">{t("uiCategories")}</h2>
               {categoryQuery.isPending ? (
-                <p aria-live="polite">Loading categories…</p>
+                <p aria-live="polite">{t("uiLoadingCategories")}</p>
               ) : categoryQuery.isError ? (
                 <div role="alert">
-                  <p>{errorMessage(categoryQuery.error)}</p>
+                  <p>{errorMessage(categoryQuery.error, t)}</p>
                   {categoryQuery.error instanceof AnalyticsApiError &&
                   categoryQuery.error.kind === "invalid_cursor" ? (
                     <Button
@@ -800,7 +876,7 @@ function AnalyticsContent({
                       onClick={() => setCategoryReset((value) => value + 1)}
                       className="underline"
                     >
-                      Restart category list
+                      {t("uiRestartCategoryList")}
                     </Button>
                   ) : null}
                 </div>
@@ -809,7 +885,7 @@ function AnalyticsContent({
                   {categoryQuery.data.pages.flatMap(
                     (page) => page.data.categories,
                   ).length === 0 ? (
-                    <p>No categories in this scope.</p>
+                    <p>{t("uiNoCategoriesInThisScope")}</p>
                   ) : (
                     <div className="space-y-3">
                       {categoryQuery.data.pages
@@ -824,18 +900,30 @@ function AnalyticsContent({
                               <summary className="cursor-pointer">
                                 <span className="font-medium break-words">
                                   {category.categoryKind === "UNCATEGORIZED"
-                                    ? "Uncategorized"
+                                    ? t("uiUncategorized")
                                     : category.categoryName}
                                 </span>
                                 {category.categoryStatus === "INACTIVE" ? (
                                   <span className="ml-2 rounded bg-muted px-2 py-1 text-xs">
-                                    Inactive
+                                    {t("commonInactive")}
                                   </span>
                                 ) : null}
                                 <span className="ml-3 text-sm text-muted-foreground">
                                   {bucket
-                                    ? `${money(bucket.netSalesAmount)} net sales · ${nullable(bucket.categorySharePercent, "percent")} share`
-                                    : "No period data"}
+                                    ? t("uiCategorySalesSummary")
+                                        .replace(
+                                          "{amount}",
+                                          money(bucket.netSalesAmount),
+                                        )
+                                        .replace(
+                                          "{share}",
+                                          nullable(
+                                            bucket.categorySharePercent,
+                                            "percent",
+                                            t,
+                                          ),
+                                        )
+                                    : t("uiNoPeriodData")}
                                 </span>
                               </summary>
                               <CategorySeriesTable buckets={category.buckets} />
@@ -853,8 +941,8 @@ function AnalyticsContent({
                       className="bg-card"
                     >
                       {categoryQuery.isFetchingNextPage
-                        ? "Loading next page…"
-                        : "Load more categories"}
+                        ? t("uiLoadingNextPage")
+                        : t("uiLoadMoreCategories")}
                     </Button>
                   ) : null}
                 </>
@@ -862,13 +950,13 @@ function AnalyticsContent({
             </section>
           ) : null}
           {view === "branches" ? (
-            <section className="space-y-4" aria-label="Branch analytics">
-              <h2 className="text-xl font-semibold">Branches</h2>
+            <section className="space-y-4" aria-label={t("uiBranchAnalytics")}>
+              <h2 className="text-xl font-semibold">{t("branchTitle")}</h2>
               {branchQuery.isPending ? (
-                <p aria-live="polite">Loading branches…</p>
+                <p aria-live="polite">{t("branchLoading")}</p>
               ) : branchQuery.isError ? (
                 <div role="alert">
-                  <p>{errorMessage(branchQuery.error)}</p>
+                  <p>{errorMessage(branchQuery.error, t)}</p>
                   {branchQuery.error instanceof AnalyticsApiError &&
                   branchQuery.error.kind === "invalid_cursor" ? (
                     <Button
@@ -877,7 +965,7 @@ function AnalyticsContent({
                       onClick={() => setBranchReset((value) => value + 1)}
                       className="underline"
                     >
-                      Restart branch list
+                      {t("uiRestartBranchList")}
                     </Button>
                   ) : null}
                 </div>
@@ -885,7 +973,7 @@ function AnalyticsContent({
                 <>
                   {branchQuery.data.pages.flatMap((page) => page.data.branches)
                     .length === 0 ? (
-                    <p>No branches in this scope.</p>
+                    <p>{t("uiNoBranchesInThisScope")}</p>
                   ) : (
                     <div className="space-y-3">
                       {branchQuery.data.pages
@@ -903,13 +991,21 @@ function AnalyticsContent({
                                 </span>
                                 {branch.branchStatus === "INACTIVE" ? (
                                   <span className="ml-2 rounded bg-muted px-2 py-1 text-xs">
-                                    Inactive
+                                    {t("commonInactive")}
                                   </span>
                                 ) : null}
                                 <span className="ml-3 text-sm text-muted-foreground">
                                   {bucket
-                                    ? `${money(bucket.netSalesAmount)} net sales · ${bucket.saleCount} sales`
-                                    : "No period data"}
+                                    ? t("uiBranchSalesSummary")
+                                        .replace(
+                                          "{amount}",
+                                          money(bucket.netSalesAmount),
+                                        )
+                                        .replace(
+                                          "{count}",
+                                          String(bucket.saleCount),
+                                        )
+                                    : t("uiNoPeriodData")}
                                 </span>
                               </summary>
                               <div className="mt-4 space-y-4">
@@ -932,8 +1028,8 @@ function AnalyticsContent({
                       className="bg-card"
                     >
                       {branchQuery.isFetchingNextPage
-                        ? "Loading next page…"
-                        : "Load more branches"}
+                        ? t("uiLoadingNextPage")
+                        : t("uiLoadMoreBranches")}
                     </Button>
                   ) : null}
                 </>

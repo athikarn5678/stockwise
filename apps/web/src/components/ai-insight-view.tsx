@@ -8,6 +8,8 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
+import type { TranslationKey } from "@/i18n/en";
+import { useLanguage } from "@/providers/language-provider";
 
 import {
   getLatestInsight,
@@ -20,28 +22,33 @@ import {
   type AccessibleOrganization,
 } from "@/branch-api-client";
 
-function period(report: {
-  periodStartInclusive: string;
-  periodEndExclusive: string;
-  reportingTimezone: string;
-}) {
-  const format = new Intl.DateTimeFormat("en", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: report.reportingTimezone,
-  });
+function period(
+  report: {
+    periodStartInclusive: string;
+    periodEndExclusive: string;
+    reportingTimezone: string;
+  },
+  language: "en" | "th",
+) {
+  const format = new Intl.DateTimeFormat(
+    language === "th" ? "th-TH-u-ca-gregory" : "en",
+    {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: report.reportingTimezone,
+    },
+  );
   return `${format.format(new Date(report.periodStartInclusive))}–${format.format(new Date(Date.parse(report.periodEndExclusive) - 1))}`;
 }
 
-function errorMessage(error: unknown) {
+function errorMessage(error: unknown, t: (key: TranslationKey) => string) {
   if (error instanceof InsightApiError) {
-    if (error.status === 401) return "Sign in again to view AI insights.";
-    if (error.status === 403 || error.status === 404)
-      return "AI insights are not available for your current access.";
-    if (error.status === 400) return "This insight selection is invalid.";
+    if (error.status === 401) return t("aiErr401");
+    if (error.status === 403 || error.status === 404) return t("aiErrAccess");
+    if (error.status === 400) return t("aiErrInvalid");
   }
-  return "AI insights could not be loaded. Try again later.";
+  return t("aiErrLoad");
 }
 
 export function AiInsightView({
@@ -51,6 +58,7 @@ export function AiInsightView({
   organization: AccessibleOrganization;
   selectedBranchId: string | null;
 }) {
+  const { t, language } = useLanguage();
   const wide = organization.role === "OWNER" || organization.role === "ADMIN";
   const [scopeValue, setScopeValue] = useState(
     wide
@@ -88,22 +96,22 @@ export function AiInsightView({
   const success = insightQuery.data?.lastSuccess;
 
   return (
-    <section aria-label="AI insights" className="space-y-5">
+    <section aria-label={t("aiTitle")} className="space-y-5">
       <div className="rounded-lg border bg-card p-4 sm:p-5">
-        <h2 className="text-xl font-semibold">AI insights</h2>
+        <h2 className="text-xl font-semibold">{t("aiTitle")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          AI generated summaries of persisted data. Check the deterministic{" "}
+          {t("aiIntroBefore")}{" "}
           <Link
             className="underline"
             href={`/app/analytics?organizationId=${organization.id}&branchId=${selectedBranchId ?? ""}`}
           >
-            analytics views
+            {t("aiIntroLink")}
           </Link>{" "}
-          for numerical results.
+          {t("aiIntroAfter")}
         </p>
         <div className="mt-4 grid max-w-4xl gap-4 sm:grid-cols-2">
           <Label className="form-field">
-            Insight scope
+            {t("aiScope")}
             <NativeSelect
               className="w-full "
               onChange={(event) => setScopeValue(event.target.value)}
@@ -113,21 +121,21 @@ export function AiInsightView({
             >
               {wide ? (
                 <NativeSelectOption value="organization">
-                  All organization branches
+                  {t("aiAllBranches")}
                 </NativeSelectOption>
               ) : null}
               {branches.map((item) => (
                 <NativeSelectOption key={item.id} value={item.id}>
                   {item.code} — {item.name}
                   {"status" in item && item.status === "INACTIVE"
-                    ? " (inactive)"
+                    ? t("aiInactiveSuffix")
                     : ""}
                 </NativeSelectOption>
               ))}
             </NativeSelect>
           </Label>
           <Label className="form-field">
-            Insight cadence
+            {t("aiCadence")}
             <NativeSelect
               className="w-full "
               onChange={(event) =>
@@ -135,76 +143,89 @@ export function AiInsightView({
               }
               value={cadence}
             >
-              <NativeSelectOption value="DAILY">Daily</NativeSelectOption>
-              <NativeSelectOption value="WEEKLY">Weekly</NativeSelectOption>
-              <NativeSelectOption value="MONTHLY">Monthly</NativeSelectOption>
-              <NativeSelectOption value="YEARLY">Yearly</NativeSelectOption>
+              <NativeSelectOption value="DAILY">
+                {t("cadenceDaily")}
+              </NativeSelectOption>
+              <NativeSelectOption value="WEEKLY">
+                {t("cadenceWeekly")}
+              </NativeSelectOption>
+              <NativeSelectOption value="MONTHLY">
+                {t("cadenceMonthly")}
+              </NativeSelectOption>
+              <NativeSelectOption value="YEARLY">
+                {t("cadenceYearly")}
+              </NativeSelectOption>
             </NativeSelect>
           </Label>
         </div>
         {wide && branchesQuery.isPending ? (
           <p className="mt-2 text-sm" aria-live="polite">
-            Loading historical branch choices…
+            {t("aiLoadingBranches")}
           </p>
         ) : null}
         {wide && branchesQuery.isError ? (
           <p className="mt-2 text-sm form-message" role="alert">
-            Historical branch choices could not be loaded.
+            {t("aiBranchesError")}
           </p>
         ) : null}
       </div>
 
       {!enabled ? (
-        <p>Choose an accessible branch to view insights.</p>
+        <p>{t("aiChooseBranch")}</p>
       ) : insightQuery.isPending ? (
-        <p aria-live="polite">Loading persisted insight…</p>
+        <p aria-live="polite">{t("aiLoadingInsight")}</p>
       ) : insightQuery.isError ? (
         <p className="form-message" role="alert">
-          {errorMessage(insightQuery.error)}
+          {errorMessage(insightQuery.error, t)}
         </p>
       ) : !latest ? (
-        <p className="rounded-lg border bg-card p-4">
-          No persisted insight yet for this scope and cadence.
-        </p>
+        <p className="rounded-lg border bg-card p-4">{t("aiNone")}</p>
       ) : (
         <>
           <div className="rounded-lg border bg-card p-4" role="status">
             <p className="font-medium">
               {latest.state === "SUCCEEDED"
-                ? "Latest report succeeded"
+                ? t("aiStateSucceeded")
                 : latest.state === "FAILED"
-                  ? "Latest scheduled report failed"
+                  ? t("aiStateFailed")
                   : latest.state === "INSUFFICIENT"
-                    ? "Latest period had insufficient data for a report"
-                    : "Latest report is being prepared"}
+                    ? t("aiStateInsufficient")
+                    : t("aiStatePreparing")}
             </p>
-            <p className="mt-1 text-sm">Latest period: {period(latest)}</p>
+            <p className="mt-1 text-sm">
+              {t("aiLatestPeriod").replace(
+                "{period}",
+                period(latest, language),
+              )}
+            </p>
             {insightQuery.data.stale && success ? (
-              <p className="mt-1 text-sm">
-                The newest persisted outcome has no report content. Showing the
-                previous successful report below.
-              </p>
+              <p className="mt-1 text-sm">{t("aiStale")}</p>
             ) : null}
             {!success ? (
-              <p className="mt-1 text-sm">
-                No successful report is available yet.
-              </p>
+              <p className="mt-1 text-sm">{t("aiNoSuccess")}</p>
             ) : null}
           </div>
           {success?.content ? (
             <article className="rounded-lg border bg-card p-4 sm:p-5">
-              <h3 className="text-lg font-semibold">Successful AI summary</h3>
+              <h3 className="text-lg font-semibold">{t("aiSuccessTitle")}</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Report period: {period(success)} · {success.reportingTimezone}
+                {t("aiReportPeriod").replace(
+                  "{period}",
+                  period(success, language),
+                )}{" "}
+                · {success.reportingTimezone}
               </p>
               {success.completedAt ? (
                 <p className="text-sm text-muted-foreground">
-                  Completed{" "}
-                  {new Intl.DateTimeFormat("en", {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                    timeZone: success.reportingTimezone,
-                  }).format(new Date(success.completedAt))}
+                  {t("aiCompleted")}{" "}
+                  {new Intl.DateTimeFormat(
+                    language === "th" ? "th-TH-u-ca-gregory" : "en",
+                    {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                      timeZone: success.reportingTimezone,
+                    },
+                  ).format(new Date(success.completedAt))}
                 </p>
               ) : null}
               <p className="mt-4 whitespace-pre-wrap break-words">

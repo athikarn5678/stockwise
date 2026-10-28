@@ -1,4 +1,6 @@
 "use client";
+import type { TranslationKey } from "@/i18n/en";
+import { useLanguage } from "@/providers/language-provider";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -21,22 +23,36 @@ import {
 
 import { formatMoney } from "@/money-display";
 
-const reasons: Record<string, string> = {
-  INCOMPLETE_PERIOD: "The selected period is not complete",
-  INSUFFICIENT_DATA: "Fewer than 28 complete days of inventory history",
-  NO_RECENT_DEMAND: "No sales depletion in the recent 28 complete days",
-  NO_STOCK_AND_NO_DEMAND: "No stock and no recent sales depletion",
-  INVENTORY_INTEGRITY_ERROR: "Inventory balance or cost state needs review",
-  INACTIVE_PRODUCT: "Product is inactive",
-  INCOMPLETE_COST_COVERAGE: "Some stocked products have unknown cost",
+const CLASSIFICATION_LABELS: Record<
+  "LOW_STOCK" | "NORMAL" | "OVERSTOCK",
+  TranslationKey
+> = {
+  LOW_STOCK: "classificationLow",
+  NORMAL: "classificationNormal",
+  OVERSTOCK: "classificationOver",
 };
+
+function reasonLabels(
+  t: (key: TranslationKey) => string,
+): Record<string, string> {
+  return {
+    INCOMPLETE_PERIOD: t("uiTheSelectedPeriodIsNotComplete"),
+    INSUFFICIENT_DATA: t("uiFewerThan28CompleteDaysOfInventoryHistory"),
+    NO_RECENT_DEMAND: t("uiNoSalesDepletionInTheRecent28CompleteDays"),
+    NO_STOCK_AND_NO_DEMAND: t("uiNoStockAndNoRecentSalesDepletion"),
+    INVENTORY_INTEGRITY_ERROR: t("uiInventoryBalanceOrCostStateNeedsReview"),
+    INACTIVE_PRODUCT: t("uiProductIsInactive"),
+    INCOMPLETE_COST_COVERAGE: t("uiSomeStockedProductsHaveUnknownCost"),
+  };
+}
 
 function metric(
   metric: { value: string | null; reason: string | null },
   unit = "",
+  t: (key: TranslationKey) => string,
 ) {
   return metric.value === null
-    ? (reasons[metric.reason ?? ""] ?? "Unavailable")
+    ? (reasonLabels(t)[metric.reason ?? ""] ?? t("posUnavailable"))
     : `${metric.value}${unit}`;
 }
 
@@ -44,55 +60,56 @@ function costDetail(
   cost: NonNullable<
     AnalyticsInventoryResponse["data"]["branches"][number]["cost"]
   >,
+  t: (key: TranslationKey) => string,
 ) {
   return (
     <dl className="grid gap-2 text-sm sm:grid-cols-2">
       <div>
-        <dt>Current inventory value</dt>
+        <dt>{t("uiCurrentInventoryValue")}</dt>
         <dd>
           {cost.inventoryValue.value === null
-            ? metric(cost.inventoryValue)
+            ? metric(cost.inventoryValue, undefined, t)
             : `${formatMoney(cost.inventoryValue.value)} THB`}
         </dd>
       </div>
       <div>
-        <dt>Known inventory value</dt>
+        <dt>{t("uiKnownInventoryValue")}</dt>
         <dd>{formatMoney(cost.knownInventoryValue)} THB</dd>
       </div>
       <div>
-        <dt>Products with known cost</dt>
+        <dt>{t("uiProductsWithKnownCost")}</dt>
         <dd>{cost.knownCostProductCount}</dd>
       </div>
       <div>
-        <dt>Products with unknown cost</dt>
+        <dt>{t("uiProductsWithUnknownCost")}</dt>
         <dd>{cost.unknownCostProductCount}</dd>
       </div>
       <div>
-        <dt>Unknown cost quantity by unit</dt>
+        <dt>{t("uiUnknownCostQuantityByUnit")}</dt>
         <dd>
           {Object.entries(cost.unknownQuantityByUnit)
             .map(([unit, quantity]) => `${quantity} ${unit}`)
-            .join(", ") || "None"}
+            .join(", ") || t("uiNone")}
         </dd>
       </div>
     </dl>
   );
 }
 
-function errorText(error: unknown) {
+function errorText(error: unknown, t: (key: TranslationKey) => string) {
   if (error instanceof AnalyticsApiError) {
     if (error.kind === "invalid_cursor")
-      return "The inventory page can no longer be continued. Restart the list.";
+      return t("uiTheInventoryPageCanNoLongerBeContinuedRestart");
     if (error.kind === "forbidden")
-      return "Inventory analytics is not available for your current access.";
+      return t("uiInventoryAnalyticsIsNotAvailableForYourCurrentAccess");
     if (error.kind === "validation")
-      return "Check the period and scope, then try again.";
+      return t("uiCheckThePeriodAndScopeThenTryAgain");
     if (error.kind === "authentication_required")
-      return "Sign in again to view inventory analytics.";
+      return t("uiSignInAgainToViewInventoryAnalytics");
     if (error.kind === "configuration")
-      return "Analytics reporting time needs configuration.";
+      return t("uiAnalyticsReportingTimeNeedsConfiguration");
   }
-  return "Inventory analytics could not be loaded. Try again.";
+  return t("uiInventoryAnalyticsCouldNotBeLoadedTryAgain");
 }
 
 export function InventoryAnalyticsView({
@@ -104,6 +121,8 @@ export function InventoryAnalyticsView({
   enabled: boolean;
   role: string;
 }) {
+  const { t } = useLanguage();
+
   const [reset, setReset] = useState(0);
   const query = useInfiniteQuery({
     queryKey: [
@@ -126,14 +145,14 @@ export function InventoryAnalyticsView({
   });
   if (!enabled)
     return (
-      <p role="alert">Choose an accessible branch and a valid date range.</p>
+      <p role="alert">{t("uiChooseAnAccessibleBranchAndAValidDateRange")}</p>
     );
   if (query.isPending)
-    return <p aria-live="polite">Loading inventory analytics…</p>;
+    return <p aria-live="polite">{t("uiLoadingInventoryAnalytics")}</p>;
   if (query.isError)
     return (
       <div role="alert">
-        <p>{errorText(query.error)}</p>
+        <p>{errorText(query.error, t)}</p>
         {query.error instanceof AnalyticsApiError &&
         query.error.kind === "invalid_cursor" ? (
           <Button
@@ -142,7 +161,7 @@ export function InventoryAnalyticsView({
             className="underline"
             onClick={() => setReset((value) => value + 1)}
           >
-            Restart inventory list
+            {t("uiRestartInventoryList")}
           </Button>
         ) : null}
       </div>
@@ -165,22 +184,33 @@ export function InventoryAnalyticsView({
       ),
     );
   return (
-    <section aria-label="Inventory analytics" className="space-y-5">
-      <h2 className="text-xl font-semibold">Inventory</h2>
+    <section aria-label={t("uiInventoryAnalytics")} className="space-y-5">
+      <h2 className="text-xl font-semibold">{t("inventoryTitle")}</h2>
       <p className="text-sm text-muted-foreground">
-        Reporting timezone: {latest.meta.reportingTimezone} ·{" "}
-        {latest.meta.dataStatus} · {latest.meta.includedBranchCount} branches
+        {t("uiReportingTimezone")} {latest.meta.reportingTimezone} ·{" "}
+        {t(
+          latest.meta.dataStatus === "complete"
+            ? "coverageComplete"
+            : "coveragePartial",
+        )}{" "}
+        · {latest.meta.includedBranchCount} {t("uiBranches")}
         <br />
-        Movement facts through {latest.meta.sourceCutoff}; current stock is
-        captured separately for each page.
+        {t("uiMovementFactsThrough")} {latest.meta.sourceCutoff}
+        {t("uiCurrentStockIsCapturedSeparatelyForEachPage")}
       </p>
-      <section aria-label="Current branch availability" className="space-y-3">
-        <h3 className="text-lg font-semibold">Current branch availability</h3>
+      <section
+        aria-label={t("uiCurrentBranchAvailability")}
+        className="space-y-3"
+      >
+        <h3 className="text-lg font-semibold">
+          {t("uiCurrentBranchAvailability")}
+        </h3>
         <p className="text-xs text-muted-foreground">
-          Current snapshot captured {latest.meta.currentSnapshotCapturedAt}
+          {t("uiCurrentSnapshotCaptured")}{" "}
+          {latest.meta.currentSnapshotCapturedAt}
         </p>
         {latest.data.branches.length === 0 ? (
-          <p>No branches in this scope.</p>
+          <p>{t("uiNoBranchesInThisScope")}</p>
         ) : (
           latest.data.branches.map((branch) => (
             <div
@@ -189,44 +219,49 @@ export function InventoryAnalyticsView({
             >
               <h4 className="font-medium">
                 {branch.branchName}
-                {branch.branchStatus === "INACTIVE" ? " (inactive)" : ""}
+                {branch.branchStatus === "INACTIVE"
+                  ? t("uiInactiveSuffix")
+                  : ""}
               </h4>
               <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-3">
                 <div>
-                  <dt>Active products</dt>
+                  <dt>{t("inventoryActiveProducts")}</dt>
                   <dd>{branch.activeProductCount}</dd>
                 </div>
                 <div>
-                  <dt>In stock</dt>
+                  <dt>{t("uiInStock")}</dt>
                   <dd>{branch.inStockProductCount}</dd>
                 </div>
                 <div>
-                  <dt>Out of stock</dt>
+                  <dt>{t("uiOutOfStock")}</dt>
                   <dd>{branch.outOfStockProductCount}</dd>
                 </div>
               </dl>
               {branch.cost ? (
                 <div className="mt-3 border-t pt-3">
-                  {costDetail(branch.cost)}
+                  {costDetail(branch.cost, t)}
                 </div>
               ) : (
                 <p className="mt-3 text-sm text-muted-foreground">
-                  Cost and value require additional access.
+                  {t("uiCostAndValueRequireAdditionalAccess")}
                 </p>
               )}
             </div>
           ))
         )}
       </section>
-      <section aria-label="Product movement and coverage" className="space-y-3">
-        <h3 className="text-lg font-semibold">Product movement and coverage</h3>
+      <section
+        aria-label={t("uiProductMovementAndCoverage")}
+        className="space-y-3"
+      >
+        <h3 className="text-lg font-semibold">
+          {t("uiProductMovementAndCoverage")}
+        </h3>
         {dimensions.length === 0 ? (
-          <p>No product dimensions in this scope.</p>
+          <p>{t("uiNoProductDimensionsInThisScope")}</p>
         ) : null}
         {noMovements && !query.hasNextPage ? (
-          <p>
-            No movements in the selected period. Current stock is still shown.
-          </p>
+          <p>{t("uiNoMovementsInTheSelectedPeriodCurrentStockIs")}</p>
         ) : null}
         {pages.map((page, pageIndex) => (
           <div key={pageIndex} className="space-y-3">
@@ -237,82 +272,98 @@ export function InventoryAnalyticsView({
               >
                 <summary className="cursor-pointer font-medium">
                   {row.productName} · {row.branchName} · {row.onHandQuantity}{" "}
-                  {row.productUnit} on hand
+                  {row.productUnit} {t("uiOnHand2")}
                   {row.productStatus === "INACTIVE"
-                    ? " · Inactive product"
+                    ? t("uiInactiveProductSuffix")
                     : ""}
                   {" · "}
-                  {row.stockClassification.classification?.replace("_", " ") ??
-                    "Classification unavailable"}
+                  {(row.stockClassification.classification
+                    ? t(
+                        CLASSIFICATION_LABELS[
+                          row.stockClassification.classification
+                        ],
+                      )
+                    : null) ?? t("uiClassificationUnavailable")}
                 </summary>
                 <div className="mt-3 space-y-3 text-sm">
                   <p className="text-xs text-muted-foreground">
-                    Current snapshot captured{" "}
+                    {t("uiCurrentSnapshotCaptured")}{" "}
                     {page.meta.currentSnapshotCapturedAt}
                   </p>
                   <dl className="grid gap-2 sm:grid-cols-2">
                     <div>
-                      <dt>Requested-period average daily sales</dt>
+                      <dt>{t("uiRequestedPeriodAverageDailySales")}</dt>
                       <dd>
                         {metric(
                           row.requestedPeriodAds,
-                          ` ${row.productUnit}/day`,
+                          ` ${row.productUnit}/` + t("uiPerDay"),
+                          t,
                         )}
                       </dd>
                     </div>
                     <div>
-                      <dt>28-day sales velocity</dt>
+                      <dt>{t("ui28DaySalesVelocity")}</dt>
                       <dd>
                         {metric(
                           row.coverageSalesVelocity,
-                          ` ${row.productUnit}/day`,
+                          ` ${row.productUnit}/` + t("uiPerDay"),
+                          t,
                         )}
                       </dd>
                     </div>
                     <div>
-                      <dt>Current coverage</dt>
-                      <dd>{metric(row.coverageDays, " days")}</dd>
+                      <dt>{t("uiCurrentCoverage")}</dt>
+                      <dd>{metric(row.coverageDays, t("uiDaysSuffix"), t)}</dd>
                     </div>
                     <div>
                       <dt>
-                        Stock classification (
+                        {t("uiStockClassification")}
                         {row.stockClassification.thresholdVersion})
                       </dt>
                       <dd>
-                        {row.stockClassification.classification?.replace(
-                          "_",
-                          " ",
-                        ) ??
-                          reasons[row.stockClassification.reason ?? ""] ??
-                          "Unavailable"}
+                        {(row.stockClassification.classification
+                          ? t(
+                              CLASSIFICATION_LABELS[
+                                row.stockClassification.classification
+                              ],
+                            )
+                          : null) ??
+                          reasonLabels(t)[
+                            row.stockClassification.reason ?? ""
+                          ] ??
+                          t("posUnavailable")}
                       </dd>
                     </div>
                   </dl>
                   {row.cost ? (
                     <section
-                      aria-label="Product inventory value"
+                      aria-label={t("uiProductInventoryValue")}
                       className="border-t pt-3"
                     >
-                      {costDetail(row.cost)}
+                      {costDetail(row.cost, t)}
                     </section>
                   ) : null}
                   <div className="overflow-x-auto">
                     <Table className="w-full min-w-[700px] text-left text-sm">
                       <caption className="py-2 text-left font-medium">
-                        Movement by period for {row.productName} (
+                        {t("uiMovementByPeriodFor")} {row.productName} (
                         {row.productUnit})
                       </caption>
                       <TableHeader>
                         <TableRow className="border-b">
-                          <TableHead scope="col">Period</TableHead>
-                          <TableHead scope="col">Received</TableHead>
-                          <TableHead scope="col">Sales depletion</TableHead>
-                          <TableHead scope="col">Refund returns</TableHead>
+                          <TableHead scope="col">{t("uiPeriod")}</TableHead>
+                          <TableHead scope="col">{t("uiReceived")}</TableHead>
                           <TableHead scope="col">
-                            Positive adjustments
+                            {t("uiSalesDepletion")}
                           </TableHead>
                           <TableHead scope="col">
-                            Negative adjustments
+                            {t("uiRefundReturns")}
+                          </TableHead>
+                          <TableHead scope="col">
+                            {t("uiPositiveAdjustments")}
+                          </TableHead>
+                          <TableHead scope="col">
+                            {t("uiNegativeAdjustments")}
                           </TableHead>
                         </TableRow>
                       </TableHeader>
@@ -357,8 +408,8 @@ export function InventoryAnalyticsView({
             className="bg-card"
           >
             {query.isFetchingNextPage
-              ? "Loading next page…"
-              : "Load more inventory"}
+              ? t("uiLoadingNextPage")
+              : t("uiLoadMoreInventory")}
           </Button>
         ) : null}
       </section>

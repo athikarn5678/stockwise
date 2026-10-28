@@ -1,6 +1,7 @@
 "use client";
 import { Badge } from "@/components/ui/badge";
 import { useLanguage } from "@/providers/language-provider";
+import type { TranslationKey } from "@/i18n/en";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
@@ -50,29 +51,28 @@ const emptyInput: SupplierInput = {
   phone: "",
   address: "",
 };
-function message(error: unknown): string {
+function message(error: unknown, t: (key: TranslationKey) => string): string {
   if (error instanceof SupplierApiError) {
-    if (error.kind === "forbidden")
-      return "You do not have permission for suppliers.";
-    if (error.kind === "validation")
-      return "Check the supplier fields and try again.";
-    if (error.kind === "not_found")
-      return "That supplier is no longer available.";
+    if (error.kind === "forbidden") return t("supplierErrForbidden");
+    if (error.kind === "validation") return t("supplierErrValidation");
+    if (error.kind === "not_found") return t("supplierErrNotFound");
   }
-  return "Supplier data could not be loaded. Try again.";
+  return t("supplierErrLoad");
 }
 
 export function SupplierManagement() {
   const params = useSearchParams();
+  const { t } = useLanguage();
   const contextQuery = useQuery({
     queryKey: ["access-context"],
     queryFn: fetchAccessContext,
   });
-  if (contextQuery.isPending) return <p aria-live="polite">Loading access…</p>;
+  if (contextQuery.isPending)
+    return <p aria-live="polite">{t("loadingAccess")}</p>;
   if (contextQuery.isError || contextQuery.data === undefined)
     return (
       <p className="form-message" role="alert">
-        Your access context could not be loaded.
+        {t("accessError")}
       </p>
     );
   const context = contextQuery.data;
@@ -84,7 +84,7 @@ export function SupplierManagement() {
   if (resolved.organization === null)
     return (
       <p className="form-message" role="alert">
-        Choose an organization before managing suppliers.
+        {t("supplierNoOrg")}
       </p>
     );
   return (
@@ -110,7 +110,7 @@ function SupplierContent({
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<SupplierStatusFilter>("active");
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<unknown>(null);
   const canManage = MANAGEMENT_ROLES.has(organization.role);
   const canLifecycle = LIFECYCLE_ROLES.has(organization.role);
   const scope = supplierScopeKey(organization.id);
@@ -134,9 +134,9 @@ function SupplierContent({
         >
           {t("backToWorkspace")}
         </Link>
-        <h1 className="text-2xl font-semibold">Suppliers</h1>
+        <h1 className="text-2xl font-semibold">{t("supplierTitle")}</h1>
         <p className="form-message" role="alert">
-          You do not have permission to access suppliers.
+          {t("supplierNoPermission")}
         </p>
       </section>
     );
@@ -151,24 +151,24 @@ function SupplierContent({
         >
           {t("backToWorkspace")}
         </Link>
-        <h1 className="mt-3 text-2xl font-semibold">Suppliers</h1>
+        <h1 className="mt-3 text-2xl font-semibold">{t("supplierTitle")}</h1>
         <p className="text-muted-foreground">
-          Manage suppliers for {organization.name}.
+          {t("supplierManageFor").replace("{name}", organization.name)}
         </p>
       </header>
       {notice ? (
         <p className="form-message" role="alert">
-          {notice}
+          {message(notice, t)}
         </p>
       ) : null}
       <SupplierForm
-        label="Create supplier"
-        onError={(error) => setNotice(message(error))}
+        label={t("supplierCreate")}
+        onError={(error) => setNotice(error)}
         onSave={(input) => createSupplier(organization.id, input).then(refresh)}
       />
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto]">
         <Label className="form-field">
-          Search suppliers
+          {t("supplierSearch")}
           <Input
             className=""
             defaultValue={search}
@@ -176,7 +176,7 @@ function SupplierContent({
           />
         </Label>
         <Label className="form-field">
-          Status
+          {t("commonStatus")}
           <NativeSelect
             className="w-full "
             onChange={(event) =>
@@ -184,9 +184,15 @@ function SupplierContent({
             }
             value={status}
           >
-            <NativeSelectOption value="active">Active</NativeSelectOption>
-            <NativeSelectOption value="inactive">Inactive</NativeSelectOption>
-            <NativeSelectOption value="all">All</NativeSelectOption>
+            <NativeSelectOption value="active">
+              {t("commonActive")}
+            </NativeSelectOption>
+            <NativeSelectOption value="inactive">
+              {t("commonInactive")}
+            </NativeSelectOption>
+            <NativeSelectOption value="all">
+              {t("commonAll")}
+            </NativeSelectOption>
           </NativeSelect>
         </Label>
         <Button
@@ -195,24 +201,24 @@ function SupplierContent({
           onClick={() => void refresh()}
           type="button"
         >
-          Refresh
+          {t("commonRefresh")}
         </Button>
       </div>
       {suppliers.isPending ? (
-        <p aria-live="polite">Loading suppliers…</p>
+        <p aria-live="polite">{t("supplierLoading")}</p>
       ) : suppliers.isError ? (
         <p className="form-message" role="alert">
-          {message(suppliers.error)}
+          {message(suppliers.error, t)}
         </p>
       ) : records.length === 0 ? (
-        <p>No suppliers match this view.</p>
+        <p>{t("supplierEmpty")}</p>
       ) : (
         <div className="grid gap-4">
           {records.map((supplier) => (
             <SupplierCard
               canLifecycle={canLifecycle}
               key={supplier.id}
-              onError={(error) => setNotice(message(error))}
+              onError={(error) => setNotice(error)}
               onSave={refresh}
               organizationId={organization.id}
               supplier={supplier}
@@ -228,7 +234,9 @@ function SupplierContent({
           onClick={() => void suppliers.fetchNextPage()}
           type="button"
         >
-          {suppliers.isFetchingNextPage ? "Loading…" : "Load more"}
+          {suppliers.isFetchingNextPage
+            ? t("commonLoading")
+            : t("commonLoadMore")}
         </Button>
       ) : null}
     </section>
@@ -245,6 +253,7 @@ function SupplierForm({
   onError: (error: unknown) => void;
   onSave: (input: SupplierInput) => Promise<unknown>;
 }) {
+  const { t } = useLanguage();
   const mutation = useMutation({ mutationFn: onSave });
   return (
     <form
@@ -262,7 +271,7 @@ function SupplierForm({
             address: String(form.get("address") ?? ""),
           })
           .then(() => {
-            if (label === "Create supplier") formElement.reset();
+            if (label === t("supplierCreate")) formElement.reset();
           })
           .catch(onError);
       }}
@@ -271,28 +280,28 @@ function SupplierForm({
       <div className="mt-4 grid max-w-4xl items-start gap-4 sm:grid-cols-2">
         <Field
           defaultValue={initial.name}
-          label="Supplier name"
+          label={t("supplierName")}
           name="name"
           required
         />
         <Field
           defaultValue={initial.contactName}
-          label="Contact name (optional)"
+          label={t("supplierContact")}
           name="contactName"
         />
         <Field
           defaultValue={initial.email}
-          label="Email (optional)"
+          label={t("supplierEmail")}
           name="email"
           type="email"
         />
         <Field
           defaultValue={initial.phone}
-          label="Phone (optional)"
+          label={t("supplierPhone")}
           name="phone"
         />
         <Label className="form-field sm:col-span-2">
-          Address (optional)
+          {t("supplierAddress")}
           <Textarea
             className=""
             defaultValue={initial.address}
@@ -306,7 +315,7 @@ function SupplierForm({
         disabled={mutation.isPending}
         type="submit"
       >
-        {mutation.isPending ? "Saving…" : label}
+        {mutation.isPending ? t("commonSaving") : label}
       </Button>
     </form>
   );
@@ -324,6 +333,7 @@ function SupplierCard({
   organizationId: string;
   supplier: Supplier;
 }) {
+  const { t } = useLanguage();
   const edit = useMutation({
     mutationFn: (input: SupplierInput) =>
       updateSupplier(organizationId, supplier.id, input),
@@ -339,7 +349,9 @@ function SupplierCard({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-semibold">{supplier.name}</h2>
         <Badge variant="outline">
-          {supplier.status === "ACTIVE" ? "Active" : "Inactive"}
+          {supplier.status === "ACTIVE"
+            ? t("commonActive")
+            : t("commonInactive")}
         </Badge>
       </div>
       <SupplierForm
@@ -350,7 +362,7 @@ function SupplierCard({
           phone: supplier.phone ?? "",
           address: supplier.address ?? "",
         }}
-        label="Save changes"
+        label={t("saveChanges")}
         onError={onError}
         onSave={(input) => edit.mutateAsync(input)}
       />
@@ -363,7 +375,9 @@ function SupplierCard({
           onClick={() => void lifecycle.mutateAsync().catch(onError)}
           type="button"
         >
-          {supplier.status === "ACTIVE" ? "Deactivate" : "Reactivate"}
+          {supplier.status === "ACTIVE"
+            ? t("supplierDeactivate")
+            : t("supplierReactivate")}
         </Button>
       ) : null}
     </article>

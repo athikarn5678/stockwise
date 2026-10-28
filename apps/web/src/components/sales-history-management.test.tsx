@@ -397,7 +397,7 @@ describe("sales history UI", () => {
     const receipt = screen.getByLabelText("Printable receipt");
     expect(receipt.textContent).toContain(productName);
     expect(receipt.querySelector("img")).toBeNull();
-    expect(receipt.textContent).toContain("Payment: TRANSFER · THB 12.34");
+    expect(receipt.textContent).toContain("Payment: Transfer · THB 12.34");
     expect(receipt.textContent).not.toMatch(
       /Taxable amount|Discount|Tendered|Change|Transfer reference|CARD|Stripe/,
     );

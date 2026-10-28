@@ -1,4 +1,6 @@
 "use client";
+import type { TranslationKey } from "@/i18n/en";
+import { useLanguage } from "@/providers/language-provider";
 import { Label } from "@/components/ui/label";
 import {
   NativeSelect,
@@ -26,31 +28,36 @@ import {
 import type { AccessibleOrganization } from "@/branch-api-client";
 import { listProducts } from "@/catalog-api-client";
 
-const reasons: Record<string, string> = {
-  INACTIVE_PRODUCT: "This Product is inactive. Estimates are unavailable.",
-  INSUFFICIENT_DATA:
-    "No inventory movement for this Branch/Product is recorded at or before the 28-day training window began.",
-  LEAD_TIME_REQUIRED:
-    "Choose a planning lead time to see a reorder recommendation.",
-  UNSUPPORTED_LEAD_TIME:
-    "Planning lead time must be a whole number from 1 to 7 days.",
-  INVENTORY_INTEGRITY_ERROR:
-    "Inventory balance or ledger integrity needs review before recommending a quantity.",
-  QUANTITY_OUT_OF_RANGE: "The calculated quantity exceeds the supported range.",
-};
+function reasonLabels(
+  t: (key: TranslationKey) => string,
+): Record<string, string> {
+  return {
+    INACTIVE_PRODUCT: t("uiThisProductIsInactiveEstimatesAreUnavailable"),
+    INSUFFICIENT_DATA: t("uiNoInventoryMovementForThisBranchProductIsRecorded"),
+    LEAD_TIME_REQUIRED: t("uiChooseAPlanningLeadTimeToSeeAReorder"),
+    UNSUPPORTED_LEAD_TIME: t("uiPlanningLeadTimeMustBeAWholeNumberFrom"),
+    INVENTORY_INTEGRITY_ERROR: t(
+      "uiInventoryBalanceOrLedgerIntegrityNeedsReviewBeforeRecommending",
+    ),
+    QUANTITY_OUT_OF_RANGE: t("uiTheCalculatedQuantityExceedsTheSupportedRange"),
+  };
+}
 
-function requestError(error: unknown): string {
+function requestError(
+  error: unknown,
+  t: (key: TranslationKey) => string,
+): string {
   if (error instanceof AnalyticsApiError) {
     if (error.kind === "forbidden")
-      return "Forecast and reorder are not available for your current access.";
+      return t("uiForecastAndReorderAreNotAvailableForYourCurrent");
     if (error.kind === "authentication_required")
-      return "Sign in again to view forecast and reorder.";
+      return t("uiSignInAgainToViewForecastAndReorder");
     if (error.kind === "configuration")
-      return "Analytics reporting time needs configuration.";
+      return t("uiAnalyticsReportingTimeNeedsConfiguration");
     if (error.kind === "validation")
-      return "Check the selected Branch and Product.";
+      return t("uiCheckTheSelectedBranchAndProduct");
   }
-  return "Forecast and reorder could not be loaded. Try again.";
+  return t("uiForecastAndReorderCouldNotBeLoadedTryAgain");
 }
 
 export function ForecastReorderView({
@@ -58,6 +65,8 @@ export function ForecastReorderView({
 }: {
   organization: AccessibleOrganization;
 }) {
+  const { t } = useLanguage();
+
   const [branchId, setBranchId] = useState(organization.branches[0]?.id ?? "");
   const [productId, setProductId] = useState("");
   const [search, setSearch] = useState("");
@@ -115,17 +124,16 @@ export function ForecastReorderView({
   const reorderResult = reorder.data?.data.recommendation;
 
   return (
-    <section aria-label="Forecast and reorder" className="space-y-5">
+    <section aria-label={t("uiForecastAndReorder")} className="space-y-5">
       <div>
-        <h2 className="text-xl font-semibold">Forecast and reorder</h2>
+        <h2 className="text-xl font-semibold">{t("uiForecastAndReorder")}</h2>
         <p className="text-sm text-muted-foreground">
-          One Branch and Product. Forecast dates and training window are fixed
-          by the organization reporting timezone.
+          {t("uiOneBranchAndProductForecastDatesAndTrainingWindow")}
         </p>
       </div>
       <div className="grid gap-4 rounded-lg border bg-card p-4 sm:grid-cols-3">
         <Label className="form-field">
-          Branch
+          {t("branch")}
           <NativeSelect
             value={activeBranch?.id ?? ""}
             onChange={(event) => {
@@ -143,7 +151,7 @@ export function ForecastReorderView({
         </Label>
         <div className="space-y-2">
           <Label className="form-field">
-            Find Product
+            {t("uiFindProduct")}
             <Input
               type="search"
               value={search}
@@ -155,33 +163,35 @@ export function ForecastReorderView({
             />
           </Label>
           <Label className="form-field">
-            Product
+            {t("marketingProduct")}
             <NativeSelect
               value={chosenProduct?.id ?? ""}
               onChange={(event) => setProductId(event.target.value)}
               className="w-full "
             >
-              <NativeSelectOption value="">Choose a Product</NativeSelectOption>
+              <NativeSelectOption value="">
+                {t("uiChooseAProduct2")}
+              </NativeSelectOption>
               {options.map((product) => (
                 <NativeSelectOption key={product.id} value={product.id}>
                   {product.sku} — {product.name}
-                  {product.status === "INACTIVE" ? " (inactive)" : ""}
+                  {product.status === "INACTIVE" ? t("uiInactiveSuffix") : ""}
                 </NativeSelectOption>
               ))}
             </NativeSelect>
           </Label>
           {products.isPending && activeBranch ? (
             <p aria-live="polite" className="text-sm">
-              Loading Products…
+              {t("uiLoadingProducts")}
             </p>
           ) : null}
           {products.isError ? (
             <p role="alert" className="text-sm form-message">
-              Products could not be loaded.
+              {t("uiProductsCouldNotBeLoaded")}
             </p>
           ) : null}
           {products.isSuccess && options.length === 0 ? (
-            <p className="text-sm">No Products match this search.</p>
+            <p className="text-sm">{t("uiNoProductsMatchThisSearch")}</p>
           ) : null}
           {products.hasNextPage ? (
             <Button
@@ -191,12 +201,14 @@ export function ForecastReorderView({
               disabled={products.isFetchingNextPage}
               className=""
             >
-              {products.isFetchingNextPage ? "Loading…" : "Load more Products"}
+              {products.isFetchingNextPage
+                ? t("commonLoading")
+                : t("uiLoadMoreProducts")}
             </Button>
           ) : null}
         </div>
         <Label className="form-field">
-          Planning lead time
+          {t("uiPlanningLeadTime")}
           <NativeSelect
             value={leadTimeDays ?? ""}
             onChange={(event) =>
@@ -206,7 +218,9 @@ export function ForecastReorderView({
             }
             className="w-full form-control--compact"
           >
-            <NativeSelectOption value="">Choose 1–7 days</NativeSelectOption>
+            <NativeSelectOption value="">
+              {t("uiChoose17Days")}
+            </NativeSelectOption>
             {[1, 2, 3, 4, 5, 6, 7].map((days) => (
               <NativeSelectOption key={days} value={days}>
                 {days} {days === 1 ? "day" : "days"}
@@ -217,57 +231,65 @@ export function ForecastReorderView({
       </div>
       {!activeBranch ? (
         <p className="form-message" role="alert">
-          No accessible active Branch is available.
+          {t("uiNoAccessibleActiveBranchIsAvailable")}
         </p>
       ) : !chosenProduct ? (
-        <p>Choose a Product to see its forecast and reorder status.</p>
+        <p>{t("uiChooseAProductToSeeItsForecastAndReorder")}</p>
       ) : (
         <>
           <section
-            aria-label="Forecast result"
+            aria-label={t("uiForecastResult")}
             className="space-y-3 rounded-lg border bg-card p-4"
           >
-            <h3 className="font-semibold">Seven-day forecast</h3>
+            <h3 className="font-semibold">{t("uiSevenDayForecast")}</h3>
             {forecast.isPending ? (
-              <p aria-live="polite">Loading forecast…</p>
+              <p aria-live="polite">{t("uiLoadingForecast")}</p>
             ) : forecast.isError ? (
               <p className="form-message" role="alert">
-                {requestError(forecast.error)}
+                {requestError(forecast.error, t)}
               </p>
             ) : forecastResult ? (
               <>
                 <p className="text-sm">
-                  Version: {forecastResult.forecastVersion} · Status:{" "}
-                  {forecastResult.status}
+                  {t("uiVersion")} {forecastResult.forecastVersion}{" "}
+                  {t("uiStatus2")}{" "}
+                  {t(
+                    forecastResult.status === "AVAILABLE"
+                      ? "forecastAvailable"
+                      : "forecastUnavailable",
+                  )}
                 </p>
                 <p className="text-sm">
-                  Reporting timezone: {forecastResult.reportingTimezone} · Data
-                  as of {forecastResult.sourceCutoff}
+                  {t("uiReportingTimezone")} {forecastResult.reportingTimezone}{" "}
+                  {t("uiDataAsOfSeparator")} {forecastResult.sourceCutoff}
                 </p>
                 <p className="text-sm">
-                  Training: {forecastResult.trainingStartInclusive} to{" "}
-                  {forecastResult.trainingEndExclusive} · Horizon:{" "}
-                  {forecastResult.horizonStartInclusive} to{" "}
-                  {forecastResult.horizonEndExclusive}
+                  {t("uiTraining")} {forecastResult.trainingStartInclusive}{" "}
+                  {t("uiTo")} {forecastResult.trainingEndExclusive}{" "}
+                  {t("uiHorizon")} {forecastResult.horizonStartInclusive}{" "}
+                  {t("uiTo")} {forecastResult.horizonEndExclusive}
                 </p>
                 {forecastResult.status === "UNAVAILABLE" ? (
-                  <p role="status">{reasons[forecastResult.reason ?? ""]}</p>
+                  <p role="status">
+                    {reasonLabels(t)[forecastResult.reason ?? ""]}
+                  </p>
                 ) : (
                   <>
                     <p className="text-2xl font-semibold tabular-nums">
-                      {forecastResult.horizonTotal} {forecastResult.unit} total
+                      {forecastResult.horizonTotal} {forecastResult.unit}{" "}
+                      {t("uiTotal")}
                     </p>
                     <div className="overflow-x-auto">
                       <Table className="w-full text-left text-sm">
                         <caption className="py-2 text-left font-medium">
-                          Daily forecast in {forecastResult.unit}
+                          {t("uiDailyForecastIn")} {forecastResult.unit}
                         </caption>
                         <TableHeader>
                           <TableRow>
                             <TableHead scope="col" className="py-2">
-                              Local date
+                              {t("uiLocalDate")}
                             </TableHead>
-                            <TableHead scope="col">Quantity</TableHead>
+                            <TableHead scope="col">{t("uiQuantity")}</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -293,53 +315,64 @@ export function ForecastReorderView({
             ) : null}
           </section>
           <section
-            aria-label="Reorder result"
+            aria-label={t("uiReorderResult")}
             className="space-y-3 rounded-lg border bg-card p-4"
           >
-            <h3 className="font-semibold">Advisory reorder recommendation</h3>
+            <h3 className="font-semibold">
+              {t("uiAdvisoryReorderRecommendation")}
+            </h3>
             {reorder.isPending ? (
-              <p aria-live="polite">Loading reorder recommendation…</p>
+              <p aria-live="polite">{t("uiLoadingReorderRecommendation")}</p>
             ) : reorder.isError ? (
               <p className="form-message" role="alert">
-                {requestError(reorder.error)}
+                {requestError(reorder.error, t)}
               </p>
             ) : reorderResult ? (
               <>
                 <p className="text-sm">
-                  Version: {reorderResult.reorderVersion} · Forecast:{" "}
-                  {reorderResult.forecastVersion} · Status:{" "}
-                  {reorderResult.status}
+                  {t("uiVersion")} {reorderResult.reorderVersion}{" "}
+                  {t("uiForecast")} {reorderResult.forecastVersion}{" "}
+                  {t("uiStatus2")}{" "}
+                  {t(
+                    reorderResult.status === "AVAILABLE"
+                      ? "forecastAvailable"
+                      : "forecastUnavailable",
+                  )}
                 </p>
                 <p className="text-sm">
-                  Data as of {reorderResult.sourceCutoff}
+                  {t("uiDataAsOf")} {reorderResult.sourceCutoff}
                 </p>
                 {reorderResult.status === "UNAVAILABLE" ? (
-                  <p role="status">{reasons[reorderResult.reason ?? ""]}</p>
+                  <p role="status">
+                    {reasonLabels(t)[reorderResult.reason ?? ""]}
+                  </p>
                 ) : (
                   <>
                     <p className="text-2xl font-semibold tabular-nums">
-                      Recommend {reorderResult.recommendedQuantity}{" "}
+                      {t("uiRecommend")} {reorderResult.recommendedQuantity}{" "}
                       {reorderResult.unit}
                     </p>
                     <dl className="grid gap-2 text-sm sm:grid-cols-2">
                       <div>
-                        <dt>Planning lead time</dt>
-                        <dd>{reorderResult.leadTimeDays} days</dd>
+                        <dt>{t("uiPlanningLeadTime")}</dt>
+                        <dd>
+                          {reorderResult.leadTimeDays} {t("uiDays")}
+                        </dd>
                       </div>
                       <div>
-                        <dt>Forecast demand</dt>
+                        <dt>{t("uiForecastDemand")}</dt>
                         <dd>
                           {reorderResult.leadTimeDemand} {reorderResult.unit}
                         </dd>
                       </div>
                       <div>
-                        <dt>On hand</dt>
+                        <dt>{t("uiOnHand")}</dt>
                         <dd>
                           {reorderResult.onHand} {reorderResult.unit}
                         </dd>
                       </div>
                       <div>
-                        <dt>Need before unit rounding</dt>
+                        <dt>{t("uiNeedBeforeUnitRounding")}</dt>
                         <dd>
                           {reorderResult.rawNeed} {reorderResult.unit}
                         </dd>
@@ -354,21 +387,11 @@ export function ForecastReorderView({
       )}
       <section
         className="space-y-2 rounded-lg border bg-muted/40 p-4 text-sm"
-        aria-label="Forecast and reorder limitations"
+        aria-label={t("uiForecastAndReorderLimitations")}
       >
-        <h3 className="font-semibold">How to interpret these estimates</h3>
-        <p>
-          Forecast uses a simple mean of observed completed-sale quantities over
-          28 complete local days. Zero days remain zero. It has no seasonality
-          or lost-demand correction; stockouts may suppress observed demand. The
-          current partial local day is excluded.
-        </p>
-        <p>
-          Reorder uses your selected lead time of at most seven days. Safety
-          stock is zero and pending incoming orders are excluded. It has no
-          Supplier, MOQ, or purchase-pack logic. This is advisory only and never
-          places an order.
-        </p>
+        <h3 className="font-semibold">{t("uiHowToInterpretTheseEstimates")}</h3>
+        <p>{t("uiForecastUsesASimpleMeanOfObservedCompletedSale")}</p>
+        <p>{t("uiReorderUsesYourSelectedLeadTimeOfAtMost")}</p>
       </section>
     </section>
   );

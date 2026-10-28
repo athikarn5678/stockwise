@@ -1,4 +1,5 @@
 "use client";
+import type { TranslationKey } from "@/i18n/en";
 import { Badge } from "@/components/ui/badge";
 import { useLanguage } from "@/providers/language-provider";
 import { Label } from "@/components/ui/label";
@@ -84,29 +85,24 @@ function catalogScopeKey(context: CatalogRequestContext): readonly unknown[] {
     : ["branch-scoped", context.organizationId, context.branchId, "catalog"];
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage(error: unknown): TranslationKey {
   if (!(error instanceof CatalogApiError))
-    return "The catalog is temporarily unavailable.";
-  const messages: Record<CatalogApiErrorKind, string> = {
-    authentication_required: "Sign in again to continue.",
-    barcode_conflict: "That barcode already exists in this organization.",
-    branch_context_required: "Choose a valid active branch to use the catalog.",
-    category_inactive:
-      "The selected category is no longer active. Refresh the category choices.",
-    category_name_conflict:
-      "That category name already exists in this organization.",
-    category_not_found:
-      "That category is no longer available. Refresh the list.",
-    category_stale:
-      "This item changed since you opened it. Refresh the latest version before trying again.",
-    forbidden: "This catalog action is not available for your current access.",
-    invalid_cursor: "The catalog list changed. The first page was reloaded.",
-    product_not_found: "That product is no longer available. Refresh the list.",
-    product_stale:
-      "This item changed since you opened it. Refresh the latest version before trying again.",
-    sku_conflict: "That SKU already exists in this organization.",
-    unavailable: "The catalog is temporarily unavailable. Try again.",
-    validation: "Check the submitted values and try again.",
+    return "uiTheCatalogIsTemporarilyUnavailable";
+  const messages: Record<CatalogApiErrorKind, TranslationKey> = {
+    authentication_required: "branchErrAuth",
+    barcode_conflict: "uiThatBarcodeAlreadyExistsInThisOrganization",
+    branch_context_required: "uiChooseAValidActiveBranchToUseTheCatalog",
+    category_inactive: "uiTheSelectedCategoryIsNoLongerActiveRefreshThe",
+    category_name_conflict: "uiThatCategoryNameAlreadyExistsInThisOrganization",
+    category_not_found: "uiThatCategoryIsNoLongerAvailableRefreshTheList",
+    category_stale: "uiThisItemChangedSinceYouOpenedItRefreshThe",
+    forbidden: "uiThisCatalogActionIsNotAvailableForYourCurrent",
+    invalid_cursor: "uiTheCatalogListChangedTheFirstPageWasReloaded",
+    product_not_found: "uiThatProductIsNoLongerAvailableRefreshTheList",
+    product_stale: "uiThisItemChangedSinceYouOpenedItRefreshThe",
+    sku_conflict: "uiThatSKUAlreadyExistsInThisOrganization",
+    unavailable: "uiTheCatalogIsTemporarilyUnavailableTryAgain",
+    validation: "teamErrorValidation",
   };
   return messages[error.kind];
 }
@@ -123,9 +119,11 @@ function safeBasePrice(value: string): boolean {
 }
 
 function StatusBadge({ status }: { status: "ACTIVE" | "INACTIVE" }) {
+  const { t } = useLanguage();
+
   return (
     <Badge variant="outline" data-status={status.toLowerCase()}>
-      {status === "ACTIVE" ? "Active" : "Inactive"}
+      {status === "ACTIVE" ? t("commonActive") : t("commonInactive")}
     </Badge>
   );
 }
@@ -171,6 +169,8 @@ function TextareaField({
 }
 
 export function CatalogManagement() {
+  const { t } = useLanguage();
+
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedOrganizationId = searchParams.get("organizationId");
@@ -205,23 +205,23 @@ export function CatalogManagement() {
     if (canonical !== current) router.replace(canonical);
   }, [requestedBranchId, requestedOrganizationId, resolved, router]);
 
-  if (contextQuery.isPending) return <p aria-live="polite">Loading access…</p>;
+  if (contextQuery.isPending)
+    return <p aria-live="polite">{t("loadingAccess")}</p>;
   if (contextQuery.isError)
     return (
       <p className="form-message" role="alert">
-        Your access context could not be loaded.
+        {t("accessError")}
       </p>
     );
   if (resolved?.organization === null) {
     return (
       <section className="space-y-4">
-        <h1 className="text-2xl font-semibold">Catalog unavailable</h1>
+        <h1 className="text-2xl font-semibold">{t("uiCatalogUnavailable")}</h1>
         <p className="text-muted-foreground">
-          Choose an active organization from the workspace before managing its
-          catalog.
+          {t("uiChooseAnActiveOrganizationFromTheWorkspaceBeforeManaging")}
         </p>
         <Link className="underline" href="/app">
-          Return to workspace
+          {t("uiReturnToWorkspace")}
         </Link>
       </section>
     );
@@ -242,19 +242,22 @@ function CatalogContent({
   branch: AccessibleOrganization["branches"][number] | null;
   organization: AccessibleOrganization;
 }) {
+  const { t } = useLanguage();
+
   if (BRANCH_SCOPED_ROLES.has(organization.role) && branch === null) {
     return (
       <section className="space-y-4">
-        <h1 className="text-2xl font-semibold">Branch context required</h1>
+        <h1 className="text-2xl font-semibold">
+          {t("uiBranchContextRequired")}
+        </h1>
         <p className="text-muted-foreground">
-          Choose an active assigned branch in the workspace before using the
-          catalog.
+          {t("uiChooseAnActiveAssignedBranchInTheWorkspaceBefore")}
         </p>
         <Link
           className="underline"
           href={applicationContextUrl(organization.id, null)}
         >
-          Return to workspace
+          {t("uiReturnToWorkspace")}
         </Link>
       </section>
     );
@@ -277,7 +280,7 @@ function CatalogContentLoaded({
   const [categorySearch, setCategorySearch] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<TranslationKey | null>(null);
   const role = organization.role;
   const requestContext: CatalogRequestContext = {
     ...(branch === null ? {} : { branchId: branch.id }),
@@ -365,9 +368,11 @@ function CatalogContentLoaded({
         >
           {t("backToWorkspace")}
         </Link>
-        <h1 className="text-2xl font-semibold">Catalog</h1>
+        <h1 className="text-2xl font-semibold">
+          {t("marketingFeatureCatalog")}
+        </h1>
         <p className="text-muted-foreground">
-          Manage products and categories for {organization.name}.
+          {t("uiManageProductsAndCategoriesFor")} {organization.name}.
         </p>
       </header>
 
@@ -376,7 +381,7 @@ function CatalogContentLoaded({
           className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-4"
           role="alert"
         >
-          <p>{notice}</p>
+          <p>{t(notice)}</p>
           {isStaleError(categoryQuery.error) ||
           isStaleError(productQuery.error) ? null : (
             <Button
@@ -384,14 +389,14 @@ function CatalogContentLoaded({
               onClick={() => void refreshCatalog()}
               type="button"
             >
-              Refresh latest
+              {t("uiRefreshLatest")}
             </Button>
           )}
         </div>
       ) : null}
 
       <div
-        aria-label="Catalog views"
+        aria-label={t("uiCatalogViews")}
         className="flex gap-2 border-b"
         role="tablist"
       >
@@ -404,7 +409,7 @@ function CatalogContentLoaded({
           role="tab"
           type="button"
         >
-          Products
+          {t("uiProducts")}
         </Button>
         <Button
           variant={view === "categories" ? "secondary" : "outline"}
@@ -415,7 +420,7 @@ function CatalogContentLoaded({
           role="tab"
           type="button"
         >
-          Categories
+          {t("uiCategories")}
         </Button>
       </div>
 
@@ -426,7 +431,7 @@ function CatalogContentLoaded({
             checked={includeInactive}
             onCheckedChange={(checked) => setIncludeInactive(checked)}
           />
-          Include inactive catalog records
+          {t("uiIncludeInactiveCatalogRecords")}
         </Label>
       ) : null}
 
@@ -437,7 +442,7 @@ function CatalogContentLoaded({
           role="tabpanel"
         >
           <h2 className="sr-only" id="products-heading">
-            Products
+            {t("uiProducts")}
           </h2>
           {canManage ? (
             <ProductCreateForm
@@ -455,7 +460,7 @@ function CatalogContentLoaded({
             search={productSearch}
           />
           <CatalogListState
-            emptyMessage="No products match this catalog view."
+            emptyMessage={t("uiNoProductsMatchThisCatalogView")}
             error={productQuery.error}
             isEmpty={products.length === 0}
             isPending={productQuery.isPending}
@@ -471,7 +476,7 @@ function CatalogContentLoaded({
                     product.categoryId === null
                       ? null
                       : (categoryNames.get(product.categoryId) ??
-                        "Current inactive category")
+                        t("uiCurrentInactiveCategory"))
                   }
                   context={requestContext}
                   key={product.id}
@@ -496,7 +501,7 @@ function CatalogContentLoaded({
           role="tabpanel"
         >
           <h2 className="sr-only" id="categories-heading">
-            Categories
+            {t("uiCategories")}
           </h2>
           {canManage ? (
             <CategoryCreateForm
@@ -507,7 +512,7 @@ function CatalogContentLoaded({
           ) : null}
           <SearchControl onSearch={setCategorySearch} search={categorySearch} />
           <CatalogListState
-            emptyMessage="No categories match this catalog view."
+            emptyMessage={t("uiNoCategoriesMatchThisCatalogView")}
             error={categoryQuery.error}
             isEmpty={categories.length === 0}
             isPending={categoryQuery.isPending}
@@ -553,17 +558,19 @@ function CatalogListState({
   isPending: boolean;
   onRefresh: () => Promise<void>;
 }) {
-  if (isPending) return <p aria-live="polite">Loading catalog…</p>;
+  const { t } = useLanguage();
+
+  if (isPending) return <p aria-live="polite">{t("uiLoadingCatalog")}</p>;
   if (error)
     return (
       <div className="space-y-3" role="alert">
-        <p>{errorMessage(error)}</p>
+        <p>{t(errorMessage(error))}</p>
         <Button
           variant="outline"
           onClick={() => void onRefresh()}
           type="button"
         >
-          Refresh latest
+          {t("uiRefreshLatest")}
         </Button>
       </div>
     );
@@ -580,6 +587,8 @@ function LoadMore({
   isPending: boolean;
   onLoadMore: () => void;
 }) {
+  const { t } = useLanguage();
+
   if (!hasNextPage) return null;
   return (
     <div className="mt-4">
@@ -589,7 +598,7 @@ function LoadMore({
         onClick={onLoadMore}
         type="button"
       >
-        {isPending ? "Loading…" : "Load more"}
+        {isPending ? t("commonLoading") : t("commonLoadMore")}
       </Button>
     </div>
   );
@@ -602,6 +611,8 @@ function SearchControl({
   onSearch: (value: string) => void;
   search: string;
 }) {
+  const { t } = useLanguage();
+
   return (
     <form
       className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end [&>label]:flex-1"
@@ -610,8 +621,8 @@ function SearchControl({
         onSearch(String(new FormData(event.currentTarget).get("q") ?? ""));
       }}
     >
-      <Field defaultValue={search} label="Search catalog" name="q" />
-      <Button type="submit">Search</Button>
+      <Field defaultValue={search} label={t("uiSearchCatalog")} name="q" />
+      <Button type="submit">{t("uiSearch")}</Button>
     </form>
   );
 }
@@ -629,21 +640,25 @@ function ProductListControls({
   onSearch: (value: string) => void;
   search: string;
 }) {
+  const { t } = useLanguage();
+
   const categorySelectId = useId();
   return (
     <div className="my-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_16rem] md:items-end">
       <SearchControl onSearch={onSearch} search={search} />
       <Label className="form-field" htmlFor={categorySelectId}>
-        Category filter
+        {t("uiCategoryFilter")}
         <NativeSelect
           className="w-full "
           id={categorySelectId}
           onChange={(event) => onCategoryFilterChange(event.target.value)}
           value={categoryFilter}
         >
-          <NativeSelectOption value="">All categories</NativeSelectOption>
+          <NativeSelectOption value="">
+            {t("uiAllCategories")}
+          </NativeSelectOption>
           <NativeSelectOption value="uncategorized">
-            Uncategorized
+            {t("uiUncategorized")}
           </NativeSelectOption>
           {categories.map((category) => (
             <NativeSelectOption key={category.id} value={category.id}>
@@ -665,6 +680,8 @@ function CategoryCreateForm({
   onError: (error: unknown) => void;
   onSaved: () => Promise<void>;
 }) {
+  const { t } = useLanguage();
+
   const mutation = useMutation({
     mutationFn: (form: HTMLFormElement) => {
       const data = new FormData(form);
@@ -687,17 +704,17 @@ function CategoryCreateForm({
           .catch(onError);
       }}
     >
-      <h2 className="font-semibold">Create category</h2>
+      <h2 className="font-semibold">{t("uiCreateCategory")}</h2>
       <div className="mt-4 mb-4 grid max-w-4xl items-start gap-4 sm:grid-cols-2">
-        <Field label="Category name" name="name" required />
-        <TextareaField label="Description (optional)" name="description" />
+        <Field label={t("uiCategoryName")} name="name" required />
+        <TextareaField label={t("uiDescriptionOptional")} name="description" />
       </div>
       <Button
         aria-busy={mutation.isPending}
         disabled={mutation.isPending}
         type="submit"
       >
-        {mutation.isPending ? "Creating…" : "Create category"}
+        {mutation.isPending ? t("branchCreating") : t("uiCreateCategory")}
       </Button>
     </form>
   );
@@ -752,19 +769,19 @@ function CategoryEditor({
         <div className="mt-4 mb-4 grid max-w-4xl items-start gap-4 sm:grid-cols-2">
           <Field
             defaultValue={category.name}
-            label="Category name"
+            label={t("uiCategoryName")}
             name="name"
             required
           />
           <TextareaField
             defaultValue={category.description ?? ""}
-            label="Description (optional)"
+            label={t("uiDescriptionOptional")}
             name="description"
           />
         </div>
       ) : (
         <p className="mt-3 text-sm text-muted-foreground">
-          {category.description ?? "No description"}
+          {category.description ?? t("uiNoDescription")}
         </p>
       )}
       {canManage || canLifecycle ? (
@@ -789,7 +806,9 @@ function CategoryEditor({
               }
               type="button"
             >
-              {category.status === "ACTIVE" ? "Deactivate" : "Reactivate"}
+              {category.status === "ACTIVE"
+                ? t("commonDeactivate")
+                : t("commonReactivate")}
             </Button>
           ) : null}
         </div>
@@ -809,7 +828,9 @@ function ProductCreateForm({
   onError: (error: unknown) => void;
   onSaved: () => Promise<void>;
 }) {
-  const [validation, setValidation] = useState<string | null>(null);
+  const { t } = useLanguage();
+
+  const [validation, setValidation] = useState<TranslationKey | null>(null);
   const mutation = useMutation({
     mutationFn: (form: HTMLFormElement) => {
       const data = new FormData(form);
@@ -849,19 +870,19 @@ function ProductCreateForm({
           });
       }}
     >
-      <h2 className="font-semibold">Create product</h2>
+      <h2 className="font-semibold">{t("uiCreateProduct")}</h2>
       <div className="mt-4 mb-4 grid max-w-5xl items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <Field label="Product name" name="name" required />
-        <Field label="SKU" name="sku" required />
-        <Field label="Barcode (optional)" name="barcode" />
+        <Field label={t("uiProductName")} name="name" required />
+        <Field label={t("uiSKU")} name="sku" required />
+        <Field label={t("uiBarcodeOptional")} name="barcode" />
         <Field
           inputMode="decimal"
-          label="Base price"
+          label={t("uiBasePrice")}
           name="basePrice"
           required
         />
         <Label className="form-field" htmlFor={unitId}>
-          Unit
+          {t("uiUnit")}
           <NativeSelect
             className="w-full form-control--compact"
             defaultValue="EA"
@@ -874,9 +895,11 @@ function ProductCreateForm({
           </NativeSelect>
         </Label>
         <Label className="form-field" htmlFor={categoryId}>
-          Category (optional)
+          {t("uiCategoryOptional")}
           <NativeSelect className="w-full " id={categoryId} name="categoryId">
-            <NativeSelectOption value="">Uncategorized</NativeSelectOption>
+            <NativeSelectOption value="">
+              {t("uiUncategorized")}
+            </NativeSelectOption>
             {categories.map((category) => (
               <NativeSelectOption key={category.id} value={category.id}>
                 {category.name}
@@ -884,11 +907,11 @@ function ProductCreateForm({
             ))}
           </NativeSelect>
         </Label>
-        <TextareaField label="Description (optional)" name="description" />
+        <TextareaField label={t("uiDescriptionOptional")} name="description" />
       </div>
       {validation ? (
         <p className="mt-3 text-sm form-message" role="alert">
-          {validation}
+          {t(validation)}
         </p>
       ) : null}
       <Button
@@ -896,7 +919,7 @@ function ProductCreateForm({
         disabled={mutation.isPending}
         type="submit"
       >
-        {mutation.isPending ? "Creating…" : "Create product"}
+        {mutation.isPending ? t("branchCreating") : t("uiCreateProduct")}
       </Button>
     </form>
   );
@@ -923,7 +946,7 @@ function ProductEditor({
 }) {
   const { t } = useLanguage();
 
-  const [validation, setValidation] = useState<string | null>(null);
+  const [validation, setValidation] = useState<TranslationKey | null>(null);
   const updateMutation = useMutation({
     mutationFn: (form: HTMLFormElement) => {
       const data = new FormData(form);
@@ -952,7 +975,7 @@ function ProductEditor({
     !categories.some(({ id }) => id === product.categoryId);
   return (
     <form
-      aria-label={`Edit product ${product.name}`}
+      aria-label={t("uiEditNamedProduct").replace("{name}", product.name)}
       className="rounded-lg border bg-card p-5"
       onSubmit={(event) => {
         event.preventDefault();
@@ -978,32 +1001,39 @@ function ProductEditor({
         <div className="mt-4 mb-4 grid max-w-5xl items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <Field
             defaultValue={product.name}
-            label="Product name"
+            label={t("uiProductName")}
             name="name"
             required
           />
-          <Field defaultValue={product.sku} label="SKU" name="sku" required />
+          <Field
+            defaultValue={product.sku}
+            label={t("uiSKU")}
+            name="sku"
+            required
+          />
           <Field
             defaultValue={product.barcode ?? ""}
-            label="Barcode (optional)"
+            label={t("uiBarcodeOptional")}
             name="barcode"
           />
           <Field
             defaultValue={product.basePrice}
             inputMode="decimal"
-            label="Base price"
+            label={t("uiBasePrice")}
             name="basePrice"
             required
           />
           <Label className="form-field" htmlFor={categorySelectId}>
-            Category (optional)
+            {t("uiCategoryOptional")}
             <NativeSelect
               className="w-full "
               defaultValue={product.categoryId ?? ""}
               id={categorySelectId}
               name="categoryId"
             >
-              <NativeSelectOption value="">Uncategorized</NativeSelectOption>
+              <NativeSelectOption value="">
+                {t("uiUncategorized")}
+              </NativeSelectOption>
               {needsCurrentCategoryOption ? (
                 <NativeSelectOption value={product.categoryId ?? ""}>
                   {categoryName}
@@ -1017,34 +1047,34 @@ function ProductEditor({
             </NativeSelect>
           </Label>
           <p className="self-end text-sm text-muted-foreground">
-            Unit: {product.unit} (immutable)
+            {t("uiUnit2")} {product.unit} {t("uiImmutable")}
           </p>
           <TextareaField
             defaultValue={product.description ?? ""}
-            label="Description (optional)"
+            label={t("uiDescriptionOptional")}
             name="description"
           />
         </div>
       ) : (
         <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
           <div>
-            <dt className="text-muted-foreground">Category</dt>
-            <dd>{categoryName ?? "Uncategorized"}</dd>
+            <dt className="text-muted-foreground">{t("uiCategory")}</dt>
+            <dd>{categoryName ?? t("uiUncategorized")}</dd>
           </div>
           <div>
-            <dt className="text-muted-foreground">Barcode</dt>
-            <dd>{product.barcode ?? "Not set"}</dd>
+            <dt className="text-muted-foreground">{t("uiBarcode")}</dt>
+            <dd>{product.barcode ?? t("uiNotSet")}</dd>
           </div>
           <div>
-            <dt className="text-muted-foreground">Description</dt>
-            <dd>{product.description ?? "No description"}</dd>
+            <dt className="text-muted-foreground">{t("uiDescription")}</dt>
+            <dd>{product.description ?? t("uiNoDescription")}</dd>
           </div>
         </dl>
       )}
       <ProductBarcodeLabels product={product} />
       {validation ? (
         <p className="mt-3 text-sm form-message" role="alert">
-          {validation}
+          {t(validation)}
         </p>
       ) : null}
       {canManage || canLifecycle ? (
@@ -1069,7 +1099,9 @@ function ProductEditor({
               }
               type="button"
             >
-              {product.status === "ACTIVE" ? "Deactivate" : "Reactivate"}
+              {product.status === "ACTIVE"
+                ? t("commonDeactivate")
+                : t("commonReactivate")}
             </Button>
           ) : null}
         </div>

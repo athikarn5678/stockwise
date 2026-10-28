@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { type ReactNode, Suspense } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import { LocalizedLoading } from "@/components/localized-loading";
 import { QueryProvider } from "@/providers/query-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { LanguageProvider } from "@/providers/language-provider";
@@ -26,9 +27,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
           <LanguageProvider>
             <TooltipProvider>
               <QueryProvider>
-                <Suspense
-                  fallback={<p aria-live="polite">Loading StockWise…</p>}
-                >
+                <Suspense fallback={<LocalizedLoading messageKey="loading" />}>
                   <AppShell>{children}</AppShell>
                 </Suspense>
               </QueryProvider>

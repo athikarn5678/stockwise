@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
 
+import { LanguageProvider, useLanguage } from "@/providers/language-provider";
+import { en } from "@/i18n/en";
+import { th } from "@/i18n/th";
 import {
   act,
   cleanup,
@@ -638,4 +641,31 @@ describe("password recovery and logout", () => {
     expect(routerPush).not.toHaveBeenCalled();
     expect(queryClient.getQueryData(["access-context"])).toBeUndefined();
   });
+});
+
+function TestLanguageToggle() {
+  const { language, setLanguage } = useLanguage();
+  return (
+    <button onClick={() => setLanguage(language === "en" ? "th" : "en")}>
+      Switch language
+    </button>
+  );
+}
+
+it("retranslates an existing login validation message", async () => {
+  localStorage.clear();
+  renderWithQueryClient(
+    <LanguageProvider>
+      <TestLanguageToggle />
+      <LoginForm />
+    </LanguageProvider>,
+  );
+  fireEvent.submit(
+    screen.getByRole("button", { name: en.authSignIn }).closest("form")!,
+  );
+  expect(await screen.findByText(en.authInvalidEmail)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Switch language" }));
+  expect(screen.getByText(th.authInvalidEmail)).toBeTruthy();
+  expect(login).not.toHaveBeenCalled();
+  localStorage.clear();
 });

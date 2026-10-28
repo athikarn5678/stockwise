@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
 
+import { LanguageProvider, useLanguage } from "@/providers/language-provider";
+import { en } from "@/i18n/en";
+import { th } from "@/i18n/th";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   cleanup,
@@ -319,13 +322,28 @@ function mockFetch(input: RequestInfo | URL): Promise<Response> {
   throw new Error(`Unexpected request: ${url}`);
 }
 
-function renderPage() {
+function TestLanguageToggle() {
+  const { language, setLanguage } = useLanguage();
+  return (
+    <button onClick={() => setLanguage(language === "en" ? "th" : "en")}>
+      Switch language
+    </button>
+  );
+}
+function renderPage(localized = false) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   render(
     <QueryClientProvider client={client}>
-      <AnalyticsManagement />
+      {localized ? (
+        <LanguageProvider>
+          <TestLanguageToggle />
+          <AnalyticsManagement />
+        </LanguageProvider>
+      ) : (
+        <AnalyticsManagement />
+      )}
     </QueryClientProvider>,
   );
   return client;
@@ -723,4 +741,16 @@ describe("analytics management", () => {
     );
     expect(await screen.findByText("Uncategorized")).toBeTruthy();
   });
+});
+
+it("switches analytics labels between English and Thai", async () => {
+  localStorage.clear();
+  renderPage(true);
+  await screen.findByLabelText(en.uiAnalyticsScope);
+  fireEvent.click(screen.getByRole("button", { name: "Switch language" }));
+  expect(screen.getByLabelText(th.uiAnalyticsScope)).toBeTruthy();
+  expect(screen.getByRole("button", { name: th.uiApplyPeriod })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Switch language" }));
+  expect(screen.getByLabelText(en.uiAnalyticsScope)).toBeTruthy();
+  localStorage.clear();
 });

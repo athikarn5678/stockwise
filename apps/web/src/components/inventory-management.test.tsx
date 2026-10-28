@@ -206,7 +206,7 @@ describe("inventory management UI", () => {
     await screen.findByText("Tea");
     fireEvent.click(screen.getByRole("button", { name: /Tea/ }));
     expect(await screen.findByText("+2 · Purchase receive")).toBeTruthy();
-    expect(screen.getByText(/PURCHASE RECEIVE/)).toBeTruthy();
+    expect(screen.getAllByText(/Purchase receive/)).toHaveLength(2);
   });
 
   it.each(["OWNER", "ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF"] as const)(

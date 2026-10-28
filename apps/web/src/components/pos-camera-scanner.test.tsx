@@ -8,6 +8,10 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+
+import { LanguageProvider, useLanguage } from "@/providers/language-provider";
+import { en } from "@/i18n/en";
+import { th } from "@/i18n/th";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PosCameraScanner } from "./pos-camera-scanner";
@@ -203,4 +207,29 @@ describe("POS single-scan camera", () => {
       value: "visible",
     });
   });
+});
+
+function TestLanguageToggle() {
+  const { language, setLanguage } = useLanguage();
+  return (
+    <button onClick={() => setLanguage(language === "en" ? "th" : "en")}>
+      Switch language
+    </button>
+  );
+}
+
+it("retranslates a camera error without reopening the camera", async () => {
+  localStorage.clear();
+  getUserMedia.mockRejectedValue(new DOMException("denied", "NotAllowedError"));
+  render(
+    <LanguageProvider>
+      <TestLanguageToggle />
+      <PosCameraScanner onClose={onClose} onDetected={onDetected} />
+    </LanguageProvider>,
+  );
+  await screen.findByText(en.camErrDenied);
+  fireEvent.click(screen.getByRole("button", { name: "Switch language" }));
+  expect(screen.getByText(th.camErrDenied)).toBeTruthy();
+  expect(getUserMedia).toHaveBeenCalledTimes(1);
+  localStorage.clear();
 });

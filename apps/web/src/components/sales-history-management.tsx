@@ -1,4 +1,5 @@
 "use client";
+import type { TranslationKey } from "@/i18n/en";
 import { useLanguage } from "@/providers/language-provider";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -59,6 +60,14 @@ const REFUND_CREATE_ROLES = new Set<SalesHistoryRole>([
   "ADMIN",
   "BRANCH_MANAGER",
 ]);
+const REFUND_LABELS: Record<
+  SalesHistorySummary["refundState"],
+  TranslationKey
+> = {
+  NONE: "refundStateNone",
+  PARTIALLY_REFUNDED: "refundStatePartial",
+  FULLY_REFUNDED: "refundStateFull",
+};
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -76,35 +85,41 @@ function formatAbsoluteTimestamp(value: string): string {
   return value.replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage(
+  error: unknown,
+  t: (key: TranslationKey) => string,
+): string {
   if (!(error instanceof SalesApiError)) {
-    return "Sales history is temporarily unavailable. Try again.";
+    return t("uiSalesHistoryIsTemporarilyUnavailableTryAgain");
   }
   const messages: Record<SalesApiErrorKind, string> = {
-    authentication_required: "Sign in again to view sales history.",
-    branch_inactive: "This branch is inactive.",
-    forbidden: "Sales history is not available for your current access.",
-    idempotency_conflict:
-      "Sales history is temporarily unavailable. Try again.",
-    insufficient_stock: "Sales history is temporarily unavailable. Try again.",
-    invalid_cursor: "This sales list changed. Refresh the latest results.",
-    price_changed: "Sales history is temporarily unavailable. Try again.",
-    product_inactive: "Sales history is temporarily unavailable. Try again.",
-    product_not_found: "Sales history is temporarily unavailable. Try again.",
-    sale_not_found: "This sale is no longer available at this branch.",
-    sale_already_fully_refunded: "This sale is already fully refunded.",
-    refund_quantity_exceeded:
-      "A refund quantity exceeds what remains on the original sale.",
-    stale_vat_profile: "Sales history is temporarily unavailable. Try again.",
-    unavailable: "Sales history is temporarily unavailable. Try again.",
-    validation: "Check the cashier user ID and try again.",
-    vat_configuration_required:
-      "Sales history is temporarily unavailable. Try again.",
+    authentication_required: t("uiSignInAgainToViewSalesHistory"),
+    branch_inactive: t("uiThisBranchIsInactive"),
+    forbidden: t("uiSalesHistoryIsNotAvailableForYourCurrentAccess"),
+    idempotency_conflict: t("uiSalesHistoryIsTemporarilyUnavailableTryAgain"),
+    insufficient_stock: t("uiSalesHistoryIsTemporarilyUnavailableTryAgain"),
+    invalid_cursor: t("uiThisSalesListChangedRefreshTheLatestResults"),
+    price_changed: t("uiSalesHistoryIsTemporarilyUnavailableTryAgain"),
+    product_inactive: t("uiSalesHistoryIsTemporarilyUnavailableTryAgain"),
+    product_not_found: t("uiSalesHistoryIsTemporarilyUnavailableTryAgain"),
+    sale_not_found: t("uiThisSaleIsNoLongerAvailableAtThisBranch"),
+    sale_already_fully_refunded: t("uiThisSaleIsAlreadyFullyRefunded"),
+    refund_quantity_exceeded: t(
+      "uiARefundQuantityExceedsWhatRemainsOnTheOriginal",
+    ),
+    stale_vat_profile: t("uiSalesHistoryIsTemporarilyUnavailableTryAgain"),
+    unavailable: t("uiSalesHistoryIsTemporarilyUnavailableTryAgain"),
+    validation: t("uiCheckTheCashierUserIDAndTryAgain"),
+    vat_configuration_required: t(
+      "uiSalesHistoryIsTemporarilyUnavailableTryAgain",
+    ),
   };
   return messages[error.kind];
 }
 
 export function SalesHistoryManagement() {
+  const { t } = useLanguage();
+
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedOrganizationId = searchParams.get("organizationId");
@@ -132,32 +147,35 @@ export function SalesHistoryManagement() {
     if (canonical !== current) router.replace(canonical);
   }, [requestedBranchId, requestedOrganizationId, resolved, router]);
 
-  if (contextQuery.isPending) return <p aria-live="polite">Loading access…</p>;
+  if (contextQuery.isPending)
+    return <p aria-live="polite">{t("loadingAccess")}</p>;
   if (contextQuery.isError)
     return (
       <p className="form-message" role="alert">
-        Your access context could not be loaded.
+        {t("accessError")}
       </p>
     );
   if (resolved?.organization === null) {
     return (
-      <ContextUnavailable message="Choose an active organization from the workspace before viewing sales." />
+      <ContextUnavailable
+        message={t("uiChooseAnActiveOrganizationFromTheWorkspaceBeforeViewing")}
+      />
     );
   }
   if (resolved === null) return null;
   if (resolved.branch === null) {
     return (
       <ContextUnavailable
-        message="Choose an active branch before viewing sales."
-        title="Branch context required"
+        message={t("uiChooseAnActiveBranchBeforeViewingSales")}
+        title={t("uiBranchContextRequired")}
       />
     );
   }
   if (!HISTORY_ROLES.has(resolved.organization.role)) {
     return (
       <ContextUnavailable
-        message="Your current role cannot view sales history."
-        title="Sales history unavailable"
+        message={t("uiYourCurrentRoleCannotViewSalesHistory")}
+        title={t("uiSalesHistoryUnavailable")}
       />
     );
   }
@@ -171,17 +189,21 @@ export function SalesHistoryManagement() {
 
 function ContextUnavailable({
   message,
-  title = "Sales history unavailable",
+  title,
 }: {
   message: string;
   title?: string;
 }) {
+  const { t } = useLanguage();
+
   return (
     <section className="space-y-4">
-      <h1 className="text-2xl font-semibold">{title}</h1>
+      <h1 className="text-2xl font-semibold">
+        {title ?? t("uiSalesHistoryUnavailable")}
+      </h1>
       <p className="text-muted-foreground">{message}</p>
       <Link className="underline" href="/app">
-        Return to workspace
+        {t("uiReturnToWorkspace")}
       </Link>
     </section>
   );
@@ -203,7 +225,7 @@ function SalesHistoryContent({
   const scopeKey = salesScopeKey(context);
   const [actorInput, setActorInput] = useState("");
   const [actorUserId, setActorUserId] = useState<string | undefined>();
-  const [filterError, setFilterError] = useState<string | null>(null);
+  const [filterError, setFilterError] = useState<TranslationKey | null>(null);
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
   const historyQuery = useInfiniteQuery<
     SalesHistoryPage,
@@ -237,22 +259,21 @@ function SalesHistoryContent({
         >
           {t("backToWorkspace")}
         </Link>
-        <h1 className="text-2xl font-semibold">Sales history</h1>
+        <h1 className="text-2xl font-semibold">{t("sales")}</h1>
         <p className="text-muted-foreground">
-          Completed sales at {branch.code} — {branch.name}. Sale timestamps are
-          shown in UTC. Analytics uses the organization's reporting timezone for
-          calendar periods.
+          {t("uiCompletedSalesAt")} {branch.code} — {branch.name}
+          {t("uiSaleTimestampsAreShownInUTCAnalyticsUsesThe")}
         </p>
       </header>
 
       <form
-        aria-label="Filter sales history"
+        aria-label={t("uiFilterSalesHistory")}
         className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4"
         onSubmit={(event) => {
           event.preventDefault();
           const value = actorInput.trim();
           if (value !== "" && !UUID_PATTERN.test(value)) {
-            setFilterError("Enter a valid cashier user ID or leave it blank.");
+            setFilterError("uiEnterAValidCashierUserIDOrLeaveIt");
             return;
           }
           setFilterError(null);
@@ -260,17 +281,17 @@ function SalesHistoryContent({
         }}
       >
         <Label className="form-field w-full sm:w-96">
-          Cashier user ID (optional)
+          {t("uiCashierUserIDOptional")}
           <Input
             aria-describedby={filterError ? "sales-filter-error" : undefined}
             className=""
             onChange={(event) => setActorInput(event.target.value)}
-            placeholder="Exact UUID only"
+            placeholder={t("uiExactUUIDOnly")}
             value={actorInput}
           />
         </Label>
         <Button variant="outline" type="submit">
-          Apply filter
+          {t("uiApplyFilter")}
         </Button>
         <Button
           variant="outline"
@@ -282,11 +303,11 @@ function SalesHistoryContent({
           }}
           type="button"
         >
-          Clear filter
+          {t("uiClearFilter")}
         </Button>
         {filterError ? (
           <p className="form-message" id="sales-filter-error" role="alert">
-            {filterError}
+            {t(filterError)}
           </p>
         ) : null}
       </form>
@@ -333,34 +354,42 @@ function SalesList({
   sales: SalesHistorySummary[];
   selectedSaleId: string | null;
 }) {
-  if (isLoading) return <p aria-live="polite">Loading sales history…</p>;
+  const { t } = useLanguage();
+
+  if (isLoading) return <p aria-live="polite">{t("uiLoadingSalesHistory")}</p>;
   if (error !== null)
     return (
       <p className="form-message" role="alert">
-        {errorMessage(error)}
+        {errorMessage(error, t)}
       </p>
     );
   if (sales.length === 0) {
     return (
       <p className="rounded-lg border p-5 text-muted-foreground">
-        No completed sales match this branch and filter.
+        {t("uiNoCompletedSalesMatchThisBranchAndFilter")}
       </p>
     );
   }
   return (
-    <section aria-label="Sales history" className="space-y-4">
+    <section aria-label={t("sales")} className="space-y-4">
       <div className="overflow-x-auto rounded-lg border bg-card">
         <Table className="w-full min-w-[45rem] text-left text-sm">
           <TableHeader className="border-b bg-muted text-xs uppercase tracking-wide text-muted-foreground">
             <TableRow>
-              <TableHead className="px-4 py-3 font-medium">Sale</TableHead>
-              <TableHead className="px-4 py-3 font-medium">Cashier</TableHead>
-              <TableHead className="px-4 py-3 font-medium">Payment</TableHead>
+              <TableHead className="px-4 py-3 font-medium">
+                {t("uiSale")}
+              </TableHead>
+              <TableHead className="px-4 py-3 font-medium">
+                {t("uiCashier")}
+              </TableHead>
+              <TableHead className="px-4 py-3 font-medium">
+                {t("uiPayment")}
+              </TableHead>
               <TableHead className="px-4 py-3 text-right font-medium">
-                Total
+                {t("receiptTotal")}
               </TableHead>
               <TableHead className="relative px-4 py-3 font-medium">
-                <span className="sr-only">Open detail</span>
+                <span className="sr-only">{t("uiOpenDetail")}</span>
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -371,10 +400,11 @@ function SalesList({
                   <p className="font-medium">{sale.reference}</p>
                   <p className="text-muted-foreground">
                     {formatAbsoluteTimestamp(sale.createdAt)} · {sale.itemCount}{" "}
-                    item{sale.itemCount === 1 ? "" : "s"}
+                    {t("uiItem")}
+                    {sale.itemCount === 1 ? "" : "s"}
                   </p>
                   <p className="text-muted-foreground">
-                    {sale.refundState.replaceAll("_", " ")} · Remaining{" "}
+                    {t(REFUND_LABELS[sale.refundState])} {t("uiRemaining")}{" "}
                     {formatThb(sale.remainingAmount)}
                   </p>
                 </TableCell>
@@ -382,7 +412,11 @@ function SalesList({
                   {sale.actorDisplayName}
                 </TableCell>
                 <TableCell className="px-4 py-3">
-                  {sale.payment.method}
+                  {t(
+                    sale.payment.method === "CASH"
+                      ? "paymentCash"
+                      : "paymentTransfer",
+                  )}
                 </TableCell>
                 <TableCell className="px-4 py-3 text-right font-medium">
                   {formatThb(sale.totalAmount)}
@@ -394,7 +428,7 @@ function SalesList({
                     onClick={() => onSelect(sale.id)}
                     type="button"
                   >
-                    View detail
+                    {t("uiViewDetail")}
                   </Button>
                 </TableCell>
               </TableRow>
@@ -409,7 +443,7 @@ function SalesList({
           onClick={onLoadMore}
           type="button"
         >
-          {isLoadingNext ? "Loading more…" : "Load more sales"}
+          {isLoadingNext ? t("inventoryLoadingMore") : t("uiLoadMoreSales")}
         </Button>
       ) : null}
     </section>
@@ -427,6 +461,8 @@ function SalesDetail({
   saleId: string;
   scopeKey: readonly unknown[];
 }) {
+  const { t } = useLanguage();
+
   const detailRef = useRef<HTMLElement>(null);
   const hasScrolled = useRef(false);
   const detailQuery = useQuery({
@@ -452,10 +488,10 @@ function SalesDetail({
       className="scroll-mt-6 space-y-6 rounded-lg border bg-card p-5 sm:p-7"
       ref={detailRef}
     >
-      {detailQuery.isPending ? <p>Loading sale detail…</p> : null}
+      {detailQuery.isPending ? <p>{t("uiLoadingSaleDetail")}</p> : null}
       {detailQuery.isError ? (
         <p className="form-message" role="alert">
-          {errorMessage(detailQuery.error)}
+          {errorMessage(detailQuery.error, t)}
         </p>
       ) : null}
       {detailQuery.data ? (
@@ -481,6 +517,8 @@ function SaleDetailContent({
   sale: SalesHistoryDetail;
   scopeKey: readonly unknown[];
 }) {
+  const { t } = useLanguage();
+
   const includesCosts = sale.items.some(
     (item) => item.cogsAmount !== undefined || item.unitCost !== undefined,
   );
@@ -494,7 +532,7 @@ function SaleDetailContent({
           </p>
         </div>
         <Button variant="outline" onClick={() => window.print()} type="button">
-          Print receipt
+          {t("uiPrintReceipt")}
         </Button>
       </div>
       <SaleItems sale={sale} />
@@ -516,21 +554,23 @@ function SaleDetailContent({
 }
 
 function RefundHistory({ sale }: { sale: SalesHistoryDetail }) {
+  const { t } = useLanguage();
+
   return (
     <section aria-labelledby="refund-history-heading" className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="font-semibold" id="refund-history-heading">
-          Refunds
+          {t("uiRefunds")}
         </h3>
         <p className="text-sm text-muted-foreground">
-          {sale.refundState.replaceAll("_", " ")} · Refunded{" "}
-          {formatThb(sale.refundedAmount)} · Remaining{" "}
+          {t(REFUND_LABELS[sale.refundState])} {t("uiRefunded")}{" "}
+          {formatThb(sale.refundedAmount)} {t("uiRemaining")}{" "}
           {formatThb(sale.remainingAmount)}
         </p>
       </div>
       {sale.refunds.length === 0 ? (
         <p className="rounded-md border p-4 text-sm text-muted-foreground">
-          No refunds are linked to this sale.
+          {t("uiNoRefundsAreLinkedToThisSale")}
         </p>
       ) : (
         <div className="space-y-3">
@@ -546,9 +586,15 @@ function RefundHistory({ sale }: { sale: SalesHistoryDetail }) {
                 </div>
                 <p className="font-medium">{formatThb(refund.totalAmount)}</p>
               </div>
-              <p className="mt-2">Reason: {refund.reason}</p>
+              <p className="mt-2">
+                {t("uiReason")} {refund.reason}
+              </p>
               <p className="text-muted-foreground">
-                {refund.payment.method}
+                {t(
+                  refund.payment.method === "CASH"
+                    ? "paymentCash"
+                    : "paymentTransfer",
+                )}
                 {refund.payment.reference === null
                   ? ""
                   : ` · ${refund.payment.reference}`}
@@ -560,14 +606,18 @@ function RefundHistory({ sale }: { sale: SalesHistoryDetail }) {
                   );
                   return (
                     <li key={item.id}>
-                      {original?.productName ?? item.productId}: refunded{" "}
-                      {item.refundQuantity}, restocked {item.restockQuantity} ·{" "}
+                      {original?.productName ?? item.productId}
+                      {t("uiRefunded2")} {item.refundQuantity}
+                      {t("uiRestocked")} {item.restockQuantity} ·{" "}
                       {formatThb(item.reversedLineNet)}
                       {item.cogsReversalAmount === undefined
                         ? ""
                         : item.cogsReversalAmount === null
-                          ? " · COGS unavailable"
-                          : ` · COGS ${formatThb(item.cogsReversalAmount)}`}
+                          ? t("uiCogsUnavailableSuffix")
+                          : t("uiCogsAmount").replace(
+                              "{amount}",
+                              formatThb(item.cogsReversalAmount),
+                            )}
                     </li>
                   );
                 })}
@@ -589,6 +639,8 @@ function RefundPanel({
   sale: SalesHistoryDetail;
   scopeKey: readonly unknown[];
 }) {
+  const { t } = useLanguage();
+
   const queryClient = useQueryClient();
   const [reason, setReason] = useState("");
   const [transferReference, setTransferReference] = useState("");
@@ -600,7 +652,9 @@ function RefundPanel({
       ]),
     ),
   );
-  const [validationError, setValidationError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<TranslationKey | null>(
+    null,
+  );
   const lastAttempt = useRef<{ key: string; signature: string } | null>(null);
   const mutation = useMutation({
     mutationFn: (request: {
@@ -634,7 +688,7 @@ function RefundPanel({
 
   return (
     <form
-      aria-label="Create sale refund"
+      aria-label={t("uiCreateSaleRefund")}
       className="space-y-4 rounded-md border p-4"
       onSubmit={(event) => {
         event.preventDefault();
@@ -652,18 +706,18 @@ function RefundPanel({
               ];
         });
         if (items.length === 0) {
-          setValidationError("Enter a refund quantity for at least one item.");
+          setValidationError("uiEnterARefundQuantityForAtLeastOneItem");
           return;
         }
         if (reason.trim() === "") {
-          setValidationError("Enter a reason for this refund.");
+          setValidationError("uiEnterAReasonForThisRefund");
           return;
         }
         if (
           sale.payment.method === "TRANSFER" &&
           transferReference.trim() === ""
         ) {
-          setValidationError("Enter the confirmed transfer reference.");
+          setValidationError("uiEnterTheConfirmedTransferReference");
           return;
         }
         const input = {
@@ -683,10 +737,9 @@ function RefundPanel({
       }}
     >
       <div>
-        <h3 className="font-semibold">Create refund</h3>
+        <h3 className="font-semibold">{t("uiCreateRefund")}</h3>
         <p className="text-sm text-muted-foreground">
-          Refund money and returned stock are recorded separately. This action
-          cannot be edited or deleted.
+          {t("uiRefundMoneyAndReturnedStockAreRecordedSeparatelyThis")}
         </p>
       </div>
       <div className="space-y-3">
@@ -697,10 +750,10 @@ function RefundPanel({
           >
             <legend className="px-1 text-sm font-medium">
               {item.productName} · {item.remainingRefundableQuantity}{" "}
-              {item.unit} remaining
+              {item.unit} {t("uiRemaining2")}
             </legend>
             <Label className="form-field">
-              Refund quantity
+              {t("uiRefundQuantity")}
               <Input
                 className="form-control--numeric"
                 inputMode="decimal"
@@ -718,7 +771,7 @@ function RefundPanel({
               />
             </Label>
             <Label className="form-field">
-              Restock quantity
+              {t("uiRestockQuantity")}
               <Input
                 className="form-control--numeric"
                 inputMode="decimal"
@@ -738,7 +791,7 @@ function RefundPanel({
         ))}
       </div>
       <Label className="form-field">
-        Reason
+        {t("uiReason2")}
         <Textarea
           className=""
           maxLength={200}
@@ -749,7 +802,7 @@ function RefundPanel({
       </Label>
       {sale.payment.method === "TRANSFER" ? (
         <Label className="form-field">
-          Confirmed transfer reference
+          {t("uiConfirmedTransferReference")}
           <Input
             className=""
             maxLength={100}
@@ -761,34 +814,38 @@ function RefundPanel({
       ) : null}
       {validationError !== null ? (
         <p className="form-message" role="alert">
-          {validationError}
+          {t(validationError)}
         </p>
       ) : null}
       {mutation.isError ? (
         <p className="form-message" role="alert">
-          {errorMessage(mutation.error)}
+          {errorMessage(mutation.error, t)}
         </p>
       ) : null}
       {mutation.data ? (
-        <p role="status">Refund {mutation.data.reference} completed.</p>
+        <p role="status">
+          {t("uiRefund")} {mutation.data.reference} {t("uiCompleted")}
+        </p>
       ) : null}
       <Button variant="outline" disabled={mutation.isPending} type="submit">
         {mutation.isPending
-          ? "Recording refund…"
-          : "Confirm irreversible refund"}
+          ? t("uiRecordingRefund")
+          : t("uiConfirmIrreversibleRefund")}
       </Button>
     </form>
   );
 }
 
 function SaleItems({ sale }: { sale: SalesHistoryDetail }) {
+  const { t } = useLanguage();
+
   return (
     <section aria-labelledby="sale-items-heading" className="space-y-3">
       <h3 className="font-semibold" id="sale-items-heading">
-        Items
+        {t("uiItems")}
       </h3>
       <div
-        aria-label="Sale item details"
+        aria-label={t("uiSaleItemDetails")}
         className="overflow-x-auto rounded-md border focus-visible:outline-2 focus-visible:outline-ring"
         role="region"
         tabIndex={0}
@@ -796,10 +853,16 @@ function SaleItems({ sale }: { sale: SalesHistoryDetail }) {
         <Table className="w-full min-w-[40rem] text-left text-sm">
           <TableHeader className="border-b bg-muted text-xs uppercase tracking-wide text-muted-foreground">
             <TableRow>
-              <TableHead className="px-3 py-2">Product</TableHead>
-              <TableHead className="px-3 py-2">Quantity</TableHead>
-              <TableHead className="px-3 py-2 text-right">Unit price</TableHead>
-              <TableHead className="px-3 py-2 text-right">Line total</TableHead>
+              <TableHead className="px-3 py-2">
+                {t("marketingProduct")}
+              </TableHead>
+              <TableHead className="px-3 py-2">{t("uiQuantity")}</TableHead>
+              <TableHead className="px-3 py-2 text-right">
+                {t("uiUnitPrice")}
+              </TableHead>
+              <TableHead className="px-3 py-2 text-right">
+                {t("uiLineTotal")}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -828,20 +891,22 @@ function SaleItems({ sale }: { sale: SalesHistoryDetail }) {
 }
 
 function SaleTotals({ sale }: { sale: SalesHistoryDetail }) {
+  const { t } = useLanguage();
+
   return (
     <section
-      aria-label="Sale totals"
+      aria-label={t("uiSaleTotals")}
       className="ml-auto max-w-sm space-y-2 text-sm"
     >
-      <TotalRow label="Subtotal" value={sale.subtotalAmount} />
+      <TotalRow label={t("receiptSubtotal")} value={sale.subtotalAmount} />
       {sale.discountAmount !== "0.00" ? (
-        <TotalRow label="Discount" value={sale.discountAmount} />
+        <TotalRow label={t("receiptDiscount")} value={sale.discountAmount} />
       ) : null}
       {sale.taxableAmount !== null ? (
-        <TotalRow label="Taxable amount" value={sale.taxableAmount} />
+        <TotalRow label={t("receiptTaxable")} value={sale.taxableAmount} />
       ) : null}
-      <TotalRow label="VAT" value={sale.outputVatAmount} />
-      <TotalRow emphasis label="Total" value={sale.totalAmount} />
+      <TotalRow label={t("receiptVat")} value={sale.outputVatAmount} />
+      <TotalRow emphasis label={t("receiptTotal")} value={sale.totalAmount} />
     </section>
   );
 }
@@ -874,46 +939,54 @@ function PaymentDetails({
 }: {
   payment: SalesHistoryDetail["payment"];
 }) {
+  const { t } = useLanguage();
+
   return (
     <section
       aria-labelledby="payment-heading"
       className="rounded-md border p-4 text-sm"
     >
       <h3 className="font-semibold" id="payment-heading">
-        Payment
+        {t("uiPayment")}
       </h3>
       <p className="mt-2">
-        {payment.method} · {formatThb(payment.amount)}
+        {t(payment.method === "CASH" ? "paymentCash" : "paymentTransfer")} ·{" "}
+        {formatThb(payment.amount)}
       </p>
       {payment.method === "CASH" ? (
         <p className="text-muted-foreground">
-          Tendered {formatThb(payment.amountTendered)} · Change{" "}
+          {t("uiTendered")} {formatThb(payment.amountTendered)} {t("uiChange")}{" "}
           {formatThb(payment.changeAmount)}
         </p>
       ) : null}
       {payment.method === "TRANSFER" && payment.reference !== null ? (
-        <p className="text-muted-foreground">Reference {payment.reference}</p>
+        <p className="text-muted-foreground">
+          {t("uiReference")} {payment.reference}
+        </p>
       ) : null}
     </section>
   );
 }
 
 function CostDetails({ sale }: { sale: SalesHistoryDetail }) {
+  const { t } = useLanguage();
+
   return (
     <section
       aria-labelledby="cost-details-heading"
       className="rounded-md border p-4 text-sm"
     >
       <h3 className="font-semibold" id="cost-details-heading">
-        Internal cost details
+        {t("uiInternalCostDetails")}
       </h3>
       <ul className="mt-2 space-y-1">
         {sale.items.map((item) =>
           item.cogsAmount !== undefined ? (
             <li key={item.id}>
-              {item.productName}: COGS{" "}
+              {item.productName}
+              {t("uiCOGS")}{" "}
               {item.cogsAmount === null
-                ? "Unavailable"
+                ? t("posUnavailable")
                 : formatThb(item.cogsAmount)}
             </li>
           ) : null,

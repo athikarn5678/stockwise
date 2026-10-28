@@ -1,4 +1,5 @@
 import { formatThb } from "@/money-display";
+import { useLanguage } from "@/providers/language-provider";
 import type { CompletedSale, SalesHistoryDetail } from "@/sales-api-client";
 
 export function SaleReceipt({
@@ -6,6 +7,7 @@ export function SaleReceipt({
 }: {
   sale: CompletedSale | SalesHistoryDetail;
 }) {
+  const { t } = useLanguage();
   // Both API projections contain frozen Sale facts; adapt names, never economics.
   const receipt =
     "occurredAt" in sale
@@ -26,24 +28,23 @@ export function SaleReceipt({
 
   return (
     <>
-      <p className="text-sm text-muted-foreground">
-        Receipt preview · 80 mm paper. Select your printer's 80 mm paper size,
-        use 100% scale, and turn off browser headers and footers.
-      </p>
-      <article aria-label="Printable receipt" className="sales-receipt">
+      <p className="text-sm text-muted-foreground">{t("receiptPreview")}</p>
+      <article aria-label={t("receiptAria")} className="sales-receipt">
         <header className="sales-receipt-header">
           <h2>{receipt.organizationName}</h2>
           <p>
             {receipt.branchCode} — {receipt.branchName}
           </p>
-          <p>Operational sale receipt</p>
+          <p>{t("receiptKind")}</p>
         </header>
         <div className="sales-receipt-identity">
-          <p>Sale {sale.reference}</p>
+          <p>{t("receiptSale").replace("{reference}", sale.reference)}</p>
           <p>
             {receipt.timestamp.replace("T", " ").replace(/\.\d{3}Z$/, " UTC")}
           </p>
-          <p>Cashier: {receipt.actorDisplayName}</p>
+          <p>
+            {t("receiptCashier").replace("{name}", receipt.actorDisplayName)}
+          </p>
         </div>
         <ul className="sales-receipt-items">
           {receipt.items.map((item) => (
@@ -61,34 +62,60 @@ export function SaleReceipt({
         </ul>
         <div className="sales-receipt-summary">
           <dl>
-            <ReceiptAmount label="Subtotal" value={sale.subtotalAmount} />
+            <ReceiptAmount
+              label={t("receiptSubtotal")}
+              value={sale.subtotalAmount}
+            />
             {sale.discountAmount !== "0.00" ? (
-              <ReceiptAmount label="Discount" value={sale.discountAmount} />
+              <ReceiptAmount
+                label={t("receiptDiscount")}
+                value={sale.discountAmount}
+              />
             ) : null}
             {sale.taxableAmount !== null ? (
               <ReceiptAmount
-                label="Taxable amount"
+                label={t("receiptTaxable")}
                 value={sale.taxableAmount}
               />
             ) : null}
-            <ReceiptAmount label="VAT" value={sale.outputVatAmount} />
-            <ReceiptAmount label="Total" value={sale.totalAmount} emphasis />
+            <ReceiptAmount
+              label={t("receiptVat")}
+              value={sale.outputVatAmount}
+            />
+            <ReceiptAmount
+              label={t("receiptTotal")}
+              value={sale.totalAmount}
+              emphasis
+            />
           </dl>
           <footer>
             <p>
-              Payment: {sale.payment.method} · {formatThb(sale.payment.amount)}
+              {t("receiptPayment")
+                .replace(
+                  "{method}",
+                  sale.payment.method === "CASH"
+                    ? t("paymentCash")
+                    : t("paymentTransfer"),
+                )
+                .replace("{amount}", formatThb(sale.payment.amount))}
             </p>
             {sale.payment.method === "CASH" ? (
               <p>
-                Tendered {formatThb(sale.payment.amountTendered)} · Change{" "}
-                {formatThb(sale.payment.changeAmount)}
+                {t("receiptTendered")
+                  .replace("{tendered}", formatThb(sale.payment.amountTendered))
+                  .replace("{change}", formatThb(sale.payment.changeAmount))}
               </p>
             ) : null}
             {sale.payment.method === "TRANSFER" &&
             sale.payment.reference !== null ? (
-              <p>Transfer reference: {sale.payment.reference}</p>
+              <p>
+                {t("receiptTransferRef").replace(
+                  "{reference}",
+                  sale.payment.reference,
+                )}
+              </p>
             ) : null}
-            <p className="sales-receipt-thanks">Thank you</p>
+            <p className="sales-receipt-thanks">{t("receiptThanks")}</p>
           </footer>
         </div>
       </article>

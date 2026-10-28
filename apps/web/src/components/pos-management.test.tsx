@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
 
+import { LanguageProvider, useLanguage } from "@/providers/language-provider";
+import { en } from "@/i18n/en";
+import { th } from "@/i18n/th";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
@@ -106,13 +109,28 @@ const completedSale = {
   totalAmount: "0.30",
 };
 
-function renderPos() {
+function TestLanguageToggle() {
+  const { language, setLanguage } = useLanguage();
+  return (
+    <button onClick={() => setLanguage(language === "en" ? "th" : "en")}>
+      Switch language
+    </button>
+  );
+}
+function renderPos(localized = false) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   render(
     <QueryClientProvider client={queryClient}>
-      <PosManagement />
+      {localized ? (
+        <LanguageProvider>
+          <TestLanguageToggle />
+          <PosManagement />
+        </LanguageProvider>
+      ) : (
+        <PosManagement />
+      )}
     </QueryClientProvider>,
   );
   return queryClient;
@@ -597,4 +615,33 @@ describe("POS management UI", () => {
     ).toBeTruthy();
     expect(searchPosProducts).not.toHaveBeenCalled();
   });
+});
+
+it("retranslates retained checkout feedback without changing cart or replaying checkout", async () => {
+  localStorage.clear();
+  vi.mocked(checkoutSale).mockRejectedValue(new SalesApiError("unavailable"));
+  renderPos(true);
+  await addCoffee();
+  await checkoutCash();
+  await screen.findByText(
+    en.uiCheckoutIsTemporarilyUnavailableYourCartWasKeptUnchanged,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Switch language" }));
+  expect(
+    await screen.findByText(
+      th.uiCheckoutIsTemporarilyUnavailableYourCartWasKeptUnchanged,
+    ),
+  ).toBeTruthy();
+  expect(screen.getByRole("button", { name: th.uiCompleteSale })).toBeTruthy();
+  expect(
+    screen.getByLabelText(th.uiIncreaseQuantity.replace("{name}", "Coffee")),
+  ).toBeTruthy();
+  expect(checkoutSale).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole("button", { name: "Switch language" }));
+  expect(
+    screen.getByText(
+      en.uiCheckoutIsTemporarilyUnavailableYourCartWasKeptUnchanged,
+    ),
+  ).toBeTruthy();
+  localStorage.clear();
 });

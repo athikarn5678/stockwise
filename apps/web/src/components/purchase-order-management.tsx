@@ -1,4 +1,5 @@
 "use client";
+import type { TranslationKey } from "@/i18n/en";
 import { useLanguage } from "@/providers/language-provider";
 import { Label } from "@/components/ui/label";
 import {
@@ -106,53 +107,45 @@ function draftFromOrder(order: PurchaseOrder | null): DraftInput {
   };
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage(error: unknown): TranslationKey {
   if (!(error instanceof PurchaseOrderApiError)) {
-    return "Purchase order data is temporarily unavailable. Try again.";
+    return "uiPurchaseOrderDataIsTemporarilyUnavailableTryAgain";
   }
-  const messages: Record<PurchaseOrderApiError["kind"], string> = {
-    authentication_required: "Sign in again to continue.",
-    branch_inactive:
-      "This branch is inactive and cannot accept purchase orders.",
-    forbidden:
-      "Purchase order management is not available for your current access.",
-    invalid_cursor: "This list changed. Refresh the latest purchase orders.",
-    not_found: "That purchase order is no longer available.",
-    product_inactive:
-      "A selected product is inactive. Review the draft before trying again.",
-    product_not_found: "A selected product is no longer available.",
-    stale:
-      "This purchase order changed elsewhere. The current server state was refreshed; review it before retrying.",
-    state_conflict:
-      "This purchase order can no longer make that transition. Refresh and review it.",
-    supplier_inactive:
-      "The selected supplier is inactive. Choose an active supplier.",
-    supplier_not_found: "The selected supplier is no longer available.",
-    unavailable: "Purchase order data is temporarily unavailable. Try again.",
-    validation: "Check the purchase order values and try again.",
+  const messages: Record<PurchaseOrderApiError["kind"], TranslationKey> = {
+    authentication_required: "branchErrAuth",
+    branch_inactive: "uiThisBranchIsInactiveAndCannotAcceptPurchaseOrders",
+    forbidden: "uiPurchaseOrderManagementIsNotAvailableForYourCurrent",
+    invalid_cursor: "uiThisListChangedRefreshTheLatestPurchaseOrders",
+    not_found: "uiThatPurchaseOrderIsNoLongerAvailable",
+    product_inactive: "uiASelectedProductIsInactiveReviewTheDraftBefore",
+    product_not_found: "uiASelectedProductIsNoLongerAvailable",
+    stale: "uiThisPurchaseOrderChangedElsewhereTheCurrentServerState",
+    state_conflict: "uiThisPurchaseOrderCanNoLongerMakeThatTransition",
+    supplier_inactive: "uiTheSelectedSupplierIsInactiveChooseAnActiveSupplier",
+    supplier_not_found: "uiTheSelectedSupplierIsNoLongerAvailable",
+    unavailable: "uiPurchaseOrderDataIsTemporarilyUnavailableTryAgain",
+    validation: "uiCheckThePurchaseOrderValuesAndTryAgain",
   };
   return messages[error.kind];
 }
 
-function receivingErrorMessage(error: unknown): string {
+function receivingErrorMessage(error: unknown): TranslationKey {
   if (!(error instanceof ReceivingApiError))
-    return "Receiving status is unknown. Retry with the same intent.";
-  const messages: Record<ReceivingApiError["kind"], string> = {
-    authentication_required: "Sign in again to continue.",
-    forbidden: "Receiving is not available for your current access.",
-    not_found: "That purchase order is no longer available.",
-    branch_inactive: "Receiving is blocked because this branch is inactive.",
+    return "uiReceivingStatusIsUnknownRetryWithTheSameIntent";
+  const messages: Record<ReceivingApiError["kind"], TranslationKey> = {
+    authentication_required: "branchErrAuth",
+    forbidden: "uiReceivingIsNotAvailableForYourCurrentAccess",
+    not_found: "uiThatPurchaseOrderIsNoLongerAvailable",
+    branch_inactive: "uiReceivingIsBlockedBecauseThisBranchIsInactive",
     product_inactive:
-      "Receiving is blocked until the affected product is reactivated.",
-    state_conflict: "This order changed state. Refresh it before trying again.",
-    receipt_invalid:
-      "The server rejected this receipt. Review the entered values.",
+      "uiReceivingIsBlockedUntilTheAffectedProductIsReactivated",
+    state_conflict: "uiThisOrderChangedStateRefreshItBeforeTryingAgain",
+    receipt_invalid: "uiTheServerRejectedThisReceiptReviewTheEnteredValues",
     idempotency_conflict:
-      "The previous request key represents different receipt intent. Review the form before retrying.",
-    reference_conflict:
-      "The receipt reference could not be allocated. Retry with the same intent.",
-    validation: "Review the receipt values and VAT fields.",
-    unavailable: "Receiving status is unknown. Retry with the same intent.",
+      "uiThePreviousRequestKeyRepresentsDifferentReceiptIntentReview",
+    reference_conflict: "uiTheReceiptReferenceCouldNotBeAllocatedRetryWith",
+    validation: "uiReviewTheReceiptValuesAndVATFields",
+    unavailable: "uiReceivingStatusIsUnknownRetryWithTheSameIntent",
   };
   return messages[error.kind];
 }
@@ -173,14 +166,24 @@ function validQuantity(value: string, unit: ProductUnit | undefined): boolean {
   );
 }
 
-function statusLabel(status: PurchaseOrderStatus): string {
-  return status[0] + status.slice(1).toLowerCase();
+function statusLabel(
+  status: PurchaseOrderStatus,
+  t: (key: TranslationKey) => string,
+): string {
+  const keys: Record<PurchaseOrderStatus, TranslationKey> = {
+    DRAFT: "poStatusDraft",
+    ORDERED: "poStatusOrdered",
+    RECEIVED: "poStatusReceived",
+    CANCELLED: "poStatusCancelled",
+  };
+  return t(keys[status]);
 }
 
 function StatusBadge({ status }: { status: PurchaseOrderStatus }) {
+  const { t } = useLanguage();
   return (
     <span className="rounded-full border px-2 py-1 text-xs font-medium">
-      {statusLabel(status)}
+      {statusLabel(status, t)}
     </span>
   );
 }
@@ -218,22 +221,24 @@ export function PurchaseOrderManagement() {
     if (canonical !== current) router.replace(canonical);
   }, [requestedBranchId, requestedOrganizationId, resolved, router]);
 
-  if (access.isPending) return <p aria-live="polite">Loading access…</p>;
+  if (access.isPending) return <p aria-live="polite">{t("loadingAccess")}</p>;
   if (access.isError)
     return (
       <p className="form-message" role="alert">
-        Your access context could not be loaded.
+        {t("accessError")}
       </p>
     );
   if (resolved?.organization === null) {
     return (
       <section className="space-y-4">
-        <h1 className="text-2xl font-semibold">Purchase orders unavailable</h1>
+        <h1 className="text-2xl font-semibold">
+          {t("uiPurchaseOrdersUnavailable")}
+        </h1>
         <p className="text-muted-foreground">
-          Choose an active organization from the workspace first.
+          {t("uiChooseAnActiveOrganizationFromTheWorkspaceFirst")}
         </p>
         <Link className="underline" href="/app">
-          Return to workspace
+          {t("uiReturnToWorkspace")}
         </Link>
       </section>
     );
@@ -242,15 +247,17 @@ export function PurchaseOrderManagement() {
   if (resolved.branch === null) {
     return (
       <section className="space-y-4">
-        <h1 className="text-2xl font-semibold">Branch context required</h1>
+        <h1 className="text-2xl font-semibold">
+          {t("uiBranchContextRequired")}
+        </h1>
         <p className="text-muted-foreground">
-          Choose an active branch before managing purchase orders.
+          {t("uiChooseAnActiveBranchBeforeManagingPurchaseOrders")}
         </p>
         <Link
           className="underline"
           href={applicationContextUrl(resolved.organization.id, null)}
         >
-          Return to workspace
+          {t("uiReturnToWorkspace")}
         </Link>
       </section>
     );
@@ -267,9 +274,9 @@ export function PurchaseOrderManagement() {
         >
           {t("backToWorkspace")}
         </Link>
-        <h1 className="text-2xl font-semibold">Purchase orders</h1>
+        <h1 className="text-2xl font-semibold">{t("purchaseOrders")}</h1>
         <p className="form-message" role="alert">
-          You do not have permission to manage purchase orders.
+          {t("uiYouDoNotHavePermissionToManagePurchaseOrders")}
         </p>
       </section>
     );
@@ -302,7 +309,7 @@ function PurchaseOrderContent({
   };
   const scope = purchaseOrderScopeKey(context);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<TranslationKey | null>(null);
   const [status, setStatus] = useState<PurchaseOrderStatus | "all">("all");
   const [supplierId, setSupplierId] = useState("");
   const [orderDateFrom, setOrderDateFrom] = useState("");
@@ -401,21 +408,21 @@ function PurchaseOrderContent({
         >
           {t("backToWorkspace")}
         </Link>
-        <h1 className="text-2xl font-semibold">Purchase orders</h1>
+        <h1 className="text-2xl font-semibold">{t("purchaseOrders")}</h1>
         <p className="text-muted-foreground">
-          Manage branch orders for {branch.name}. Totals are calculated by the
-          server in THB.
+          {t("uiManageBranchOrdersFor")} {branch.name}
+          {t("uiTotalsAreCalculatedByTheServerInTHB")}
         </p>
       </header>
       {notice ? (
         <p className="form-message" role="alert">
-          {notice}
+          {t(notice)}
         </p>
       ) : null}
 
       <PurchaseOrderForm
         activeSuppliers={activeSuppliers}
-        label="Create draft purchase order"
+        label={t("uiCreateDraftPurchaseOrder")}
         onError={handleError}
         onSave={async (input) => {
           const order = await createPurchaseOrder(context, input);
@@ -426,7 +433,7 @@ function PurchaseOrderContent({
 
       <div className="grid items-end gap-4 rounded-lg border bg-card p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_12rem_12rem_auto]">
         <Label className="form-field">
-          Status filter
+          {t("uiStatusFilter")}
           <NativeSelect
             className="w-full "
             onChange={(event) =>
@@ -436,29 +443,31 @@ function PurchaseOrderContent({
           >
             {STATUS_OPTIONS.map((value) => (
               <NativeSelectOption key={value} value={value}>
-                {value === "all" ? "All statuses" : statusLabel(value)}
+                {value === "all" ? t("uiAllStatuses") : statusLabel(value, t)}
               </NativeSelectOption>
             ))}
           </NativeSelect>
         </Label>
         <Label className="form-field">
-          Supplier filter
+          {t("uiSupplierFilter")}
           <NativeSelect
             className="w-full "
             onChange={(event) => setSupplierId(event.target.value)}
             value={supplierId}
           >
-            <NativeSelectOption value="">All suppliers</NativeSelectOption>
+            <NativeSelectOption value="">
+              {t("uiAllSuppliers")}
+            </NativeSelectOption>
             {suppliers.map((supplier) => (
               <NativeSelectOption key={supplier.id} value={supplier.id}>
                 {supplier.name}
-                {supplier.status === "INACTIVE" ? " (inactive)" : ""}
+                {supplier.status === "INACTIVE" ? t("uiInactiveSuffix") : ""}
               </NativeSelectOption>
             ))}
           </NativeSelect>
         </Label>
         <Label className="form-field">
-          Order date from
+          {t("uiOrderDateFrom")}
           <DateInput
             className="form-control--date"
             onChange={(event) => setOrderDateFrom(event.target.value)}
@@ -466,7 +475,7 @@ function PurchaseOrderContent({
           />
         </Label>
         <Label className="form-field">
-          Order date to
+          {t("uiOrderDateTo")}
           <DateInput
             className="form-control--date"
             onChange={(event) => setOrderDateTo(event.target.value)}
@@ -479,20 +488,20 @@ function PurchaseOrderContent({
           onClick={() => void refresh()}
           type="button"
         >
-          Refresh orders
+          {t("uiRefreshOrders")}
         </Button>
       </div>
 
       {orders.isPending ? (
-        <p aria-live="polite">Loading purchase orders…</p>
+        <p aria-live="polite">{t("uiLoadingPurchaseOrders")}</p>
       ) : null}
       {orders.isError ? (
         <p className="form-message" role="alert">
-          {errorMessage(orders.error)}
+          {t(errorMessage(orders.error))}
         </p>
       ) : null}
       {!orders.isPending && !orders.isError && records.length === 0 ? (
-        <p>No purchase orders match this view.</p>
+        <p>{t("uiNoPurchaseOrdersMatchThisView")}</p>
       ) : null}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(18rem,0.8fr)_minmax(0,1.2fr)]">
         <div className="grid min-w-0 grid-cols-1 content-start gap-3">
@@ -511,11 +520,12 @@ function PurchaseOrderContent({
                 <StatusBadge status={order.status} />
               </div>
               <p className="mt-2 text-sm text-muted-foreground">
-                {supplierNames.get(order.supplierId) ?? "Historical supplier"} ·{" "}
-                {order.orderDate}
+                {supplierNames.get(order.supplierId) ??
+                  t("uiHistoricalSupplier")}{" "}
+                · {order.orderDate}
               </p>
               <p className="mt-1 text-sm">
-                Expected total: {formatMoney(order.expectedTotal)} THB
+                {t("uiExpectedTotal")} {formatMoney(order.expectedTotal)} THB
               </p>
             </Button>
           ))}
@@ -526,22 +536,24 @@ function PurchaseOrderContent({
               onClick={() => void orders.fetchNextPage()}
               type="button"
             >
-              {orders.isFetchingNextPage ? "Loading…" : "Load more orders"}
+              {orders.isFetchingNextPage
+                ? t("commonLoading")
+                : t("uiLoadMoreOrders")}
             </Button>
           ) : null}
         </div>
         <div className="min-w-0">
           {selectedId === null ? (
             <p className="rounded-lg border p-5 text-muted-foreground">
-              Select a purchase order to view its details.
+              {t("uiSelectAPurchaseOrderToViewItsDetails")}
             </p>
           ) : null}
           {detail.isPending ? (
-            <p aria-live="polite">Loading purchase order…</p>
+            <p aria-live="polite">{t("uiLoadingPurchaseOrder")}</p>
           ) : null}
           {detail.isError ? (
             <p className="form-message" role="alert">
-              {errorMessage(detail.error)}
+              {t(errorMessage(detail.error))}
             </p>
           ) : null}
           {detail.data ? (
@@ -576,10 +588,12 @@ function PurchaseOrderForm({
   onSave: (input: DraftInput) => Promise<void>;
   products: CatalogProduct[];
 }) {
+  const { t } = useLanguage();
+
   const [input, setInput] = useState<DraftInput>(() =>
     draftFromOrder(initialOrder),
   );
-  const [validation, setValidation] = useState<string | null>(null);
+  const [validation, setValidation] = useState<TranslationKey | null>(null);
   const mutation = useMutation({ mutationFn: onSave });
   const supplierId = useId();
   const orderDateId = useId();
@@ -613,26 +627,26 @@ function PurchaseOrderForm({
       ...current,
       items: current.items.filter((_, lineIndex) => lineIndex !== index),
     }));
-  const validate = (): string | null => {
-    if (input.supplierId === "") return "Choose an active supplier.";
+  const validate = (): TranslationKey | null => {
+    if (input.supplierId === "") return "uiChooseAnActiveSupplier";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input.orderDate))
-      return "Enter a valid order date.";
+      return "uiEnterAValidOrderDate";
     if (
       input.expectedDate !== null &&
       !/^\d{4}-\d{2}-\d{2}$/.test(input.expectedDate)
     )
-      return "Enter a valid expected date.";
-    if (input.items.length === 0) return "Add at least one product line.";
+      return "uiEnterAValidExpectedDate";
+    if (input.items.length === 0) return "uiAddAtLeastOneProductLine";
     const seen = new Set<string>();
     for (const line of input.items) {
-      if (line.productId === "") return "Choose a product for every line.";
+      if (line.productId === "") return "uiChooseAProductForEveryLine";
       if (seen.has(line.productId))
-        return "Each product may appear only once. Edit the existing line instead.";
+        return "uiEachProductMayAppearOnlyOnceEditTheExisting";
       seen.add(line.productId);
       if (!validQuantity(line.quantity, productById.get(line.productId)?.unit))
-        return "Each quantity must be positive and follow its product unit.";
+        return "uiEachQuantityMustBePositiveAndFollowItsProduct";
       if (!validCost(line.expectedUnitCost))
-        return "Each expected unit cost must be a non-negative decimal with up to four places.";
+        return "uiEachExpectedUnitCostMustBeANonNegative";
     }
     return null;
   };
@@ -661,12 +675,12 @@ function PurchaseOrderForm({
       </div>
       {validation ? (
         <p className="mt-3 form-message" id={validationId} role="alert">
-          {validation}
+          {t(validation)}
         </p>
       ) : null}
       <div className="mt-4 grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_12rem_12rem]">
         <Label className="form-field" htmlFor={supplierId}>
-          Supplier
+          {t("uiSupplier")}
           <NativeSelect
             aria-describedby={describedBy}
             aria-invalid={validation !== null}
@@ -681,7 +695,7 @@ function PurchaseOrderForm({
             value={input.supplierId}
           >
             <NativeSelectOption value="">
-              Choose an active supplier
+              {t("uiChooseAnActiveSupplier2")}
             </NativeSelectOption>
             {initialOrder !== null &&
             input.supplierId !== "" &&
@@ -689,7 +703,7 @@ function PurchaseOrderForm({
               (supplier) => supplier.id === input.supplierId,
             ) ? (
               <NativeSelectOption value={input.supplierId}>
-                Historical inactive supplier
+                {t("uiHistoricalInactiveSupplier")}
               </NativeSelectOption>
             ) : null}
             {activeSuppliers.map((supplier) => (
@@ -700,7 +714,7 @@ function PurchaseOrderForm({
           </NativeSelect>
         </Label>
         <Label className="form-field" htmlFor={orderDateId}>
-          Order date
+          {t("uiOrderDate")}
           <DateInput
             aria-describedby={describedBy}
             aria-invalid={validation !== null}
@@ -716,7 +730,7 @@ function PurchaseOrderForm({
           />
         </Label>
         <Label className="form-field" htmlFor={expectedDateId}>
-          Expected date (optional)
+          {t("uiExpectedDateOptional")}
           <DateInput
             aria-describedby={describedBy}
             aria-invalid={validation !== null}
@@ -733,7 +747,7 @@ function PurchaseOrderForm({
         </Label>
       </div>
       <div className="mt-5 space-y-3">
-        <h3 className="font-medium">Product lines</h3>
+        <h3 className="font-medium">{t("uiProductLines")}</h3>
         {input.items.map((line, index) => {
           const availableProducts = products.filter(
             (product) =>
@@ -749,13 +763,18 @@ function PurchaseOrderForm({
               className="grid min-w-0 grid-cols-1 gap-3 rounded-md border p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_9rem_10rem_auto]"
               key={`${line.productId}-${index}`}
             >
-              <legend className="sr-only">Product line {index + 1}</legend>
+              <legend className="sr-only">
+                {t("uiProductLine")} {index + 1}
+              </legend>
               <Label className="form-field">
-                Product
+                {t("marketingProduct")}
                 <NativeSelect
                   aria-describedby={describedBy}
                   aria-invalid={validation !== null}
-                  aria-label={`Product line ${index + 1} product`}
+                  aria-label={t("uiLineProduct").replace(
+                    "{number}",
+                    String(index + 1),
+                  )}
                   className="w-full "
                   onChange={(event) =>
                     updateLine(index, { productId: event.target.value })
@@ -763,11 +782,11 @@ function PurchaseOrderForm({
                   value={line.productId}
                 >
                   <NativeSelectOption value="">
-                    Choose a product
+                    {t("uiChooseAProduct")}
                   </NativeSelectOption>
                   {line.productId !== "" && selected === undefined ? (
                     <NativeSelectOption value={line.productId}>
-                      Historical product
+                      {t("uiHistoricalProduct")}
                     </NativeSelectOption>
                   ) : null}
                   {availableProducts.map((product) => (
@@ -778,11 +797,15 @@ function PurchaseOrderForm({
                 </NativeSelect>
               </Label>
               <Label className="form-field">
-                Quantity{selected ? ` (${selected.unit})` : ""}
+                {t("uiQuantity")}
+                {selected ? ` (${selected.unit})` : ""}
                 <Input
                   aria-describedby={describedBy}
                   aria-invalid={validation !== null}
-                  aria-label={`Product line ${index + 1} quantity${selected ? ` (${selected.unit})` : ""}`}
+                  aria-label={
+                    t("uiLineQuantity").replace("{number}", String(index + 1)) +
+                    (selected ? ` (${selected.unit})` : "")
+                  }
                   className="form-control--numeric"
                   inputMode="decimal"
                   onChange={(event) =>
@@ -792,11 +815,14 @@ function PurchaseOrderForm({
                 />
               </Label>
               <Label className="form-field">
-                Expected unit cost (THB)
+                {t("uiExpectedUnitCostTHB")}
                 <Input
                   aria-describedby={describedBy}
                   aria-invalid={validation !== null}
-                  aria-label={`Product line ${index + 1} expected unit cost (THB)`}
+                  aria-label={t("uiLineExpectedCost").replace(
+                    "{number}",
+                    String(index + 1),
+                  )}
                   className="form-control--numeric"
                   inputMode="decimal"
                   onChange={(event) =>
@@ -807,13 +833,16 @@ function PurchaseOrderForm({
               </Label>
               <Button
                 variant="outline"
-                aria-label={`Remove product line ${index + 1}`}
+                aria-label={t("uiRemoveLine").replace(
+                  "{number}",
+                  String(index + 1),
+                )}
                 className="self-end"
                 disabled={input.items.length === 1}
                 onClick={() => removeLine(index)}
                 type="button"
               >
-                Remove
+                {t("uiRemove")}
               </Button>
             </fieldset>
           );
@@ -824,12 +853,12 @@ function PurchaseOrderForm({
           onClick={addLine}
           type="button"
         >
-          Add product line
+          {t("uiAddProductLine")}
         </Button>
       </div>
       {initialOrder ? (
         <p className="mt-4 text-sm text-muted-foreground">
-          Server-calculated expected total:{" "}
+          {t("uiServerCalculatedExpectedTotal")}{" "}
           {formatMoney(initialOrder.expectedTotal)} THB
         </p>
       ) : null}
@@ -839,7 +868,7 @@ function PurchaseOrderForm({
         disabled={mutation.isPending}
         type="submit"
       >
-        {mutation.isPending ? "Saving…" : label}
+        {mutation.isPending ? t("commonSaving") : label}
       </Button>
     </form>
   );
@@ -862,6 +891,8 @@ function PurchaseOrderEditor({
   products: CatalogProduct[];
   requestContext: PurchaseOrderRequestContext;
 }) {
+  const { t } = useLanguage();
+
   const [intent, setIntent] = useState<LifecycleIntent | null>(null);
   const update = useMutation({
     mutationFn: (input: DraftInput) =>
@@ -878,7 +909,7 @@ function PurchaseOrderEditor({
   });
   const supplierName =
     allSuppliers.find((supplier) => supplier.id === order.supplierId)?.name ??
-    "Historical supplier";
+    t("uiHistoricalSupplier");
   const pending = update.isPending || lifecycle.isPending;
   return (
     <article className="space-y-4 rounded-lg border bg-card p-5">
@@ -886,7 +917,7 @@ function PurchaseOrderEditor({
         <div className="min-w-0 max-w-full">
           <h2 className="break-words font-semibold">{order.reference}</h2>
           <p className="text-sm text-muted-foreground">
-            Supplier: {supplierName} · Expected total:{" "}
+            {t("uiSupplier2")} {supplierName} {t("uiExpectedTotal2")}{" "}
             {formatMoney(order.expectedTotal)} THB
           </p>
         </div>
@@ -897,14 +928,13 @@ function PurchaseOrderEditor({
           <PurchaseOrderForm
             activeSuppliers={activeSuppliers}
             initialOrder={order}
-            label="Save draft changes"
+            label={t("uiSaveDraftChanges")}
             onError={(error) => onError(error, order.id)}
             onSave={(input) => update.mutateAsync(input).then(() => undefined)}
             products={products}
           />
           <p className="rounded-md border p-3 text-sm text-muted-foreground">
-            Ordering freezes the supplier, branch, dates, product lines,
-            quantities, and expected costs.
+            {t("uiOrderingFreezesTheSupplierBranchDatesProductLinesQuantities")}
           </p>
           <div className="flex flex-wrap gap-3">
             <Button
@@ -912,7 +942,7 @@ function PurchaseOrderEditor({
               onClick={() => setIntent("ORDERED")}
               type="button"
             >
-              Order purchase order
+              {t("uiOrderPurchaseOrder")}
             </Button>
             <Button
               variant="outline"
@@ -920,7 +950,7 @@ function PurchaseOrderEditor({
               onClick={() => setIntent("CANCELLED")}
               type="button"
             >
-              Cancel purchase order
+              {t("uiCancelPurchaseOrder")}
             </Button>
           </div>
         </>
@@ -940,7 +970,7 @@ function PurchaseOrderEditor({
           onClick={() => setIntent("CANCELLED")}
           type="button"
         >
-          Cancel purchase order
+          {t("uiCancelPurchaseOrder")}
         </Button>
       ) : null}
       <ConfirmationDialog
@@ -984,7 +1014,7 @@ function ReceivingPanel({
   });
   const [confirm, setConfirm] = useState(false);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<TranslationKey | null>(null);
   const [key, setKey] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const validationId = useId();
@@ -1006,9 +1036,9 @@ function ReceivingPanel({
       vat.supplierTaxDocumentNumber.trim() !== "" &&
       validDate(vat.supplierTaxDocumentDate));
   const validationMessage = !complete
-    ? "Enter one non-negative actual unit cost with no more than four decimal places for every frozen product line."
+    ? t("uiEnterOneNonNegativeActualUnitCostWithNo")
     : !vatValid
-      ? "When VAT registration is asserted, enter valid VAT rate, VAT amount, supplier tax document number, and date. Otherwise leave all VAT snapshot fields empty."
+      ? t("uiWhenVATRegistrationIsAssertedEnterValidVATRate")
       : null;
   useEffect(() => {
     if (confirm) cancel.current?.focus();
@@ -1042,9 +1072,7 @@ function ReceivingPanel({
       try {
         await onReceived(await getPurchaseOrder(requestContext, order.id));
       } catch {
-        setError(
-          "Receipt completed, but the latest purchase-order state could not be refreshed. Refresh before any further action.",
-        );
+        setError("uiReceiptCompletedButTheLatestPurchaseOrderStateCould");
         await queryClient.invalidateQueries({
           queryKey: [
             "branch-scoped",
@@ -1098,18 +1126,21 @@ function ReceivingPanel({
         className="rounded-md border border-border bg-muted p-4"
         role="status"
       >
-        <h3 className="font-semibold">Receipt {receipt.reference} completed</h3>
+        <h3 className="font-semibold">
+          {t("uiReceipt")} {receipt.reference} {t("uiCompleted2")}
+        </h3>
         <p className="text-sm">
-          Received at {receipt.receivedAt}. The purchase order is now RECEIVED.
+          {t("uiReceivedAt")} {receipt.receivedAt}
+          {t("uiThePurchaseOrderIsNowRECEIVED")}
         </p>
         {error ? (
           <p className="form-message" role="alert">
-            {error}
+            {t(error)}
           </p>
         ) : null}
         {receipt.items.map((item) => (
           <p className="text-sm" key={item.id}>
-            {item.productNameSnapshot}: {item.receivedQuantity} at{" "}
+            {item.productNameSnapshot}: {item.receivedQuantity} {t("uiAt")}{" "}
             {formatMoney(item.actualUnitCost)} THB
           </p>
         ))}
@@ -1118,10 +1149,9 @@ function ReceivingPanel({
   if (order.status !== "ORDERED") return null;
   return (
     <div className="mt-4 space-y-4 rounded-md border border-dashed p-4">
-      <h3 className="font-semibold">Receive full purchase order</h3>
+      <h3 className="font-semibold">{t("uiReceiveFullPurchaseOrder")}</h3>
       <p className="text-sm text-muted-foreground">
-        Frozen supplier, branch, products, and quantities will be received in
-        full. This cannot be corrected or reversed in MVP.
+        {t("uiFrozenSupplierBranchProductsAndQuantitiesWillBeReceived")}
       </p>
       {order.items.map((item) => (
         <fieldset
@@ -1131,14 +1161,19 @@ function ReceivingPanel({
           <legend className="text-sm font-medium">
             {item.productNameSnapshot} · {item.productSkuSnapshot}
           </legend>
-          <p className="text-sm">Quantity: {item.quantity}</p>
           <p className="text-sm">
-            Expected: {formatMoney(item.expectedUnitCost)} THB
+            {t("uiQuantity2")} {item.quantity}
+          </p>
+          <p className="text-sm">
+            {t("uiExpected")} {formatMoney(item.expectedUnitCost)} THB
           </p>
           <Label className="form-field">
-            Actual unit cost (THB)
+            {t("uiActualUnitCostTHB")}
             <Input
-              aria-label={`${item.productNameSnapshot} actual unit cost`}
+              aria-label={t("uiActualCostFor").replace(
+                "{name}",
+                item.productNameSnapshot,
+              )}
               aria-describedby={
                 validationMessage === null ? undefined : validationId
               }
@@ -1170,11 +1205,11 @@ function ReceivingPanel({
             setKey(null);
           }}
         />
-        Organization VAT registration asserted for this receipt
+        {t("uiOrganizationVATRegistrationAssertedForThisReceipt")}
       </Label>
       <div className="grid gap-3 sm:grid-cols-2">
         <Label className="form-field">
-          Input VAT rate
+          {t("uiInputVATRate")}
           <Input
             aria-describedby={
               validationMessage === null ? undefined : validationId
@@ -1189,7 +1224,7 @@ function ReceivingPanel({
           />
         </Label>
         <Label className="form-field">
-          Input VAT amount
+          {t("uiInputVATAmount")}
           <Input
             aria-describedby={
               validationMessage === null ? undefined : validationId
@@ -1204,7 +1239,7 @@ function ReceivingPanel({
           />
         </Label>
         <Label className="form-field">
-          Supplier tax document number
+          {t("uiSupplierTaxDocumentNumber")}
           <Input
             aria-describedby={
               validationMessage === null ? undefined : validationId
@@ -1222,7 +1257,7 @@ function ReceivingPanel({
           />
         </Label>
         <Label className="form-field">
-          Supplier tax document date
+          {t("uiSupplierTaxDocumentDate")}
           <DateInput
             aria-describedby={
               validationMessage === null ? undefined : validationId
@@ -1247,7 +1282,7 @@ function ReceivingPanel({
       ) : null}
       {error ? (
         <p className="form-message" role="alert">
-          {error}
+          {t(error)}
         </p>
       ) : null}
       <Button
@@ -1256,7 +1291,7 @@ function ReceivingPanel({
         onClick={() => setConfirm(true)}
         type="button"
       >
-        {pending ? "Receiving…" : "Receive full purchase order"}
+        {pending ? t("uiReceiving") : t("uiReceiveFullPurchaseOrder")}
       </Button>
       {confirm ? (
         <div
@@ -1276,11 +1311,10 @@ function ReceivingPanel({
         >
           <div className="my-auto w-full max-w-md justify-self-center rounded bg-card p-5">
             <h2 id="receive-confirm-title" className="font-semibold">
-              Confirm irreversible receipt
+              {t("uiConfirmIrreversibleReceipt")}
             </h2>
             <p className="mt-2 text-sm" id="receive-confirm-description">
-              All frozen quantities, actual costs, and VAT snapshot fields will
-              be recorded and the PO will become RECEIVED.
+              {t("uiAllFrozenQuantitiesActualCostsAndVATSnapshotFields")}
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <Button
@@ -1301,7 +1335,7 @@ function ReceivingPanel({
                 ref={confirmButton}
                 type="button"
               >
-                {pending ? "Receiving…" : "Confirm receive"}
+                {pending ? t("uiReceiving") : t("uiConfirmReceive")}
               </Button>
             </div>
           </div>
@@ -1318,28 +1352,30 @@ function ReadOnlyPurchaseOrder({
   order: PurchaseOrder;
   supplierName: string;
 }) {
+  const { t } = useLanguage();
+
   return (
     <div className="space-y-4">
       <dl className="grid gap-3 text-sm sm:grid-cols-2">
         <div>
-          <dt className="text-muted-foreground">Supplier</dt>
+          <dt className="text-muted-foreground">{t("uiSupplier")}</dt>
           <dd>{supplierName}</dd>
         </div>
         <div>
-          <dt className="text-muted-foreground">Order date</dt>
+          <dt className="text-muted-foreground">{t("uiOrderDate")}</dt>
           <dd>{order.orderDate}</dd>
         </div>
         <div>
-          <dt className="text-muted-foreground">Expected date</dt>
-          <dd>{order.expectedDate ?? "Not set"}</dd>
+          <dt className="text-muted-foreground">{t("uiExpectedDate")}</dt>
+          <dd>{order.expectedDate ?? t("uiNotSet")}</dd>
         </div>
         <div>
-          <dt className="text-muted-foreground">Expected total</dt>
+          <dt className="text-muted-foreground">{t("uiExpectedTotal3")}</dt>
           <dd>{formatMoney(order.expectedTotal)} THB</dd>
         </div>
       </dl>
       <div className="space-y-2">
-        <h3 className="font-medium">Frozen product lines</h3>
+        <h3 className="font-medium">{t("uiFrozenProductLines")}</h3>
         {order.items.map((item) => (
           <div className="rounded-md border p-3 text-sm" key={item.id}>
             {item.productNameSnapshot} · {item.productSkuSnapshot}
@@ -1349,7 +1385,8 @@ function ReadOnlyPurchaseOrder({
         ))}
       </div>
       <p className="text-sm text-muted-foreground">
-        Commercial fields are read-only in {statusLabel(order.status)} status.
+        {t("uiCommercialFieldsAreReadOnlyIn")} {statusLabel(order.status, t)}{" "}
+        {t("uiStatus")}
       </p>
     </div>
   );
@@ -1366,6 +1403,8 @@ function ConfirmationDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const { t } = useLanguage();
+
   const cancel = useRef<HTMLButtonElement>(null);
   const confirm = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -1395,16 +1434,16 @@ function ConfirmationDialog({
           id="purchase-order-confirmation-title"
         >
           {ordering
-            ? "Order this purchase order?"
-            : "Cancel this purchase order?"}
+            ? t("uiOrderThisPurchaseOrder")
+            : t("uiCancelThisPurchaseOrder")}
         </h2>
         <p
           className="mt-2 text-sm text-muted-foreground"
           id="purchase-order-confirmation-description"
         >
           {ordering
-            ? "Ordering freezes all commercial fields. Review the current server state before continuing."
-            : "Cancellation is terminal and cannot be undone."}
+            ? t("uiOrderingFreezesAllCommercialFieldsReviewTheCurrentServer")
+            : t("uiCancellationIsTerminalAndCannotBeUndone")}
         </p>
         <div className="mt-5 flex flex-wrap justify-end gap-3">
           <Button
@@ -1415,7 +1454,7 @@ function ConfirmationDialog({
             ref={cancel}
             type="button"
           >
-            Keep editing
+            {t("uiKeepEditing")}
           </Button>
           <Button
             aria-busy={busy}
@@ -1426,10 +1465,10 @@ function ConfirmationDialog({
             type="button"
           >
             {busy
-              ? "Saving…"
+              ? t("commonSaving")
               : ordering
-                ? "Confirm order"
-                : "Confirm cancellation"}
+                ? t("uiConfirmOrder")
+                : t("uiConfirmCancellation")}
           </Button>
         </div>
       </div>

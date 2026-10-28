@@ -8,6 +8,10 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+
+import { LanguageProvider, useLanguage } from "@/providers/language-provider";
+import { en } from "@/i18n/en";
+import { th } from "@/i18n/th";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { searchPosProducts, SalesApiError } from "@/sales-api-client";
@@ -213,4 +217,41 @@ describe("POS barcode input", () => {
     fireEvent.submit(screen.getByRole("form", { name: "Scan POS barcode" }));
     expect(searchPosProducts).not.toHaveBeenCalled();
   });
+});
+
+function TestLanguageToggle() {
+  const { language, setLanguage } = useLanguage();
+  return (
+    <button onClick={() => setLanguage(language === "en" ? "th" : "en")}>
+      Switch language
+    </button>
+  );
+}
+
+it("retranslates an existing scan result without scanning or adding twice", async () => {
+  localStorage.clear();
+  render(
+    <LanguageProvider>
+      <TestLanguageToggle />
+      <PosBarcodeScanner
+        context={context}
+        disabled={false}
+        onAdd={onAdd}
+        onPendingChange={onPendingChange}
+      />
+    </LanguageProvider>,
+  );
+  submit("00Abc");
+  await screen.findByText(
+    en.scanAdded.replace("{name}", "Coffee").replace("{barcode}", "00Abc"),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Switch language" }));
+  expect(
+    screen.getByText(
+      th.scanAdded.replace("{name}", "Coffee").replace("{barcode}", "00Abc"),
+    ),
+  ).toBeTruthy();
+  expect(onAdd).toHaveBeenCalledTimes(1);
+  expect(searchPosProducts).toHaveBeenCalledTimes(1);
+  localStorage.clear();
 });

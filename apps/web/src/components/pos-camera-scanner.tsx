@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import type { TranslationKey } from "@/i18n/en";
+import { useLanguage } from "@/providers/language-provider";
 
 const FORMATS = ["code_128", "ean_13", "ean_8", "upc_a", "upc_e"];
 interface NativeDetector {
@@ -17,7 +19,7 @@ declare global {
   }
 }
 
-function cameraError(error: unknown): string {
+function cameraError(error: unknown): TranslationKey {
   const name =
     typeof error === "object" &&
     error !== null &&
@@ -26,12 +28,11 @@ function cameraError(error: unknown): string {
       ? error.name
       : "";
   if (name === "NotAllowedError" || name === "SecurityError")
-    return "Camera permission was denied. Allow camera access or use USB/manual scanning.";
+    return "camErrDenied";
   if (name === "NotFoundError" || name === "OverconstrainedError")
-    return "No usable camera was found. Use USB/manual scanning.";
-  if (name === "NotReadableError")
-    return "The camera is busy or could not start. Close other camera apps and try again, or use USB/manual scanning.";
-  return "Camera scanning could not start. Close and try again, or use USB/manual scanning.";
+    return "camErrNotFound";
+  if (name === "NotReadableError") return "camErrBusy";
+  return "camErrGeneric";
 }
 
 export function PosCameraScanner({
@@ -41,10 +42,11 @@ export function PosCameraScanner({
   onClose: () => void;
   onDetected: (barcode: string) => void;
 }) {
+  const { t } = useLanguage();
   const dialog = useRef<HTMLDialogElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const titleId = useId();
-  const [status, setStatus] = useState("Starting camera…");
+  const [status, setStatus] = useState<TranslationKey>("camStarting");
   const callbacks = useRef({ onClose, onDetected });
   callbacks.current = { onClose, onDetected };
 
@@ -68,7 +70,7 @@ export function PosCameraScanner({
         preview.srcObject = null;
       }
     }
-    function fail(message: string) {
+    function fail(message: TranslationKey) {
       if (!active) return;
       setStatus(message);
       stop();
@@ -107,15 +109,11 @@ export function PosCameraScanner({
 
     async function start() {
       if (!window.isSecureContext) {
-        fail(
-          "Camera scanning requires HTTPS or localhost. Use USB/manual scanning here.",
-        );
+        fail("camErrInsecure");
         return;
       }
       if (!navigator.mediaDevices?.getUserMedia || !preview) {
-        fail(
-          "Camera access is unsupported in this browser. Use USB/manual scanning.",
-        );
+        fail("camErrUnsupported");
         return;
       }
       try {
@@ -155,9 +153,7 @@ export function PosCameraScanner({
         preview.srcObject = stream;
         await preview.play();
         if (!active) return;
-        setStatus(
-          "Scanning… Hold a Code 128, EAN-13, EAN-8, UPC-A or UPC-E barcode in view. Camera closes after one detection.",
-        );
+        setStatus("camScanning");
         if (!detector) {
           await startFallback();
           return;
@@ -214,24 +210,21 @@ export function PosCameraScanner({
     >
       <div className="space-y-4">
         <h2 className="text-xl font-semibold" id={titleId}>
-          Scan barcode with camera
+          {t("camTitle")}
         </h2>
         <video
-          aria-label="Live barcode camera"
+          aria-label={t("camLive")}
           className="aspect-[4/3] w-full rounded-md bg-black object-contain"
           muted
           playsInline
           ref={video}
         />
         <p role="status" className="text-sm break-words">
-          {status}
+          {t(status)}
         </p>
-        <p className="text-sm text-muted-foreground">
-          Video is decoded on this device; no recording or upload. USB/manual
-          scanning remains available.
-        </p>
+        <p className="text-sm text-muted-foreground">{t("camPrivacy")}</p>
         <Button variant="outline" className="" onClick={onClose} type="button">
-          Close camera
+          {t("camClose")}
         </Button>
       </div>
     </dialog>,

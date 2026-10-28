@@ -70,7 +70,7 @@ describe("Code 128 product label encoding", () => {
   );
 
   it("refuses an oversized symbol instead of printing unscannably small bars", () => {
-    expect(encodeProductLabel("A".repeat(128)).error).toContain("too wide");
+    expect(encodeProductLabel("A".repeat(128)).error).toBe("barcodeErrWide");
   });
 });
 

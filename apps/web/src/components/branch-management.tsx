@@ -1,5 +1,6 @@
 "use client";
 import { useLanguage } from "@/providers/language-provider";
+import type { TranslationKey } from "@/i18n/en";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -20,22 +21,26 @@ import {
 } from "@/branch-api-client";
 import { applicationContextUrl } from "@/application-context";
 
-function errorMessage(error: unknown): string {
-  if (!(error instanceof BranchApiError)) return "The request failed.";
+function errorMessage(
+  error: unknown,
+  t: (key: TranslationKey) => string,
+): string {
+  if (!(error instanceof BranchApiError)) return t("branchErrRequest");
   const messages: Record<BranchApiError["kind"], string> = {
-    authentication_required: "Sign in again to continue.",
-    code_conflict: "That branch code is already in use.",
-    forbidden: "You do not have permission to manage branches.",
-    last_active_branch: "An organization must retain one active branch.",
-    not_found: "The branch no longer exists.",
-    stale: "This branch changed. Refresh and try again.",
-    unavailable: "The branch service is unavailable.",
-    validation: "Check the branch values and try again.",
+    authentication_required: t("branchErrAuth"),
+    code_conflict: t("branchErrCodeConflict"),
+    forbidden: t("branchErrForbidden"),
+    last_active_branch: t("branchErrLastActive"),
+    not_found: t("branchErrNotFound"),
+    stale: t("branchErrStale"),
+    unavailable: t("branchErrUnavailable"),
+    validation: t("branchErrValidation"),
   };
   return messages[error.kind];
 }
 
 export function BranchManagement() {
+  const { t } = useLanguage();
   const searchParams = useSearchParams();
   const organizationId = searchParams.get("organizationId");
   const branchId = searchParams.get("branchId");
@@ -64,24 +69,20 @@ export function BranchManagement() {
     ]);
   }
 
-  if (contextQuery.isPending) return <p>Loading access…</p>;
+  if (contextQuery.isPending) return <p>{t("loadingAccess")}</p>;
   if (contextQuery.isError)
     return (
       <p className="form-message" role="alert">
-        Access could not be loaded.
+        {t("accessError")}
       </p>
     );
   if (!canManage || organizationId === null) {
     return (
       <section className="space-y-4">
-        <h1 className="text-2xl font-semibold">
-          Branch management unavailable
-        </h1>
-        <p>
-          You do not have branch management permission for this organization.
-        </p>
+        <h1 className="text-2xl font-semibold">{t("branchUnavailable")}</h1>
+        <p>{t("branchNoPermission")}</p>
         <Link className="underline" href="/app">
-          Return to application
+          {t("commonReturnToApp")}
         </Link>
       </section>
     );
@@ -94,16 +95,16 @@ export function BranchManagement() {
           className="text-sm underline"
           href={applicationContextUrl(organizationId, branchId)}
         >
-          Return to application
+          {t("commonReturnToApp")}
         </Link>
-        <h1 className="mt-3 text-2xl font-semibold">Branches</h1>
+        <h1 className="mt-3 text-2xl font-semibold">{t("branchTitle")}</h1>
         <p className="text-muted-foreground">{organization.name}</p>
       </header>
       <CreateBranchForm organizationId={organizationId} onSaved={refresh} />
-      {branchesQuery.isPending ? <p>Loading branches…</p> : null}
+      {branchesQuery.isPending ? <p>{t("branchLoading")}</p> : null}
       {branchesQuery.isError ? (
         <p className="form-message" role="alert">
-          {errorMessage(branchesQuery.error)}
+          {errorMessage(branchesQuery.error, t)}
         </p>
       ) : null}
       <div className="grid gap-4">
@@ -127,7 +128,8 @@ function CreateBranchForm({
   onSaved: () => Promise<void>;
   organizationId: string;
 }) {
-  const [error, setError] = useState<string | null>(null);
+  const { t } = useLanguage();
+  const [error, setError] = useState<unknown>(null);
   const mutation = useMutation({
     mutationFn: (form: HTMLFormElement) => {
       const data = new FormData(form);
@@ -149,30 +151,30 @@ function CreateBranchForm({
       await mutation.mutateAsync(form);
       form.reset();
     } catch (cause: unknown) {
-      setError(errorMessage(cause));
+      setError(cause);
     }
   }
 
   return (
     <form className="rounded-lg border bg-card p-5" onSubmit={submit}>
-      <h2 className="font-semibold">Create branch</h2>
+      <h2 className="font-semibold">{t("branchCreate")}</h2>
       <div className="mt-4 grid max-w-4xl items-start gap-4 sm:grid-cols-2">
+        <Field label={t("branchCodeOptional")} maxLength={16} name="code" />
+        <Field label={t("commonName")} maxLength={200} name="name" required />
+        <Field label={t("branchPhoneOptional")} maxLength={32} name="phone" />
         <Field
-          label="Code (optional — generated as BR-001, BR-002… if blank)"
-          maxLength={16}
-          name="code"
+          label={t("branchAddressOptional")}
+          maxLength={500}
+          name="address"
         />
-        <Field label="Name" maxLength={200} name="name" required />
-        <Field label="Phone (optional)" maxLength={32} name="phone" />
-        <Field label="Address (optional)" maxLength={500} name="address" />
       </div>
       {error ? (
         <p className="mt-3 text-sm text-destructive form-message" role="alert">
-          {error}
+          {errorMessage(error, t)}
         </p>
       ) : null}
       <Button className="mt-4" disabled={mutation.isPending} type="submit">
-        {mutation.isPending ? "Creating…" : "Create branch"}
+        {mutation.isPending ? t("branchCreating") : t("branchCreate")}
       </Button>
     </form>
   );
@@ -189,7 +191,7 @@ function BranchEditor({
 }) {
   const { t } = useLanguage();
 
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const updateMutation = useMutation({
     mutationFn: (form: HTMLFormElement) => {
       const data = new FormData(form);
@@ -212,7 +214,7 @@ function BranchEditor({
     try {
       await operation();
     } catch (cause: unknown) {
-      setError(errorMessage(cause));
+      setError(cause);
     }
   }
 
@@ -226,32 +228,34 @@ function BranchEditor({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-semibold">{branch.code}</h2>
-        <span className="text-sm text-muted-foreground">{branch.status}</span>
+        <span className="text-sm text-muted-foreground">
+          {branch.status === "ACTIVE" ? t("commonActive") : t("commonInactive")}
+        </span>
       </div>
       <div className="mt-4 grid max-w-4xl items-start gap-4 sm:grid-cols-2">
         <Field
           defaultValue={branch.name}
-          label="Name"
+          label={t("commonName")}
           maxLength={200}
           name="name"
           required
         />
         <Field
           defaultValue={branch.phone ?? ""}
-          label="Phone"
+          label={t("commonPhone")}
           maxLength={32}
           name="phone"
         />
         <Field
           defaultValue={branch.address ?? ""}
-          label="Address"
+          label={t("commonAddress")}
           maxLength={500}
           name="address"
         />
       </div>
       {error ? (
         <p className="mt-3 text-sm text-destructive form-message" role="alert">
-          {error}
+          {errorMessage(error, t)}
         </p>
       ) : null}
       <div className="mt-4 flex flex-wrap gap-3">
@@ -270,7 +274,9 @@ function BranchEditor({
           onClick={() => void run(() => lifecycleMutation.mutateAsync())}
           type="button"
         >
-          {branch.status === "ACTIVE" ? "Deactivate" : "Reactivate"}
+          {branch.status === "ACTIVE"
+            ? t("commonDeactivate")
+            : t("commonReactivate")}
         </Button>
       </div>
     </form>

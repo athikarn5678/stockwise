@@ -1,4 +1,5 @@
 "use client";
+import type { TranslationKey } from "@/i18n/en";
 import { useLanguage } from "@/providers/language-provider";
 import { Label } from "@/components/ui/label";
 import {
@@ -52,6 +53,14 @@ const ADJUSTMENT_ROLES = new Set<InventoryRole>([
   "BRANCH_MANAGER",
   "INVENTORY_STAFF",
 ]);
+const REASON_LABELS: Record<string, TranslationKey> = {
+  STOCK_COUNT: "inventoryReasonStockCount",
+  DAMAGE: "inventoryReasonDamage",
+  LOSS: "inventoryReasonLoss",
+  FOUND: "inventoryReasonFound",
+  CORRECTION: "inventoryReasonCorrection",
+  OTHER: "inventoryReasonOther",
+};
 const INTEGER_UNITS = new Set<InventoryUnit>(["EA", "PACK", "BOX"]);
 const ADJUSTMENT_REASONS: readonly InventoryAdjustmentReason[] = [
   "STOCK_COUNT",
@@ -79,24 +88,22 @@ function inventoryScopeKey(
   ];
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage(error: unknown): TranslationKey {
   if (!(error instanceof InventoryApiError)) {
-    return "Inventory is temporarily unavailable. Try again.";
+    return "uiInventoryIsTemporarilyUnavailableTryAgain";
   }
-  const messages: Record<InventoryApiErrorKind, string> = {
-    authentication_required: "Sign in again to continue.",
-    branch_inactive: "This branch is inactive and cannot receive adjustments.",
-    forbidden:
-      "This inventory action is not available for your current access.",
+  const messages: Record<InventoryApiErrorKind, TranslationKey> = {
+    authentication_required: "branchErrAuth",
+    branch_inactive: "uiThisBranchIsInactiveAndCannotReceiveAdjustments",
+    forbidden: "uiThisInventoryActionIsNotAvailableForYourCurrent",
     idempotency_conflict:
-      "This submission conflicts with an earlier adjustment. Refresh before trying again.",
-    insufficient_stock: "This adjustment would make stock negative.",
-    invalid_cursor: "This list changed. Refresh the latest results.",
-    product_inactive:
-      "This product is inactive and cannot receive adjustments.",
-    product_not_found: "This product is no longer available. Refresh the list.",
-    unavailable: "Inventory is temporarily unavailable. Try again.",
-    validation: "Check the adjustment values and try again.",
+      "uiThisSubmissionConflictsWithAnEarlierAdjustmentRefreshBefore",
+    insufficient_stock: "uiThisAdjustmentWouldMakeStockNegative",
+    invalid_cursor: "uiThisListChangedRefreshTheLatestResults",
+    product_inactive: "uiThisProductIsInactiveAndCannotReceiveAdjustments",
+    product_not_found: "uiThisProductIsNoLongerAvailableRefreshTheList",
+    unavailable: "uiInventoryIsTemporarilyUnavailableTryAgain",
+    validation: "uiCheckTheAdjustmentValuesAndTryAgain",
   };
   return messages[error.kind];
 }
@@ -128,6 +135,8 @@ function createIdempotencyKey(): string {
 }
 
 export function InventoryManagement() {
+  const { t } = useLanguage();
+
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedOrganizationId = searchParams.get("organizationId");
@@ -158,22 +167,25 @@ export function InventoryManagement() {
     if (canonical !== current) router.replace(canonical);
   }, [requestedBranchId, requestedOrganizationId, resolved, router]);
 
-  if (contextQuery.isPending) return <p aria-live="polite">Loading access…</p>;
+  if (contextQuery.isPending)
+    return <p aria-live="polite">{t("loadingAccess")}</p>;
   if (contextQuery.isError)
     return (
       <p className="form-message" role="alert">
-        Your access context could not be loaded.
+        {t("accessError")}
       </p>
     );
   if (resolved?.organization === null) {
     return (
       <section className="space-y-4">
-        <h1 className="text-2xl font-semibold">Inventory unavailable</h1>
+        <h1 className="text-2xl font-semibold">
+          {t("uiInventoryUnavailable")}
+        </h1>
         <p className="text-muted-foreground">
-          Choose an active organization from the workspace before viewing stock.
+          {t("uiChooseAnActiveOrganizationFromTheWorkspaceBeforeViewing2")}
         </p>
         <Link className="underline" href="/app">
-          Return to workspace
+          {t("uiReturnToWorkspace")}
         </Link>
       </section>
     );
@@ -182,15 +194,17 @@ export function InventoryManagement() {
   if (resolved.branch === null) {
     return (
       <section className="space-y-4">
-        <h1 className="text-2xl font-semibold">Branch context required</h1>
+        <h1 className="text-2xl font-semibold">
+          {t("uiBranchContextRequired")}
+        </h1>
         <p className="text-muted-foreground">
-          Choose an active branch before viewing inventory.
+          {t("uiChooseAnActiveBranchBeforeViewingInventory")}
         </p>
         <Link
           className="underline"
           href={applicationContextUrl(resolved.organization.id, null)}
         >
-          Return to workspace
+          {t("uiReturnToWorkspace")}
         </Link>
       </section>
     );
@@ -336,18 +350,18 @@ function BalanceList({
   if (error !== null)
     return (
       <p className="form-message" role="alert">
-        {errorMessage(error)}
+        {t(errorMessage(error))}
       </p>
     );
   if (items.length === 0) {
     return (
       <p className="rounded-lg border p-5 text-muted-foreground">
-        No products match this inventory view.
+        {t("uiNoProductsMatchThisInventoryView")}
       </p>
     );
   }
   return (
-    <section aria-label="Inventory balances" className="space-y-4">
+    <section aria-label={t("uiInventoryBalances")} className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((item) => (
           <Button
@@ -410,6 +424,8 @@ function InventoryDetail({
   productId: string;
   scopeKey: readonly unknown[];
 }) {
+  const { t } = useLanguage();
+
   const detailQuery = useQuery({
     queryFn: () => getInventoryItem(context, productId),
     queryKey: [...scopeKey, "product", productId],
@@ -435,10 +451,10 @@ function InventoryDetail({
       aria-live="polite"
       className="space-y-6 rounded-lg border bg-card p-5 sm:p-7"
     >
-      {detailQuery.isPending ? <p>Loading product inventory…</p> : null}
+      {detailQuery.isPending ? <p>{t("uiLoadingProductInventory")}</p> : null}
       {detailQuery.isError ? (
         <p className="form-message" role="alert">
-          {errorMessage(detailQuery.error)}
+          {t(errorMessage(detailQuery.error))}
         </p>
       ) : null}
       {detailQuery.data ? (
@@ -466,8 +482,8 @@ function InventoryDetail({
           ) : (
             <p className="rounded-md border p-4 text-sm text-muted-foreground">
               {detailQuery.data.product.status === "INACTIVE"
-                ? "This inactive product remains readable, but cannot receive an adjustment."
-                : "Your current role can view inventory but cannot adjust stock."}
+                ? t("uiThisInactiveProductRemainsReadableButCannotReceiveAn")
+                : t("uiYourCurrentRoleCanViewInventoryButCannotAdjust")}
             </p>
           )}
         </>
@@ -493,8 +509,10 @@ function AdjustmentForm({
   product: InventoryItem;
   scopeKey: readonly unknown[];
 }) {
+  const { t } = useLanguage();
+
   const queryClient = useQueryClient();
-  const [validation, setValidation] = useState<string | null>(null);
+  const [validation, setValidation] = useState<TranslationKey | null>(null);
   const keyRef = useRef<string | null>(null);
   const deltaId = useId();
   const reasonId = useId();
@@ -534,7 +552,7 @@ function AdjustmentForm({
 
   return (
     <form
-      aria-label={`Adjust stock for ${product.product.name}`}
+      aria-label={t("uiAdjustStockFor").replace("{name}", product.product.name)}
       className="space-y-4 rounded-md border p-4"
       onChange={() => {
         keyRef.current = null;
@@ -553,27 +571,27 @@ function AdjustmentForm({
       }}
     >
       <div>
-        <h3 className="font-semibold">Manual adjustment</h3>
+        <h3 className="font-semibold">{t("uiManualAdjustment")}</h3>
         <p className="text-sm text-muted-foreground">
-          Enter a signed quantity. Stock changes only after the server confirms
-          it.
+          {t("uiEnterASignedQuantityStockChangesOnlyAfterThe")}
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
         <Label className="form-field" htmlFor={deltaId}>
-          Signed adjustment ({product.product.unit})
+          {t("uiSignedAdjustment")}
+          {product.product.unit})
           <Input
             aria-describedby={validation ? errorId : undefined}
             className="form-control--numeric"
             id={deltaId}
             inputMode="decimal"
             name="delta"
-            placeholder="e.g. +2 or -1.25"
+            placeholder={t("uiEG2Or125")}
             required
           />
         </Label>
         <Label className="form-field" htmlFor={reasonId}>
-          Reason
+          {t("uiReason2")}
           <NativeSelect
             className="w-full form-control--compact"
             defaultValue="STOCK_COUNT"
@@ -582,14 +600,14 @@ function AdjustmentForm({
           >
             {ADJUSTMENT_REASONS.map((reason) => (
               <NativeSelectOption key={reason} value={reason}>
-                {reason.replaceAll("_", " ")}
+                {t(REASON_LABELS[reason] ?? "inventoryReasonOther")}
               </NativeSelectOption>
             ))}
           </NativeSelect>
         </Label>
       </div>
       <Label className="form-field" htmlFor={noteId}>
-        Note (required for OTHER)
+        {t("uiNoteRequiredForOTHER")}
         <Textarea
           aria-describedby={validation ? errorId : undefined}
           className=""
@@ -599,7 +617,7 @@ function AdjustmentForm({
       </Label>
       {validation ? (
         <p className="form-message" id={errorId} role="alert">
-          {validation}
+          {t(validation)}
         </p>
       ) : null}
       <Button
@@ -607,17 +625,19 @@ function AdjustmentForm({
         disabled={mutation.isPending}
         type="submit"
       >
-        {mutation.isPending ? "Submitting adjustment…" : "Submit adjustment"}
+        {mutation.isPending
+          ? t("uiSubmittingAdjustment")
+          : t("uiSubmitAdjustment")}
       </Button>
     </form>
   );
 }
 
-const MOVEMENT_LABELS: Record<string, string> = {
-  MANUAL_ADJUSTMENT: "Manual adjustment",
-  PURCHASE_RECEIVE: "Purchase receive",
-  SALE: "Sale",
-  SALE_REFUND_RETURN: "Sale refund return",
+const MOVEMENT_LABELS: Record<string, TranslationKey> = {
+  MANUAL_ADJUSTMENT: "uiManualAdjustment",
+  PURCHASE_RECEIVE: "uiPurchaseReceive",
+  SALE: "uiSale",
+  SALE_REFUND_RETURN: "uiSaleRefundReturn",
 };
 
 function HistoryList({
@@ -635,27 +655,29 @@ function HistoryList({
   onLoadMore: () => void;
   transactions: Awaited<ReturnType<typeof listInventoryHistory>>["data"];
 }) {
+  const { t } = useLanguage();
+
   return (
     <section aria-labelledby="inventory-history-heading" className="space-y-4">
       <div>
         <h3 className="font-semibold" id="inventory-history-heading">
-          Transaction history
+          {t("uiTransactionHistory")}
         </h3>
         <p className="text-sm text-muted-foreground">
-          Chronological immutable movements. Times are shown in UTC.
+          {t("uiChronologicalImmutableMovementsTimesAreShownInUTC")}
         </p>
       </div>
       {isLoading ? (
-        <p aria-live="polite">Loading transaction history…</p>
+        <p aria-live="polite">{t("uiLoadingTransactionHistory")}</p>
       ) : null}
       {error !== null ? (
         <p className="form-message" role="alert">
-          {errorMessage(error)}
+          {t(errorMessage(error))}
         </p>
       ) : null}
       {!isLoading && error === null && transactions.length === 0 ? (
         <p className="rounded-md border p-4 text-muted-foreground">
-          No transactions have been recorded for this product at this branch.
+          {t("uiNoTransactionsHaveBeenRecordedForThisProductAt")}
         </p>
       ) : null}
       {transactions.length > 0 ? (
@@ -666,17 +688,23 @@ function HistoryList({
                 <div>
                   <p className="font-medium">
                     {signedDelta(transaction.delta)} ·{" "}
-                    {transaction.reason?.replaceAll("_", " ") ??
-                      MOVEMENT_LABELS[transaction.source] ??
-                      transaction.source.replaceAll("_", " ")}
+                    {t(
+                      (transaction.reason
+                        ? REASON_LABELS[transaction.reason]
+                        : MOVEMENT_LABELS[transaction.source]) ??
+                        "uiUnknownMovement",
+                    )}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {transaction.source.replaceAll("_", " ")} ·{" "}
-                    {formatOccurredAt(transaction.occurredAt)}
+                    {t(
+                      MOVEMENT_LABELS[transaction.source] ??
+                        "uiUnknownMovement",
+                    )}{" "}
+                    · {formatOccurredAt(transaction.occurredAt)}
                   </p>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  {transaction.actor.displayName ?? "Unknown user"}
+                  {transaction.actor.displayName ?? t("uiUnknownUser")}
                 </p>
               </div>
               {transaction.note !== null ? (
@@ -693,7 +721,7 @@ function HistoryList({
           onClick={onLoadMore}
           type="button"
         >
-          {isLoadingNext ? "Loading more…" : "Load more history"}
+          {isLoadingNext ? t("inventoryLoadingMore") : t("uiLoadMoreHistory")}
         </Button>
       ) : null}
     </section>

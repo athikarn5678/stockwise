@@ -33,6 +33,7 @@ describe("API environment boundary", () => {
       DATABASE_URL:
         "postgresql://local-user:local-password@127.0.0.1:5432/local-database",
       STOCKWISE_RUNTIME_ENV: "development",
+      STOCKWISE_AUTHENTICATION_AUTHORITY: "legacy",
       STOCKWISE_EMAIL_PROVIDER: "non_delivery",
       STOCKWISE_API_PORT: 3001,
       STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: analyticsKey,
@@ -68,6 +69,7 @@ describe("API environment boundary", () => {
       }),
     ).toMatchObject({
       STOCKWISE_RUNTIME_ENV: "production",
+      STOCKWISE_AUTHENTICATION_AUTHORITY: "native",
       STOCKWISE_EMAIL_PROVIDER: "resend",
       STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: analyticsKey,
       RESEND_API_KEY: "server-only-resend-key",
@@ -77,6 +79,51 @@ describe("API environment boundary", () => {
       STOCKWISE_SESSION_IDLE_TIMEOUT_MINUTES: 2_880,
       STOCKWISE_SESSION_TOUCH_INTERVAL_MINUTES: 30,
     });
+  });
+
+  it("locks production to Native authentication and rejects unknown authorities", () => {
+    const production = {
+      DATABASE_URL:
+        "postgresql://local-user:local-password@127.0.0.1:5432/local-database",
+      STOCKWISE_API_PORT: "3001",
+      STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: analyticsKey,
+      STOCKWISE_EMAIL_FROM: "StockWise <verified@example.com>",
+      STOCKWISE_PUBLIC_WEB_ORIGIN: "https://stockwise.example.com",
+      STOCKWISE_RUNTIME_ENV: "production",
+      RESEND_API_KEY: "server-only-resend-key",
+      ...verificationKeys,
+    };
+    expect(
+      loadApiEnvironment({
+        ...production,
+        STOCKWISE_AUTHENTICATION_AUTHORITY: "native",
+      }).STOCKWISE_AUTHENTICATION_AUTHORITY,
+    ).toBe("native");
+    expect(() =>
+      loadApiEnvironment({
+        ...production,
+        STOCKWISE_AUTHENTICATION_AUTHORITY: "legacy",
+      }),
+    ).toThrow("Production runtime requires Native authentication.");
+    for (const runtime of ["development", "test", "production"]) {
+      expect(() =>
+        loadApiEnvironment({
+          ...production,
+          STOCKWISE_RUNTIME_ENV: runtime,
+          STOCKWISE_EMAIL_PROVIDER:
+            runtime === "production" ? "resend" : "non_delivery",
+          STOCKWISE_AUTHENTICATION_AUTHORITY: "bridge",
+        }),
+      ).toThrow();
+    }
+    expect(
+      loadApiEnvironment({
+        ...production,
+        STOCKWISE_RUNTIME_ENV: "development",
+        STOCKWISE_EMAIL_PROVIDER: "non_delivery",
+        STOCKWISE_AUTHENTICATION_AUTHORITY: "native",
+      }).STOCKWISE_AUTHENTICATION_AUTHORITY,
+    ).toBe("native");
   });
 
   it("rejects missing, invalid, and unowned configuration", () => {

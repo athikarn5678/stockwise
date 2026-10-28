@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+import { defaultAuthenticationAuthority } from "../../environment.ts";
 import { selectAuthenticationAuthority } from "./authentication-authority-selection.ts";
-import { BETTER_AUTH_NATIVE_ENABLED } from "./better-auth-native.ts";
 
 describe("single authentication authority selection", () => {
-  it("keeps the actual application Native Live flag disabled before cutover", () => {
-    expect(BETTER_AUTH_NATIVE_ENABLED).toBe(false);
+  it("defaults production to Native and local development/test to Legacy", () => {
+    expect(defaultAuthenticationAuthority("production")).toBe("native");
+    expect(defaultAuthenticationAuthority("development")).toBe("legacy");
+    expect(defaultAuthenticationAuthority("test")).toBe("legacy");
   });
 
   it("constructs only the legacy runtime while Native Live is disabled", () => {

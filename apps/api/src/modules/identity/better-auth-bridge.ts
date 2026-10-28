@@ -5,7 +5,6 @@ import { createSessionAuthenticationMiddleware } from "./authentication-context.
 import type { ResolvedAuthenticationSession } from "./authentication-repository.ts";
 import {
   BETTER_AUTH_NATIVE_COOKIE_NAME,
-  BETTER_AUTH_NATIVE_ENABLED,
   type BetterAuthNativeSessionReader,
 } from "./better-auth-native.ts";
 import type { SessionConfiguration } from "./session-configuration.ts";
@@ -114,13 +113,13 @@ export function createBetterAuthSessionResolver({
   };
 }
 
+/** Resolves Native sessions only when the process selected Native authority. */
 export function createBetterAuthAuthenticationMiddleware(
   dependencies: BridgeDependencies,
+  nativeEnabled: boolean,
 ) {
   const resolveSession = createBetterAuthSessionResolver(dependencies);
   return createSessionAuthenticationMiddleware((request) =>
-    BETTER_AUTH_NATIVE_ENABLED
-      ? resolveSession(request)
-      : Promise.resolve(null),
+    nativeEnabled ? resolveSession(request) : Promise.resolve(null),
   );
 }

@@ -27,6 +27,8 @@ export default defineConfig({
       // vitest.d5-p3-integration-db.config.mts runs it last on that disposable DB.
       "apps/api/src/modules/identity/better-auth-transition.integration.test.ts",
       "apps/api/src/modules/identity/better-auth-cutover.integration.test.ts",
+      // Operator cutover runs only inside the receipt-bound D5-P4 coordinator.
+      "apps/api/src/native-cutover/native-cutover.integration.test.ts",
     ],
     fileParallelism: false,
     globalSetup: [databaseTestSetup],

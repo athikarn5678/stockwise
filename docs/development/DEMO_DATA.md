@@ -24,3 +24,17 @@ and selected analytics, forecast, and reorder goldens. An unchanged rerun with
 the same password is a no-op. Partial, changed, foreign, or post-login session
 data cause a fail-closed error; rebuild in another fresh `_demo` database rather
 than deleting rows. Credentials and connection URLs are never printed.
+
+The target must hold exactly the committed migrations and the table set they
+produce (`apps/api/src/demo/demo-schema.ts`; `demo-schema.test.ts` re-derives it
+from the migration SQL). Seeding runs only before the Better Auth Native
+transition: every Better Auth table must be empty and `native_auth_transition`
+must be `LEGACY`; a QUIESCED or NATIVE database is refused. Run
+`native:cutover` afterwards to enroll the seeded users. Seeding is optional for
+the AWS Academy demo (`infra/learner-lab/README.md`). To verify seeding, the
+cutover and a Native sign-in of a seeded user on a receipt-owned disposable
+PostgreSQL (Docker required):
+
+```powershell
+node tests/e2e/demo-seed/demo-seed-check.mts
+```

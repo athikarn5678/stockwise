@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# TEST STUB for Terraform (operator regression tests only). `output -raw NAME`
+# reads $STUB_DIR/outputs/NAME; every other command is only recorded in
+# $STUB_DIR/terraform.log, one line per call with arguments separated by " | ".
+set -euo pipefail
+: "${STUB_DIR:?STUB_DIR is required}"
+args=("$@")
+[[ "${args[0]:-}" == -chdir=* ]] && args=("${args[@]:1}")
+if [[ "${args[0]:-}" == output ]]; then
+  name="${args[${#args[@]} - 1]}"
+  [[ -r "${STUB_DIR}/outputs/${name}" ]] || exit 1
+  printf '%s' "$(cat "${STUB_DIR}/outputs/${name}")"
+  exit 0
+fi
+(
+  IFS='|'
+  printf '%s\n' "${args[*]}"
+) | sed 's/|/ | /g' | tee -a "${STUB_DIR}/terraform.log" | sed 's/^/terraform /' >>"${STUB_DIR}/sequence.log"

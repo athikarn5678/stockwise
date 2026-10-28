@@ -6,7 +6,6 @@ import type { RequestHandler } from "express";
 import type { PrismaClient } from "../../generated/prisma/client.ts";
 import { hashPassword, verifyPassword } from "./password-hasher.ts";
 
-export const BETTER_AUTH_NATIVE_ENABLED = false;
 export const BETTER_AUTH_NATIVE_COOKIE_NAME = "stockwise_native.session_token";
 
 export interface BetterAuthNativeSessionReader {

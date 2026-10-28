@@ -1,0 +1,89 @@
+[
+  {
+    "name": "web",
+    "image": "${web_image}",
+    "essential": true,
+    "portMappings": [{ "containerPort": 3000, "protocol": "tcp" }],
+    "readonlyRootFilesystem": true,
+    "linuxParameters": {
+      "initProcessEnabled": true,
+      "capabilities": { "drop": ["ALL"] },
+      "tmpfs": [
+        { "containerPath": "/tmp", "size": 64 },
+        { "containerPath": "/repo/apps/web/.next/cache", "size": 256 }
+      ]
+    },
+    "memoryReservation": 384,
+    "memory": 768,
+    "dependsOn": [{ "containerName": "api", "condition": "HEALTHY" }],
+    "healthCheck": {
+      "command": ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"],
+      "interval": 10,
+      "timeout": 5,
+      "retries": 3,
+      "startPeriod": 30
+    },
+    "stopTimeout": 20,
+    "logConfiguration": {
+      "logDriver": "awslogs",
+      "options": {
+        "awslogs-group": "${web_log_group}",
+        "awslogs-region": "${region}",
+        "awslogs-stream-prefix": "web"
+      }
+    }
+  },
+  {
+    "name": "api",
+    "image": "${api_image}",
+    "essential": true,
+    "readonlyRootFilesystem": true,
+    "linuxParameters": {
+      "initProcessEnabled": true,
+      "capabilities": { "drop": ["ALL"] },
+      "tmpfs": [{ "containerPath": "/tmp", "size": 64 }]
+    },
+    "memoryReservation": 512,
+    "memory": 1024,
+    "environment": [
+      { "name": "STOCKWISE_RUNTIME_ENV", "value": "production" },
+      { "name": "STOCKWISE_AUTHENTICATION_AUTHORITY", "value": "native" },
+      { "name": "STOCKWISE_EMAIL_PROVIDER", "value": "resend" },
+      { "name": "STOCKWISE_API_PORT", "value": "3001" },
+      { "name": "STOCKWISE_PUBLIC_WEB_ORIGIN", "value": "${public_web_origin}" },
+      { "name": "STOCKWISE_EMAIL_FROM", "value": "${email_from}" },
+      { "name": "STOCKWISE_VERIFICATION_OTP_KEY_ID", "value": "1" },
+      { "name": "STOCKWISE_VERIFICATION_PROOF_KEY_ID", "value": "1" },
+      { "name": "STOCKWISE_DB_HOST", "value": "${db_host}" },
+      { "name": "STOCKWISE_DB_PORT", "value": "${db_port}" },
+      { "name": "STOCKWISE_DB_NAME", "value": "${db_name}" },
+      { "name": "STOCKWISE_DB_USER", "value": "stockwise_app" },
+      { "name": "NODE_EXTRA_CA_CERTS", "value": "/etc/stockwise/rds-global-bundle.pem" }
+    ],
+    "secrets": [
+      { "name": "STOCKWISE_DB_PASSWORD", "valueFrom": "${database_secret_arn}:app_password::" },
+      { "name": "RESEND_API_KEY", "valueFrom": "${application_secret_arn}:RESEND_API_KEY::" },
+      { "name": "STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY", "valueFrom": "${application_secret_arn}:STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY::" },
+      { "name": "STOCKWISE_VERIFICATION_OTP_KEY", "valueFrom": "${application_secret_arn}:STOCKWISE_VERIFICATION_OTP_KEY::" },
+      { "name": "STOCKWISE_VERIFICATION_PROOF_KEY", "valueFrom": "${application_secret_arn}:STOCKWISE_VERIFICATION_PROOF_KEY::" },
+      { "name": "STOCKWISE_BETTER_AUTH_SECRET", "valueFrom": "${application_secret_arn}:STOCKWISE_BETTER_AUTH_SECRET::" },
+      { "name": "STOCKWISE_INVITATION_CONTINUATION_KEY", "valueFrom": "${application_secret_arn}:STOCKWISE_INVITATION_CONTINUATION_KEY::" }
+    ],
+    "healthCheck": {
+      "command": ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/ready').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"],
+      "interval": 10,
+      "timeout": 5,
+      "retries": 3,
+      "startPeriod": 60
+    },
+    "stopTimeout": 20,
+    "logConfiguration": {
+      "logDriver": "awslogs",
+      "options": {
+        "awslogs-group": "${api_log_group}",
+        "awslogs-region": "${region}",
+        "awslogs-stream-prefix": "api"
+      }
+    }
+  }
+]

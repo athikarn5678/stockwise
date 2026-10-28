@@ -4,7 +4,7 @@ PREPARED PROJECT_PLAN P1-A status # StockWise Project Plan
 | --- | --- |
 | Project | StockWise |
 | Plan baseline | Architecture Freeze v1 |
-| Repository state | P7-M4 final post-remediation acceptance satisfied with explicit user-accepted L04 tooling-observation limitation; all eight findings VERIFIED FIXED, M11/P08 PASS, L04 BLOCKED; Phase6/Phase7 and Milestone7.4 COMPLETE; T01/T02 verified/accepted; historical T03 remains250 PASS/7 FAIL/3 BLOCKED and NOT ACCEPTED at its original checkpoint; PRE-CLOUD READY YES; Phase8 NOT STARTED; final acceptance documentation checkpoint |
+| Repository state | P7-M4 final post-remediation acceptance satisfied with explicit user-accepted L04 tooling-observation limitation; all eight findings VERIFIED FIXED, M11/P08 PASS, L04 BLOCKED; Phase6/Phase7 and Milestone7.4 COMPLETE; T01/T02 verified/accepted; historical T03 remains250 PASS/7 FAIL/3 BLOCKED and NOT ACCEPTED at its original checkpoint; PRE-CLOUD READY YES; Phase8 STARTED for the Learner Lab demo only (`ADR-039`; no infrastructure implemented or provisioned); final acceptance documentation checkpoint |
 | Last updated | 2026-10-12 |
 
 ## 1. Plan rules
@@ -378,8 +378,20 @@ Phase 8. Implementation and verification status are separate from commit status.
 | [x] **Product-ACCOUNT-01 — ACCEPTED scoped implementation; F1–F4 and R1 CLOSED; publication separately authorized** | Maintain the current account and approved organization information | `/app/profile`, self-only GET/PATCH; `/app/organization-settings`, OWNER/ADMIN name-only GET/PATCH under ADR-037; atomic stale protection, EN/TH/themes, shared names and scoped in-memory draft safety | ADR-015/016/037; existing fields and security lifecycle; no schema/auth cutover | Owner-transferred final independent Codex verdict: ACCEPT — Product-ACCOUNT-01 scoped implementation; ACCOUNT-F1/F2/F3/F4 and ACCOUNT-R1 CLOSED. Accepted 39-file aggregate SHA-256 `f6e0f01ca8a2ea70a7064924ba52270ea853d39cc39ce3f39bc0d07970432556`; this subsequent documentation-only status adjustment is outside that reviewed manifest. Owner separately authorized commit, normal push and established mirror synchronization. Existing Back/Forward and native OS focus/BFCache limitations remain; Product-ACCESS-01 and Native Live out of scope | Fresh R1: EN/TH red-to-green regression, Organization Settings 7 PASS; preserved frontend regressions 91 PASS; complete frontend 567 PASS; database-free HTTP/privacy/authorization 176 PASS; TypeScript/lint/format/web production build/diff-check PASS; controlled API browser smoke. Full repository/PostgreSQL suites not rerun for this frontend-only fix. New R1 source identity/evidence retained externally |
 | ACCEPTED — scoped implementation; ACCESS-F1/F2 CLOSED; uncommitted, publication authorization pending | **Product-ACCESS-01 — Team & Permissions UX** | Existing membership/invitation APIs; EN/TH role/scope guidance and lifecycle UX; ACCESS-F1 authorizes existing invitation role before replacement; ACCESS-F2 confirms every Invite submission with exact payload and possible-link-replacement disclosure; restored scope regressions | Accepted Product-UX-01/02 and Product-ACCOUNT-01; ADR-016/021; fixed permission semantics preserved; no endpoint/schema/auth-authority change | Owner-transferred final independent Codex verdict: ACCEPT — Product-ACCESS-01 scoped implementation; ACCESS-F1 and ACCESS-F2 CLOSED. Accepted ten-file aggregate SHA-256 `fdb170b6b18a71b445b86341db3d9ac6ab26ff7ae47b0e097b45c4a5a5335622`; this subsequent documentation-only closure adjustment is outside that accepted identity. Publication requires separate owner authorization; Native Live OFF; D5-P5 and AWS Phase 8 NOT STARTED | Retained remediation evidence: frontend 594 PASS including 34 team cases; PostgreSQL/API/authorization/account regressions 257 PASS; red/green, browser, quality/build results in external `Product-ACCESS-01 Implementation 2026-10-25/Remediation-F1-F2-2026-10-25/remediation.md`. Acceptance/publication gate: external `Product-ACCESS-01 Acceptance Publication 2026-10-25/acceptance-closure.md`; hosted publication CI not yet run |
 | PUBLISHED — accepted implementation; hosted CI closure pending CI-FIX-01 | **Product-EMAIL-01 — Transactional HTML email templates** | Dependency-free responsive StockWise verification, invitation and reset HTML; exact original CTA URLs and plain-text fallbacks; OTP and delivery controls preserved | ADR-021/034/035/036; accepted Native real-email UAT retained; no auth/schema changes | Owner-transferred final independent Codex verdict: ACCEPT — Product-EMAIL-01 scoped implementation. Accepted five-file aggregate SHA-256 `667c5374cc3f1175fb28602685fd8d58e2937c2fa51ab7a529bb04280a60449a`; this subsequent documentation-only closure is outside that reviewed identity. Native Live OFF; zero external sends or database mutations; no D5-P5/Phase 8/Invitation Auto-return work | Retained scoped verification: 466/466 database-free backend checks across 36 files; API TypeScript, ESLint, scoped formatting and production compilation; compiled-provider smoke and six Chromium desktop/mobile previews. Canonical and both mirrors published; original hosted CI failed on the pre-existing session fixture. Final CI closure requires separately authorized CI-FIX-01 publication and new exact-commit CI; external publication records retain identities and outcomes |
+| IN PROGRESS — implementation candidate prepared; Codex independent testing/acceptance pending | **BETTER-AUTH-D5-P5 — Native Live activation (required by `ADR-039` D-03R)** | Runtime authority selection with production locked to Native and no Legacy fallback; read-only Legacy-state startup guard (no downgrade after seal); operator-run Native transition for a confirmed target database reusing the accepted D5-P3 writer contract; fresh demo database initialization path; Native runtime/deployment configuration contract | Accepted D5-P1–P4; ADR-034/035/036/038/039; D5-P4 preflight unchanged; no schema migration | Codex independent review, PostgreSQL/transition, authentication/RBAC regression, real-browser and isolated-deployment verification ACCEPT; owner disposition of D-13 Native production gates for the demo; separate publication approval | Owned by Codex. Implementation evidence and candidate manifest are external; nothing in this row is a PASS claim |
 | ACCEPTED — scoped remediation; publication authorization pending | **CI-FIX-01 — Organization Settings Session Fixture** | Test-only explicit frozen-clock session timestamps and real HTTP success/expiry/revocation rejection; original OWNER/ADMIN and authorization assertions retained | Preserve PostgreSQL constraints, production authentication, accepted Product-EMAIL-01 source and Native Live OFF | Owner-transferred independent Codex verdict: ACCEPT — CI-FIX-01 scoped remediation. Accepted test-file SHA-256 `9aceb3994ac4d2d3081cacbd38db89da72d7fca2f2331d4ed978ae93b0800e92`; roadmap closure changes are outside that reviewed identity. Separate owner staging/commit/push/mirror approval required | Retained implementation evidence: 2,001 PASS / 0 FAIL / 1 existing demo SKIP; focused 205 PASS; TypeScript, ESLint, formatting, API/web builds and historical-clock HTTP smoke passed. New hosted CI and mirror parity remain publication gates; external CI-FIX-01 acceptance/publication record |
 
+**Current status (2026-10-27, supersedes the historical checkpoint below):**
+D5-P5 Native Live activation is **IN PROGRESS** (candidate under Codex review; not
+accepted, not live). The compile-time `BETTER_AUTH_NATIVE_ENABLED` constant was
+removed by the D5-P5 candidate in favour of `STOCKWISE_AUTHENTICATION_AUTHORITY`.
+Phase 8 has **STARTED** for the Learner Lab demo, under `ADR-040` (which supersedes
+the `ADR-039` topology on 2026-10-28). It requires Better Auth Native Live (D-03R);
+no infrastructure is provisioned or deployed.
+Legacy remains the published runtime until the D5-P5 candidate is accepted and
+published.
+
+**Historical checkpoint (2026-10-25, D5-P4 acceptance):**
 D5-P2 scoped source/application integration is independently **ACCEPTED**
 (2026-10-24), including F1/F2/F3 closure. Historical remediation and execution
 records, failed attempts, accepted candidate copies and hashes remain unchanged.
@@ -392,19 +404,42 @@ documentation or quality changes. Legacy remains active and Native Live OFF;
 production/deployment remain separate pre-Live gates. D5-QUALITY-01 and D5-UX-01
 are complete; D5-P4 scoped Cutover Readiness is independently **ACCEPTED**.
 Acceptance remains bound to the original candidate aggregate above, not these
-closure documentation changes. Legacy Authentication remains active;
-`BETTER_AUTH_NATIVE_ENABLED=false`. D5-P5 and AWS Phase 8 remain **NOT STARTED**;
-production-only operational gates and separate migration/activation approval
-remain pending.
+closure documentation changes. At that checkpoint Legacy Authentication remained
+active with `BETTER_AUTH_NATIVE_ENABLED=false`, and D5-P5 and AWS Phase 8 were
+**NOT STARTED**; production-only operational gates and separate
+migration/activation approval remained pending.
 
 ## Phase 8 — AWS cloud delivery
+
+Phase 8 is STARTED for a time-limited AWS Academy Learner Lab demo. The topology
+is `ADR-040` (owner decisions 2026-10-28), which supersedes `ADR-039` Topology A:
+- edge: ALB + ACM, with CloudFront only if the lab permits it;
+- compute: ECS on EC2 with an Auto Scaling Group across two AZs, exactly one
+  application task;
+- data and support: RDS PostgreSQL Multi-AZ, two NAT gateways, Secrets Manager,
+  ECR, S3 and CloudWatch;
+- planning deadline: `2026-10-31T16:59:00Z`.
+
+The deployment must use Better Auth Native Live (D-03R supersedes the earlier
+Legacy-only D-03). D5-P5 is IN PROGRESS and not accepted. Real-production
+`OQ-015`/`OQ-020` remain open.
+
+The ADR-040 source (`infra/learner-lab`, image workflow) is implemented and
+verified locally only (mocked Terraform tests, image builds, a task-definition
+rehearsal). Independent review #3 left two P2 findings; the owner-authorized
+Codex R3 fixes are locally verified and await separate independent review.
+Nothing is published, provisioned
+or deployed, and each execution gate needs separate owner approval. The superseded
+Topology A source is preserved outside the repository with checksums. Decision
+evidence: the external P8-M1-T01-LL decision package and the Phase 8
+original-architecture restoration record.
 
 ### Milestone 8.1 — Production architecture and IaC decision gate
 
 | Status / Task | Objective | Scope | Dependencies | Acceptance | Testing |
 | --- | --- | --- | --- | --- | --- |
-| [ ] **P8-M1-T01 — Close hosting/operations decisions** | Select exact AWS topology | Resolve `OQ-015`, `OQ-020`; region, compute/Next hosting, ingress/TLS/DNS, secrets, IaC, availability, backup/recovery/cost | Stable MVP apps | ADR/architecture/threat/cost model updated | Architecture failure/cost/recovery review |
-| [ ] **P8-M1-T02 — Infrastructure-as-code foundation** | Make cloud reproducible | Approved IaC, environment separation, state/identity policy, tags/budgets | T01 | Reviewable least-privilege plan; no manual drift as default | Format/validate/plan in non-mutating review |
+| [ ] **P8-M1-T01 — Close hosting/operations decisions — PARTIAL: Learner Lab demo ACCEPTED (`ADR-040`, superseding `ADR-039`)** | Select exact AWS topology | Resolve `OQ-015`, `OQ-020`; region, compute/Next hosting, ingress/TLS/DNS, secrets, IaC, availability, backup/recovery/cost | Stable MVP apps | Learner Lab demo: ALB/ECS-on-EC2/RDS Multi-AZ topology and IAM exception accepted 2026-10-28 (OD-1 to OD-5; Topology A with Caddy superseded); Native Live required (D-03R); one application task until a shared login limiter exists; D-06/08/09/11/13 pending; real-production `OQ-015`/`OQ-020` open | Demo threat/cost/recovery review in external decision package; production review not done |
+| [ ] **P8-M1-T02 — Infrastructure-as-code foundation — Learner Lab ADR-040 source: Codex INFRA NEEDS FIX three times; two P2 findings remediated in R3 by Codex as temporary implementer, separate independent review pending** | Make cloud reproducible | Approved IaC, environment separation, state/identity policy, tags/budgets | T01 | Reviewable least-privilege plan; no manual drift as default. Learner Lab: `infra/learner-lab` Terraform for VPC/ALB/ACM/ECS-on-EC2/ASG/RDS Multi-AZ/Secrets Manager/ECR/S3/CloudWatch (zero IAM resources), ECS task definitions, images, operator scripts; `terraform validate`, mocked `terraform test`, operator regression tests and a local task-definition rehearsal recorded externally. ADR-040 amendments R1, R2 and R3 cover request logging off with a container log redaction boundary covering query punctuation and stream continuations, fail-closed teardown, identity/account/region checks on every AWS entry point, the CloudFront secret gate, verified and bounded seeder TLS, strict JSON and duplicate-key validation before secrets readiness, desired-count-aware outage alerting with resume reconciliation, and related operational fixes.  No plan/apply against AWS yet | Format/validate/plan in non-mutating review |
 
 ### Milestone 8.2 — Network, data, storage, and compute
 

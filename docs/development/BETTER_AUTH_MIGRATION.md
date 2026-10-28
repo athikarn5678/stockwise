@@ -451,6 +451,183 @@ implementation or implied AWS infrastructure. An old backup can contain an old
 fence: uncertain latest Native authority means remain offline and forward-recover,
 never downgrade to Legacy or overwrite newer Native credentials.
 
+## D5-P5 — Native Live activation (in progress)
+
+Required by `ADR-039` D-03R: the AWS Academy Learner Lab deployment must run
+Native Live, never Legacy. This section describes the implementation candidate;
+it is **not** independently accepted. Codex owns all formal testing and acceptance.
+
+### Authority selection
+
+- `STOCKWISE_AUTHENTICATION_AUTHORITY` is `legacy` or `native`. Unset resolves to
+  `native` in production and `legacy` in development/test; production rejects
+  `legacy`. The former compile-time `BETTER_AUTH_NATIVE_ENABLED` constant is removed.
+- `main.ts` runs one read-only startup guard before constructing anything:
+  Native requires the unchanged D5-P4 `assertNativeCutoverReady`; Legacy requires
+  `assertLegacyAuthorityAllowed` (fence state exactly LEGACY). No downgrade after
+  quiesce or seal, and no fallback in either direction.
+- Native additionally requires `STOCKWISE_BETTER_AUTH_SECRET`,
+  `STOCKWISE_INVITATION_CONTINUATION_KEY`, and HTTPS on the public origin in
+  production (existing Native composition checks).
+
+### Operator transition
+
+The accepted D5-P3 writer now lives in
+`apps/api/src/modules/identity/native-auth-transition.ts` with caller-owned target
+authorization. The disposable rehearsal tool keeps its receipt/marker authorization
+as a thin wrapper. The operator command is:
+
+```text
+DATABASE_URL=<migration-owner URL> pnpm --filter @stockwise/api native:cutover -- --confirm-database <exact database name> [--resume]
+```
+
+It refuses unless `current_database()` equals the confirmation inside every
+transaction. From LEGACY it creates a run id, records a preflight summary and,
+while the data is still editable, refuses (`NATIVE_CUTOVER_UNRESOLVED_IDENTITIES`)
+identities the D5-P4 readiness check would reject and the writer cannot repair
+(invalid time/credential version, or a verification-flag mismatch on a disabled or
+non-ACTIVE user). It then quiesces (ACCESS EXCLUSIVE locks; all Legacy authority
+revoked), reconciles the Better Auth verification flag from `email_verified_at` for
+every user reported `UNVERIFIED_USER` or `VERIFICATION_MISMATCH` (eligibility
+reports only the first issue), enrolls eligible users, reconciles, re-checks the
+same refusal before sealing, seals NATIVE and finally runs `assertNativeCutoverReady`.
+A QUIESCED database continues only with `--resume` under its stored run id; a NATIVE
+database is re-checked and left unchanged. Output is JSON lines with counts and
+fixed refusal codes only. The API must be stopped first.
+
+**Existing Native destination records (R2).** A Better Auth account, a Native
+registration mark or an enrollment row is a Native *destination*. Enrollment rows are
+creatable only by the active run while QUIESCED, so a destination that exists while the
+fence is still LEGACY can never gain valid provenance, and the writer cannot repair it:
+it skips disabled/unverified users and raises a conflict for eligible ones, and its
+"remaining eligible" count excludes every user that already has a destination. Before R2
+that let the command seal NATIVE and only then fail `assertNativeCutoverReady`, or strand
+the run QUIESCED. The command now judges every destination with the readiness check's own
+rules, extracted into `nativeDestinationRefused` / `hasNativeDestination` /
+`hasCrossedAccountIdentity` in `better-auth-cutover-preflight.ts` and used by both (the
+startup check passes `sealPending: false`, so its behavior is unchanged). It refuses with
+`NATIVE_CUTOVER_UNRESOLVED_IDENTITIES` before quiesce (LEGACY is left untouched and still
+editable, so an operator can remove or correct the record and re-run), at the start of a
+`--resume`, and again immediately before the irreversible seal. Destinations enrolled by
+the current run satisfy the same rules and are preserved.
+
+The operator suite `apps/api/src/native-cutover/native-cutover.integration.test.ts`
+runs only inside the receipt-bound D5-P4 coordinator (`mode: "cutover"`, alongside
+the existing cutover rehearsal). Each scenario creates its own freshly migrated
+LEGACY database in the owned disposable cluster, marked with the receipt marker and
+dropped at teardown; root `pnpm test` excludes it.
+
+The receipt's JSON shape (`verifyLocalPostgresReceipt`) proves only structure,
+loopback address, port and database names; a fabricated receipt passes it. The suite
+therefore never treats the receipt as authority over a database. `apps/api/src/test/
+disposable-ownership.ts` reads, in a read-only transaction on the very connection that
+will act, the runner's live database comment (`stockwise-local:<marker>` on
+`stockwise_test_test`), the connected database name, the runner's database set and the
+pinned PostgreSQL 16.15 server, and refuses unless all match. It runs before every
+`CREATE DATABASE`, before each fault injection that changes
+`session_replication_role`, and before the teardown `DROP DATABASE`, which in addition
+re-checks each child's prefix and exact scenario marker. A missing, mismatched,
+malformed or unreadable marker refuses with a fixed `DISPOSABLE_OWNERSHIP_REFUSED:<code>`
+and no further statement. Its database-free matrix is
+`apps/api/src/test/disposable-ownership.test.ts`.
+
+Connections the parent cannot check from inside are bounded by credential scoping, not
+by a parent-side read. The administrative credential stays in the parent and is used
+only by `admin()`, which proves cluster ownership on its own connection before each use.
+Each scenario gets a dedicated login role (`NOSUPERUSER`, no `CREATEDB`/`CREATEROLE`/
+`REPLICATION`, random password, owner of that one database, `PUBLIC` access revoked, and
+`SET` on `session_replication_role` only for the one scenario that injects a fault). Its
+URL is the only database URL any child process (the Prisma migration CLI, the operator
+CLI), Prisma client or injection session receives. `authorizeChildTarget` refuses any
+other URL (different database, host, port, user, scheme or smuggled parameters) and
+verifies the live marker and non-superuser role with that exact URL before a child
+starts; because the child opens its own connections, that read is not atomic with them
+and the role's server-side scope is the actual boundary. Trigger and function creation
+and removal each run on a freshly opened session that proves scenario ownership and role
+first. The role is dropped with its database at teardown only when its comment carries
+this run's marker. The D5-P4 rehearsal's direct mutation connections (`pg_cancel_backend`,
+trigger injection, account and migration-ledger tampering) prove cluster ownership the
+same way.
+
+### Native browser acceptance stack (test-only)
+
+`tests/e2e/better-auth-d5/browser-stack.mts` starts the full web application and the
+unmodified `apps/api/src/main.ts` (`STOCKWISE_AUTHENTICATION_AUTHORITY=native`) on a
+freshly migrated, seeded and NATIVE-sealed disposable PostgreSQL created by the
+receipt-bound local runner, so a person or the Built-in Browser can drive real journeys.
+It is not part of the product and adds no endpoint.
+
+```text
+node tests/e2e/better-auth-d5/browser-stack.mts <config.json>
+config.json: { "dockerExecutable": "<abs docker.exe>", "outputDirectory": "<abs dir>", "runTimeoutMs": 7200000 }
+```
+
+The launcher copies the working tree to an owned directory, builds Next.js, starts the
+runner database, migrates, seeds two synthetic verified and onboarded OWNER users
+(`d5br-owner@example.invalid`, `d5br-second@example.invalid`, one synthetic password
+documented in `browser-stack-config.mts`), runs the accepted operator cutover, starts the
+API and web on `127.0.0.1:3203` and `http://localhost:3202`, then writes
+`stack-ready.json` to the output directory. Control files in that directory:
+`stack-stop.txt` stops and cleans everything; `stack-restart-api.txt` restarts only the
+API with the same database and keys (the launcher answers with `stack-restarted.txt`).
+
+Mail is never delivered. `browser-mail-capture.mts` is a Node `--import` preload that
+replaces only `send` on the exported non-delivery provider object, so issuance, hashing,
+expiry and consumption run unchanged. It records `d5br-*@example.invalid` messages (kind,
+recipient, link, and the OTP for verification) as JSON lines in `mail-capture.jsonl`, caps
+the file at 200 messages, silently ignores every other recipient exactly like non-delivery,
+and refuses to load (the API then exits) unless the opt-in, `STOCKWISE_RUNTIME_ENV=test`,
+the non-delivery provider, no `RESEND_API_KEY`, a receipt-bound loopback database and a
+private capture directory (below) are all present. Delivery follows the HTTP response by
+a few milliseconds, so read the file after the response. Pasting a password into a
+browser form remains a human step; the launcher never types one.
+
+The captured OTPs and links are live synthetic credentials, so `browser-capture-store.mts`
+keeps them in `<outputDirectory>/stack-capture-<128-bit hex>/` (`mail-capture.jsonl`,
+`owner.json`). The launcher creates that directory with a fresh name (never reusing one),
+removes inheritance and grants only the current user on Windows (`icacls`; `0700`/`0600` on
+POSIX), and verifies it before any credential can be written: the DACL must be protected
+with exactly one allow entry for the current user SID, read back as SDDL through
+PowerShell. The API preload repeats the check on every start and per write refuses a file
+replaced by a link. A parent, capture directory or file that is a symlink/junction, a
+directory that is not capture-shaped and marked, or any extra entry is refused. When the
+launcher ends, however it ends (normal stop, startup or journey failure, `SIGINT`/`SIGTERM`
+/`SIGBREAK`), it scans `api.log` and `web.log` for captured OTPs, links and tokens (a leak
+fails the run and names only the log and kind), writes counts to `capture-summary.json`, and
+deletes the capture, printing `CAPTURE_CLEANUP:COMPLETE` or `CAPTURE_CLEANUP:FAILED`. The scan
+is `CLEAN` only when the capture and the logs were actually read: a capture or log that cannot
+be read (permission, I/O, unexpected absence; only a never-created startup log is skipped) or
+that was read but is damaged is `CAPTURE_LOG_SCAN:INCOMPLETE`. One strict parser
+(`parseCaptureRecords`) feeds the summary, the leak scan and the lifecycle: every nonblank
+line must be a newline-terminated JSON record of exactly the shape the recorder writes (or the
+`{"overflow":true}` marker); a torn final line, malformed JSON, a non-object or an off-schema record
+fails with a refusal that names only a line number and a fixed reason code, never record text.
+A scan that is `INCOMPLETE` publishes `{"scan":"INCOMPLETE"}` instead of counts, fails the
+run with a sanitized error code, and still deletes the capture. A failed initialization
+removes only the directory that invocation just created (same device and inode, a plain
+directory, empty or carrying its own marker); a populated, replaced or linked one is kept and
+reported (`CLEANUP_REFUSED_POPULATED`/`CLEANUP_REFUSED_REPLACED`) next to the original error. A hard
+kill cannot run cleanup: the next start (or `browser-stack.mts --purge-stale <config.json>`)
+removes a leftover only when its marker is valid and the marking process is gone; a live
+owner, an unmarked capture-shaped directory or one holding unrelated files is reported and
+the start refused, and the credentials in it are still deleted while the unrelated files
+are not. Never copy a raw capture into retained evidence.
+
+### Database initialization paths
+
+- **Fresh demo database:** migrations → optional synthetic seeding while LEGACY
+  (the NATIVE fence rejects users inserted without Native provenance, so seeding
+  must precede the transition) → `native:cutover` → API with Native authority. An
+  empty database quiesces and seals with zero enrollments. The `stockwise-demo-v1`
+  seeder's schema manifest (`apps/api/src/demo/demo-schema.ts`) includes the Better
+  Auth tables, requires every Better Auth table empty and the fence `LEGACY`, and
+  refuses a QUIESCED or NATIVE database; `native:cutover` then enrolls the seeded
+  users (verified by `tests/e2e/demo-seed/demo-seed-check.mts`).
+- **Existing populated Legacy database:** the same command, but every
+  production-only gate above applies before it is run.
+- **Production migration and recovery:** unchanged production-only gates; an old
+  backup can carry an old fence; stay forward-only and never downgrade.
+
 ## Registration: accepted isolated D3 design, not cutover proof
 
 M0 proof A remains forbidden: native password signup before OTP lets victim

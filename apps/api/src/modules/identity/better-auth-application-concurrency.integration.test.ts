@@ -162,24 +162,25 @@ async function stagePending(email: string) {
 
 async function stageVerified(email: string) {
   observedEmails.add(email);
-  const user = await prisma.user.create({
+  // The credential account id is the user id, known before the insert. A shared
+  // placeholder would let concurrent stagings collide on (provider_id,
+  // account_id) until a later update; the uniqueness constraint is unchanged.
+  const id = randomUUID();
+  await prisma.user.create({
     data: {
+      id,
       email,
       emailVerified: true,
       emailVerifiedAt: new Date(),
       nativeRegistrationCompletedAt: new Date(),
       betterAuthAccounts: {
         create: {
-          accountId: "temporary",
+          accountId: id,
           providerId: "credential",
           password: passwordHash,
         },
       },
     },
-  });
-  await prisma.betterAuthAccount.updateMany({
-    where: { userId: user.id },
-    data: { accountId: user.id },
   });
 }
 

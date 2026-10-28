@@ -1,0 +1,23 @@
+# Image builds (infra/learner-lab/docker/Dockerfile) use the repository root as
+# context. Never send secrets, local state or build output into an image.
+**/.env
+**/.env.*
+!**/.env.example
+**/node_modules
+**/.pnpm-store
+**/.next
+**/dist
+**/coverage
+**/test-results
+**/playwright-report
+**/*.tsbuildinfo
+apps/api/src/generated
+.git
+.github
+.stockwise-*
+infra/learner-lab/terraform/.terraform
+infra/learner-lab/terraform/*.tfstate*
+infra/learner-lab/terraform/*.tfvars
+**/*.pem
+**/*.key
+infra/learner-lab/operator/.state

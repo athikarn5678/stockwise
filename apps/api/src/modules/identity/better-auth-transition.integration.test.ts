@@ -8,7 +8,7 @@ import { createLoginLimiter } from "./login-limiter.ts";
 import { argon2PasswordVerifier } from "./password-hasher.ts";
 import { secureSessionTokenProvider } from "./session-token.ts";
 import { testVerificationSecurity } from "../../test/identity-backend-fixture.ts";
-import { BETTER_AUTH_NATIVE_ENABLED } from "./better-auth-native.ts";
+import { defaultAuthenticationAuthority } from "../../environment.ts";
 
 import { createPrismaCheckoutRepository } from "../sales/checkout-repository.ts";
 import { createPrismaRefundRepository } from "../sales/refund-repository.ts";
@@ -1544,7 +1544,7 @@ describe("guarded disposable Legacy-to-Native transition", () => {
         () => true,
       );
     expect(legacyAuthorityWriteDenied).toBe(true);
-    expect(BETTER_AUTH_NATIVE_ENABLED).toBe(false);
+    expect(defaultAuthenticationAuthority("test")).toBe("legacy");
     const legacyService = createLoginService({
       configuration: {
         absoluteTimeoutMilliseconds: 604800000,
@@ -1782,7 +1782,8 @@ describe("guarded disposable Legacy-to-Native transition", () => {
     expect(recovered.expiresAt).toEqual(retained.expiresAt);
     expect(recovered.passwordHash === retained.passwordHash).toBe(true);
     await recordEvidence("completed-native-forward-recovery-and-registration", {
-      nativeLive: BETTER_AUTH_NATIVE_ENABLED,
+      nativeDefaultOutsideProduction:
+        defaultAuthenticationAuthority("test") === "native",
       migratedUserGeneration: afterReset.credentialVersion.toString(),
       migratedUserNativeAccounts: await prisma.betterAuthAccount.count({
         where: { userId: eligible.user.id },

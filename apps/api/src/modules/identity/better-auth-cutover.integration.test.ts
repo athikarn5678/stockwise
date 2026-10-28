@@ -11,6 +11,7 @@ import { createApp } from "../../app.ts";
 import { startApiServer } from "../../server.ts";
 import { loadApiEnvironment } from "../../environment.ts";
 import { loadTestDatabaseEnvironment } from "../../test/database-environment.ts";
+import { assertClusterOwned } from "../../test/disposable-ownership.ts";
 import { createBetterAuthApplicationRuntime } from "./better-auth-application-runtime.ts";
 import { getTrustedAuthenticationContext } from "./authentication-context.ts";
 import { createPrismaAuthenticationRepository } from "./authentication-repository.ts";
@@ -24,13 +25,39 @@ import { testVerificationSecurity } from "../../test/identity-backend-fixture.ts
 import { createDisposableNativeTransition } from "../../../../../tests/e2e/better-auth-d5/native-transition.mts";
 import { verifyLocalPostgresReceipt } from "../../../../../tests/e2e/better-auth-d5/local-runner.mts";
 import { assertNativeCutoverReady } from "./better-auth-cutover-preflight.ts";
-import { BETTER_AUTH_NATIVE_ENABLED } from "./better-auth-native.ts";
+import { defaultAuthenticationAuthority } from "../../environment.ts";
 const deliveredMessages: { kind: string; url: string }[] = [];
 
 const database = loadTestDatabaseEnvironment();
 const receiptText = process.env.STOCKWISE_LOCAL_DATABASE_RECEIPT;
 if (!receiptText) throw new Error("Disposable transition receipt is required.");
 const receipt: unknown = JSON.parse(receiptText);
+
+// Every direct connection that cancels, injects or tampers in the runner's
+// database first proves, on that very connection, the live receipt-bound
+// ownership (the receipt's shape alone is not authority). Refusal ends the
+// connection before any statement.
+async function ownedClient(): Promise<Client> {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (
+    !databaseUrl ||
+    !verifyLocalPostgresReceipt(
+      receipt,
+      databaseUrl,
+      database.TEST_DATABASE_URL,
+    )
+  )
+    throw new Error("Disposable transition receipt mismatch");
+  const client = new Client({ connectionString: database.TEST_DATABASE_URL });
+  await client.connect();
+  try {
+    await assertClusterOwned(client, receipt);
+  } catch (error) {
+    await client.end().catch(() => undefined);
+    throw error;
+  }
+  return client;
+}
 const origin = "https://web.example.test";
 const legacyPassword = "disposable Legacy password 🔒";
 const nativeSecret = randomBytes(32).toString("base64url");
@@ -166,10 +193,7 @@ async function cancelPreflightBeforeCommit(prisma: PrismaClient) {
   }) as PrismaClient;
   const readiness = assertNativeCutoverReady(wrapped);
   const pid = await pidReady.promise;
-  const canceller = new Client({
-    connectionString: database.TEST_DATABASE_URL,
-  });
-  await canceller.connect();
+  const canceller = await ownedClient();
   try {
     const result = await canceller.query<{ cancelled: boolean }>(
       "SELECT pg_cancel_backend($1) AS cancelled",
@@ -212,7 +236,7 @@ async function startNative() {
   ).toThrow(
     "Native authentication requires a dedicated canonical base64url secret of at least 32 bytes.",
   );
-  expect(BETTER_AUTH_NATIVE_ENABLED).toBe(false);
+  expect(defaultAuthenticationAuthority("test")).toBe("legacy");
   const runtime = createBetterAuthApplicationRuntime({
     environment,
     prisma,
@@ -450,10 +474,7 @@ describe("dedicated disposable D5-P4 Legacy-to-Native recovery rehearsal", () =>
       { timeout: 45_000 },
     );
     const interruptedPid = await pidReady.promise;
-    const cancelClient = new Client({
-      connectionString: database.TEST_DATABASE_URL,
-    });
-    await cancelClient.connect();
+    const cancelClient = await ownedClient();
     try {
       const cancelled = await cancelClient.query<{ cancelled: boolean }>(
         "SELECT pg_cancel_backend($1) AS cancelled",
@@ -492,10 +513,7 @@ describe("dedicated disposable D5-P4 Legacy-to-Native recovery rehearsal", () =>
     // A targeted trigger forces the writer transaction to roll back before retry.
     const trigger = `cutover_fail_${id.replaceAll("-", "")}`;
     const fn = `${trigger}_fn`;
-    const injection = new Client({
-      connectionString: database.TEST_DATABASE_URL,
-    });
-    await injection.connect();
+    const injection = await ownedClient();
     try {
       await injection.query(
         `CREATE FUNCTION public.${fn}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.user_id = '${id}'::uuid THEN RAISE EXCEPTION 'synthetic rehearsal failure'; END IF; RETURN NEW; END $$`,
@@ -657,10 +675,7 @@ describe("dedicated disposable D5-P4 Legacy-to-Native recovery rehearsal", () =>
       UPDATE public.native_auth_transition SET state = 'LEGACY' WHERE id = true
     `).rejects.toThrow();
     await expect(assertNativeCutoverReady(prisma)).resolves.toBeUndefined();
-    const accountClient = new Client({
-      connectionString: database.TEST_DATABASE_URL,
-    });
-    await accountClient.connect();
+    const accountClient = await ownedClient();
     const nativeAccount = await accountClient.query<{
       id: string;
       password: string;
@@ -866,10 +881,7 @@ describe("dedicated disposable D5-P4 Legacy-to-Native recovery rehearsal", () =>
     ).toBe(1);
     await expect(assertNativeCutoverReady(prisma)).resolves.toBeUndefined();
 
-    const ledgerClient = new Client({
-      connectionString: database.TEST_DATABASE_URL,
-    });
-    await ledgerClient.connect();
+    const ledgerClient = await ownedClient();
     const ledger = await ledgerClient.query<{
       migration_name: string;
       checksum: string;
@@ -905,7 +917,8 @@ describe("dedicated disposable D5-P4 Legacy-to-Native recovery rehearsal", () =>
       processLostAndRestarted: true,
       sessionSurvivedProcessRestart: true,
       invalidAndMissingSecretStartupRefused: true,
-      nativeFeatureFlagRemainsOff: !BETTER_AUTH_NATIVE_ENABLED,
+      nativeNotDefaultOutsideProduction:
+        defaultAuthenticationAuthority("test") === "legacy",
       foreignOrganizationDenied: foreignBranches.status === 403,
       unassignedBranchHidden: true,
       accountIdentityMutationRefused: true,

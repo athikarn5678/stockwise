@@ -3,7 +3,7 @@ import { lstat, readFile, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { PrismaClient } from "../../generated/prisma/client.ts";
+import type { Prisma, PrismaClient } from "../../generated/prisma/client.ts";
 import { assessBetterAuthTransition } from "./better-auth-transition-assessment.ts";
 import { isTransferableLegacyPassword } from "./better-auth-transition-password.ts";
 
@@ -107,6 +107,109 @@ function validBaseline(value: unknown): boolean {
   });
 }
 
+export type NativeDestinationUser = Prisma.UserGetPayload<{
+  include: { betterAuthAccounts: true; nativeAuthEnrollment: true };
+}>;
+
+/**
+ * Gate facts the destination rules compare against. `sealPending` is true only
+ * before the irreversible seal: no seal timestamp exists yet, `sealedAt` is a
+ * lower bound for it (the database clock), and every destination record that is
+ * not enrolled by `runId` is already older than the eventual seal.
+ */
+export interface NativeDestinationGate {
+  runId: string | null;
+  quiescedAt: Date;
+  sealedAt: Date;
+  sealPending: boolean;
+}
+
+/** A user owns, or claims, Native authority and so must satisfy the rules below. */
+export function hasNativeDestination(user: NativeDestinationUser): boolean {
+  return (
+    user.betterAuthAccounts.length > 0 ||
+    user.nativeRegistrationCompletedAt !== null ||
+    user.nativeAuthEnrollment !== null
+  );
+}
+
+/**
+ * The accepted D5-P4 provenance rules for an existing Native destination.
+ * Returns true when readiness must refuse. Shared verbatim by the startup check
+ * and the operator cutover so neither can accept what the other refuses.
+ */
+export function nativeDestinationRefused(
+  user: NativeDestinationUser,
+  gate: NativeDestinationGate,
+  now: Date,
+): boolean {
+  const accounts = user.betterAuthAccounts;
+  const enrollment = user.nativeAuthEnrollment;
+  const markedAt = user.nativeRegistrationCompletedAt;
+  const nativePassword = accounts[0]?.password;
+  return (
+    accounts.length !== 1 ||
+    markedAt === null ||
+    markedAt > now ||
+    user.passwordChangedAt > now ||
+    user.emailVerified !== (user.emailVerifiedAt !== null) ||
+    accounts[0]?.userId !== user.id ||
+    accounts[0]?.providerId !== "credential" ||
+    accounts[0]?.accountId !== user.id ||
+    nativePassword === null ||
+    nativePassword === undefined ||
+    !isTransferableLegacyPassword(nativePassword) ||
+    user.credentialVersion < 1n ||
+    (enrollment !== null &&
+      (enrollment.userId !== user.id ||
+        enrollment.accountId !== accounts[0].id ||
+        enrollment.runId !== gate.runId ||
+        enrollment.sourceCredentialVersion < 1n ||
+        enrollment.sourceCredentialVersion > user.credentialVersion ||
+        enrollment.sourcePasswordChangedAt > user.passwordChangedAt ||
+        enrollment.enrolledAt > gate.sealedAt ||
+        enrollment.sourcePasswordChangedAt > gate.quiescedAt ||
+        (enrollment.sourceCredentialVersion === user.credentialVersion &&
+          enrollment.sourcePasswordChangedAt.getTime() !==
+            user.passwordChangedAt.getTime()) ||
+        (enrollment.sourceCredentialVersion === user.credentialVersion &&
+          nativePassword !== user.passwordHash) ||
+        !/^[a-f0-9]{64}$/.test(enrollment.sourceDigest))) ||
+    (enrollment === null && (gate.sealPending || markedAt < gate.sealedAt))
+  );
+}
+
+/** An account addressed to a StockWise user's id must belong to that same user. */
+export async function hasCrossedAccountIdentity(
+  tx: Prisma.TransactionClient,
+  userIds: string[],
+): Promise<boolean> {
+  const accountIdMatches = await tx.betterAuthAccount.findMany({
+    where: { accountId: { in: userIds } },
+    select: { userId: true, accountId: true },
+  });
+  return accountIdMatches.some(
+    (account) => account.accountId !== account.userId,
+  );
+}
+
+/**
+ * Read-only Legacy startup guard. Once the fence leaves LEGACY, Legacy authority
+ * never runs again: there is no downgrade from QUIESCED or a sealed NATIVE state.
+ */
+export async function assertLegacyAuthorityAllowed(
+  prisma: PrismaClient,
+): Promise<void> {
+  try {
+    const fence = await prisma.$queryRaw<
+      { state: string }[]
+    >`SELECT state FROM public.native_auth_transition WHERE id = true`;
+    if (fence.length !== 1 || fence[0]?.state !== "LEGACY") throw refusal();
+  } catch {
+    throw new Error("Legacy authentication startup refused.");
+  }
+}
+
 /** Read-only, consistent-snapshot source readiness check; not deployment approval. */
 export async function assertNativeCutoverReady(
   prisma: PrismaClient,
@@ -198,13 +301,10 @@ export async function assertNativeCutoverReady(
           },
           orderBy: { id: "asc" },
         });
-        const accountIdMatches = await tx.betterAuthAccount.findMany({
-          where: { accountId: { in: users.map((user) => user.id) } },
-          select: { userId: true, accountId: true },
-        });
         if (
-          accountIdMatches.some(
-            (account) => account.accountId !== account.userId,
+          await hasCrossedAccountIdentity(
+            tx,
+            users.map((user) => user.id),
           )
         )
           throw refusal();
@@ -219,42 +319,19 @@ export async function assertNativeCutoverReady(
         const now = nowRows[0]?.now;
         if (!now || gate.sealed_at > now) throw refusal();
         for (const user of users) {
-          const accounts = user.betterAuthAccounts;
-          const enrollment = user.nativeAuthEnrollment;
           const markedAt = user.nativeRegistrationCompletedAt;
-          const nativePassword = accounts[0]?.password;
-          if (accounts.length > 0 || markedAt !== null || enrollment !== null) {
+          if (hasNativeDestination(user)) {
             if (
-              accounts.length !== 1 ||
-              markedAt === null ||
-              markedAt > now ||
-              user.passwordChangedAt > now ||
-              user.emailVerified !== (user.emailVerifiedAt !== null) ||
-              accounts[0]?.userId !== user.id ||
-              accounts[0]?.providerId !== "credential" ||
-              accounts[0]?.accountId !== user.id ||
-              nativePassword === null ||
-              nativePassword === undefined ||
-              !isTransferableLegacyPassword(nativePassword) ||
-              user.credentialVersion < 1n ||
-              (enrollment !== null &&
-                (enrollment.userId !== user.id ||
-                  enrollment.accountId !== accounts[0].id ||
-                  enrollment.runId !== gate.run_id ||
-                  enrollment.sourceCredentialVersion < 1n ||
-                  enrollment.sourceCredentialVersion > user.credentialVersion ||
-                  enrollment.sourcePasswordChangedAt > user.passwordChangedAt ||
-                  enrollment.enrolledAt > gate.sealed_at ||
-                  enrollment.sourcePasswordChangedAt > gate.quiesced_at ||
-                  (enrollment.sourceCredentialVersion ===
-                    user.credentialVersion &&
-                    enrollment.sourcePasswordChangedAt.getTime() !==
-                      user.passwordChangedAt.getTime()) ||
-                  (enrollment.sourceCredentialVersion ===
-                    user.credentialVersion &&
-                    nativePassword !== user.passwordHash) ||
-                  !/^[a-f0-9]{64}$/.test(enrollment.sourceDigest))) ||
-              (enrollment === null && markedAt < gate.sealed_at)
+              nativeDestinationRefused(
+                user,
+                {
+                  runId: gate.run_id,
+                  quiescedAt: gate.quiesced_at,
+                  sealedAt: gate.sealed_at,
+                  sealPending: false,
+                },
+                now,
+              )
             )
               throw refusal();
             continue;

@@ -41,12 +41,10 @@ import {
 } from "./verification-delivery.ts";
 
 /**
- * D5-P2 source candidate only. Construct exactly one authentication authority
- * per API process. The application must not mount this until cutover gates,
- * route parity, secret provisioning and rollback have independently passed.
- *
- * This is never called by the active runtime while
- * BETTER_AUTH_NATIVE_ENABLED remains false.
+ * Native application authentication. Construct exactly one authentication
+ * authority per API process. `main.ts` builds this only when
+ * STOCKWISE_AUTHENTICATION_AUTHORITY is `native` and the D5-P4 preflight has
+ * confirmed a sealed NATIVE database.
  */
 export function createBetterAuthApplicationRuntime(input: {
   environment: ApiEnvironment;

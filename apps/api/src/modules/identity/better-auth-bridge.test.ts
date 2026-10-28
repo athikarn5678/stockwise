@@ -112,7 +112,7 @@ describe("StockWise native session eligibility", () => {
     router.all(
       "/protected",
       gated
-        ? createBetterAuthAuthenticationMiddleware(dependencies)
+        ? createBetterAuthAuthenticationMiddleware(dependencies, false)
         : createSessionAuthenticationMiddleware(
             createBetterAuthSessionResolver(dependencies),
           ),

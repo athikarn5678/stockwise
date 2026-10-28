@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+# TEST STUB for the AWS CLI (operator regression tests only). Never contacts
+# AWS. Every call is appended to $STUB_DIR/aws.log (arguments only; the
+# operator scripts pass secret values by file, never as arguments).
+# Behaviour is driven by files and variables under $STUB_DIR:
+#   STUB_IDENTITY_ARN   ARN returned by sts get-caller-identity; "MISSING" fails
+#   STUB_EXIT_CODE      exit code reported for the stopped ECS task (default 0)
+#   STUB_SERVICE_COUNTS desired/pending/running of the service (default "0 0 0")
+#   STUB_PUT_FAIL=1     secretsmanager put-secret-value fails
+#   STUB_PUT_SLEEP=<s>  secretsmanager put-secret-value sleeps first
+#   task-log.txt        CloudWatch log lines of the ops task (@EXPORT_ID@ is
+#                       replaced by the export id sent in run-task overrides)
+#   s3/<key>            object bodies; s3meta/<key> their sha256 metadata
+#   STUB_ALARM_STATE    initial CloudWatch outage-alarm state (default OK);
+#                       set-alarm-state updates it in alarm-state
+#   STUB_ALARM_READ_FAIL=1 / STUB_ECS_WAIT_FAIL=1  make those calls fail
+set -euo pipefail
+: "${STUB_DIR:?STUB_DIR is required}"
+printf '%s\n' "$*" >>"${STUB_DIR}/aws.log"
+printf 'aws %s\n' "$*" >>"${STUB_DIR}/sequence.log"
+
+export_id() { cat "${STUB_DIR}/last-export-id" 2>/dev/null || true; }
+fixture_key() { local id; id="$(export_id)"; printf '%s' "${1//${id:-@none@}/@EXPORT_ID@}"; }
+arg_after() {
+  local name="$1"
+  shift
+  while [[ $# -gt 0 ]]; do
+    [[ "$1" == "$name" ]] && { printf '%s' "${2:-}"; return 0; }
+    shift
+  done
+  return 1
+}
+
+case "$1 ${2:-}" in
+  "sts get-caller-identity")
+    [[ "${STUB_IDENTITY_ARN:-}" != MISSING && -n "${STUB_IDENTITY_ARN:-}" ]] || {
+      echo "Unable to locate credentials." >&2
+      exit 253
+    }
+    if [[ "$*" == *"--query Account"* ]]; then cut -d: -f5 <<<"$STUB_IDENTITY_ARN"; else echo "$STUB_IDENTITY_ARN"; fi
+    ;;
+  "ecs describe-services") echo "${STUB_SERVICE_COUNTS:-0 0 0}" ;;
+  "ecs run-task")
+    overrides="$(arg_after --overrides "$@")"
+    if [[ "$overrides" =~ \"STOCKWISE_EXPORT_ID\",\"value\":\"([a-z0-9-]+)\" ]]; then
+      printf '%s' "${BASH_REMATCH[1]}" >"${STUB_DIR}/last-export-id"
+    fi
+    echo "arn:aws:ecs:us-east-1:111111111111:task/stockwise-demo/0123456789abcdef0123456789abcdef"
+    ;;
+  "ecs describe-tasks")
+    if [[ "$*" == *lastStatus* ]]; then echo STOPPED; else printf '%s\t%s\n' "${STUB_EXIT_CODE:-0}" "Essential container in task exited"; fi
+    ;;
+  "logs get-log-events")
+    [[ -r "${STUB_DIR}/task-log.txt" ]] && sed "s/@EXPORT_ID@/$(export_id)/g" "${STUB_DIR}/task-log.txt" | paste -sd '\t' -
+    ;;
+  "s3api head-object")
+    key="$(fixture_key "$(arg_after --key "$@")")"
+    [[ -r "${STUB_DIR}/s3meta/${key}" ]] || { echo "An error occurred (404) when calling the HeadObject operation: Not Found" >&2; exit 254; }
+    cat "${STUB_DIR}/s3meta/${key}"
+    ;;
+  "s3api get-object")
+    key="$(fixture_key "$(arg_after --key "$@")")"
+    out="${!#}"
+    [[ -r "${STUB_DIR}/s3/${key}" ]] || { echo "An error occurred (NoSuchKey) when calling the GetObject operation" >&2; exit 254; }
+    cp "${STUB_DIR}/s3/${key}" "$out"
+    echo '{"ContentLength": 0}'
+    ;;
+  "secretsmanager list-secret-version-ids")
+    # STUB_SM_LIST: empty (default) | current | accessdenied | throttle | timeout | blank | none | json
+    case "${STUB_SM_LIST:-empty}" in
+      empty) echo 0 ;;
+      current) echo 1 ;;
+      accessdenied) echo "An error occurred (AccessDeniedException) when calling the ListSecretVersionIds operation" >&2; exit 254 ;;
+      throttle) echo "An error occurred (ThrottlingException) when calling the ListSecretVersionIds operation: Rate exceeded" >&2; exit 254 ;;
+      timeout) echo "Read timeout on endpoint URL" >&2; exit 255 ;;
+      blank) : ;;
+      none) echo None ;;
+      json) echo '{"Versions": []}' ;;
+    esac
+    ;;
+  "secretsmanager get-secret-value")
+    # STUB_SM_GET: valid (default) | malformed | missingkey | badvalue | notjson | accessdenied
+    # Fixture values are fixed, synthetic and well-formed; never generated secrets.
+    id="$(arg_after --secret-id "$@")"
+    k43="$(printf 'K%.0s' {1..43})"
+    if [[ "$id" == *database* ]]; then
+      valid="{\"app_password\":\"$(printf 'A%.0s' {1..43})\",\"migrator_password\":\"$(printf 'M%.0s' {1..43})\",\"demo_user_password\":\"$(printf 'D%.0s' {1..43})\"}"
+      missing="{\"app_password\":\"$(printf 'A%.0s' {1..43})\",\"demo_user_password\":\"$(printf 'D%.0s' {1..43})\"}"
+      bad="{\"app_password\":\"short\",\"migrator_password\":\"$(printf 'M%.0s' {1..43})\",\"demo_user_password\":\"$(printf 'D%.0s' {1..43})\"}"
+    else
+      valid="{\"STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY\":\"${k43}\",\"STOCKWISE_VERIFICATION_OTP_KEY\":\"${k43}\",\"STOCKWISE_VERIFICATION_PROOF_KEY\":\"${k43}\",\"STOCKWISE_BETTER_AUTH_SECRET\":\"${k43}\",\"STOCKWISE_INVITATION_CONTINUATION_KEY\":\"${k43}\",\"RESEND_API_KEY\":\"re_stubfixture_0001\"}"
+      missing="{\"STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY\":\"${k43}\",\"RESEND_API_KEY\":\"re_stubfixture_0001\"}"
+      bad="${valid/re_stubfixture_0001/not-a-resend-key}"
+    fi
+    if [[ "$id" == *master* ]]; then
+      valid="{\"username\":\"stockwise_master\",\"password\":\"$(printf 'P%.0s' {1..43})\"}"
+      missing='{"username":"stockwise_master"}'
+      bad='{"username":"stockwise_master","password":"short"}'
+    fi
+    mode="${STUB_SM_GET:-valid}"
+    if [[ -n "${STUB_SM_BAD_SECRET:-}" && "$id" != *"$STUB_SM_BAD_SECRET"* ]]; then mode=valid; fi
+    case "$mode" in
+      valid) echo "$valid" ;;
+      whitespace) printf '%s\n' "$valid" | sed 's/:/: /g; s/,/, /g' ;;
+      multiline) printf '%s\n' "$valid" | sed 's/,/,\n  /g' ;;
+      blank) : ;;
+      invalid-inner) printf '%s,BROKEN}\n' "${valid%?}" ;;
+      duplicate-any) printf '%s,%s\n' "${valid%?}" "${valid#?}" ;;
+      trailing-comma) printf '%s,}\n' "${valid%?}" ;;
+      duplicate)
+        if [[ "$id" == *database* ]]; then printf '%s,"app_password":"%s"}\n' "${valid%?}" "$(printf 'A%.0s' {1..43})"; else echo "$valid"; fi
+        ;;
+      duplicate-conflict)
+        if [[ "$id" == *database* ]]; then printf '%s,"app_password":"%s"}\n' "${valid%?}" "$(printf 'Z%.0s' {1..43})"; else echo "$valid"; fi
+        ;;
+      duplicate-null)
+        if [[ "$id" == *database* ]]; then printf '%s,"app_password":null}\n' "${valid%?}"; else echo "$valid"; fi
+        ;;
+      escaped-duplicate)
+        if [[ "$id" == *database* ]]; then printf '%s,"\\u0061pp_password":"%s"}\n' "${valid%?}" "$(printf 'A%.0s' {1..43})"; else echo "$valid"; fi
+        ;;
+      application-duplicate)
+        if [[ "$id" == *database* ]]; then echo "$valid"; else printf '%s,"RESEND_API_KEY":"re_duplicate_0001"}\n' "${valid%?}"; fi
+        ;;
+      wrong-type) printf '%s\n' "$valid" | sed 's/"app_password":"[^"]*"/"app_password":123/' ;;
+      null-value) printf '%s\n' "$valid" | sed 's/"app_password":"[^"]*"/"app_password":null/' ;;
+      empty-value) printf '%s\n' "$valid" | sed 's/"app_password":"[^"]*"/"app_password":""/' ;;
+      nested) printf '{"nested":%s}\n' "$valid" ;;
+      get-throttle) echo "An error occurred (ThrottlingException) when calling GetSecretValue" >&2; exit 254 ;;
+      get-timeout) echo "Read timeout on endpoint URL" >&2; exit 255 ;;
+      malformed) echo "${valid%?}" ;;
+      missingkey) echo "$missing" ;;
+      badvalue) echo "$bad" ;;
+      notjson) echo "None" ;;
+      accessdenied) echo "An error occurred (AccessDeniedException) when calling the GetSecretValue operation" >&2; exit 254 ;;
+    esac
+    ;;
+  "secretsmanager put-secret-value")
+    [[ -n "${STUB_PUT_SLEEP:-}" ]] && sleep "$STUB_PUT_SLEEP"
+    source_arg="$(arg_after --secret-string "$@")"
+    # Record whether the referenced payload existed at call time (never its content).
+    [[ "$source_arg" == file://* ]] && printf 'payload-present:%s\n' "$([[ -s "${source_arg#file://}" ]] && echo yes || echo no)" >>"${STUB_DIR}/aws.log"
+    [[ "${STUB_PUT_FAIL:-}" == 1 ]] && { echo "An error occurred (AccessDeniedException)" >&2; exit 254; }
+    echo stub-secret
+    ;;
+  "rds describe-db-instances")
+    # After a recorded terraform destroy the instance no longer exists.
+    if grep -qE '^destroy' "${STUB_DIR}/terraform.log" 2>/dev/null; then
+      echo "An error occurred (DBInstanceNotFound)" >&2
+      exit 254
+    fi
+    echo "${STUB_RDS_STATUS:-available}"
+    ;;
+  "cloudwatch describe-alarms")
+    [[ "${STUB_ALARM_READ_FAIL:-}" == 1 ]] && { echo "An error occurred (AccessDenied) when calling DescribeAlarms" >&2; exit 254; }
+    [[ -f "${STUB_DIR}/alarm-state" ]] || printf '%s' "${STUB_ALARM_STATE:-OK}" >"${STUB_DIR}/alarm-state"
+    cat "${STUB_DIR}/alarm-state"
+    echo
+    ;;
+  "cloudwatch set-alarm-state")
+    arg_after --state-value "$@" >"${STUB_DIR}/alarm-state"
+    ;;
+  "ecs wait")
+    [[ "${STUB_ECS_WAIT_FAIL:-}" == 1 ]] && { echo "Waiter ServicesStable failed: Max attempts exceeded" >&2; exit 255; }
+    :
+    ;;
+  "ec2 describe-nat-gateways" | "ec2 describe-addresses" | "ec2 describe-instances") echo 0 ;;
+  "ecs describe-clusters" | "ecr describe-repositories" | "logs describe-log-groups") echo 0 ;;
+  "resourcegroupstaggingapi get-resources") echo 0 ;;
+  *) : ;;
+esac

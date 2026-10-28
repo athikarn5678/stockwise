@@ -8,6 +8,7 @@
     "demo:seed": "pnpm run build && node dist/demo/demo-main.js",
     "dev": "node --env-file-if-exists=../../.env --watch src/main.ts",
     "lint": "eslint .",
+    "native:cutover": "pnpm run build && node dist/native-cutover/native-cutover-main.js",
     "prisma:connectivity-check": "pnpm run build && node --env-file-if-exists=../../.env dist/prisma/connectivity-smoke.js",
     "prisma:generate": "prisma generate --config prisma.config.ts",
     "prisma:migrate:dev": "prisma migrate dev --config prisma.config.ts",

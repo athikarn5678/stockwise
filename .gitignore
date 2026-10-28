@@ -41,3 +41,13 @@ Desktop.ini
 apps/api/.d3-fix-schema-before.prisma
 apps/api/.d3-owned-*/
 apps/api/.d4-native-smoke.mts
+
+# Learner Lab Terraform: operator-local state, plans, inputs and provider cache
+infra/**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!example.tfvars
+# Learner Lab operator state: release records, downloaded exports, temporary files
+infra/learner-lab/operator/.state/

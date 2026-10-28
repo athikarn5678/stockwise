@@ -4,7 +4,7 @@
 | --- | --- |
 | Status | Accepted decision history |
 | Baseline | Architecture Freeze v1 |
-| Last updated | 2026-10-12 |
+| Last updated | 2026-10-28 |
 
 ## 1. Log rules
 
@@ -2936,6 +2936,420 @@ Crypto/API/security and real browser regressions must prove OTP/link/reload
 navigation, tab ownership, explicit actions, wrong-account/session rejection and
 unchanged authorization. No real sends, Native Live, D5-P5, AWS, commit or push.
 Independent acceptance and separate publication authorization remain required.
+
+## ADR-039 — Host the time-limited demo on AWS Academy Learner Lab (Topology A)
+
+- **Date:** 2026-10-27; amended 2026-10-27 (D-03 superseded by D-03R)
+- **Status:** Superseded by ADR-040 (2026-10-28) for the hosting topology: compute, ingress/TLS, database availability, secrets store, registry. Previously Accepted for the Learner Lab demo only (2026-10-27); its Topology A infrastructure was never reviewed or provisioned. The body below is the historical decision, unchanged. Its D-03R, database-initialization, D-13 and pending-decision content continues through ADR-040.
+- **Authority:** Explicit owner decisions D-01, D-04 and D-07, and the superseding owner decision D-03R, on 2026-10-27 (P8-M1-T01-LL decision package)
+- **Type:** Cloud hosting / operations; partial, demo-scoped answer to `OQ-015` and the deployment-critical subset of `OQ-020`
+
+### Decision history
+
+The first owner decision D-03 (2026-10-27) selected Legacy authentication for the
+demo and deferred Native Live and D5-P5 to a real account. Later the same day the
+owner superseded it with **D-03R: the Learner Lab deployment MUST use Better Auth
+Native Live; Legacy authentication must not be deployed, and postponing D5-P5 is
+not an acceptable deployment solution.** D-01, D-04 and D-07 are unchanged. The
+superseded D-03 text is retained in the external decision package as history.
+
+### Context
+
+`ADR-009` fixes AWS building blocks but leaves topology to `OQ-015`/`OQ-020`.
+The only available AWS account is an AWS Academy Learner Lab: us-east-1/us-west-2
+only, no IAM user/role creation (pre-created `LabRole`/`LabInstanceProfile`),
+four-hour sessions that stop EC2, a fixed $50 course budget whose overrun deletes
+all resources, and course access ending 2026-11-30. The published application binds
+the Express API to `127.0.0.1`, proxies `/api/health` and `/api/v1/*` through
+Next.js to a loopback-only `STOCKWISE_API_ORIGIN`, uses process-local abuse
+limiters, and, at published `0d47a47`, constructs Legacy authentication through a
+compile-time `BETTER_AUTH_NATIVE_ENABLED=false` switch.
+
+### Alternatives considered
+
+1. ECS Fargate + ALB + ACM — exceeds the budget within weeks.
+2. Separate web and API hosts — requires application changes to the loopback API.
+3. ECR pushed from CI or GitHub OIDC to AWS — impossible without IAM role creation.
+4. PostgreSQL in a container on EC2 — violates `ADR-004`/`ADR-009` RDS.
+5. Single EC2 + Docker Compose + Caddy + private RDS (Topology A).
+
+### Decision
+
+Accept option 5 for a **time-limited educational demo with synthetic data**,
+available only during lab sessions. It is not the production answer to `OQ-015`.
+
+- **Region and compute:** us-east-1; one EC2 instance (proposed t3.small,
+  Amazon Linux 2023) in a public subnet with an Elastic IP; IMDSv2 required with
+  hop limit 1; `LabInstanceProfile`; no SSH; SSM Session Manager administration.
+- **Runtime:** Docker Compose with `caddy`, `web` (Next.js server) and `api`
+  (Express) sharing the web container's network namespace, preserving the
+  loopback-only API and same-origin proxy without application change. Exactly one
+  API process, keeping the accepted process-local limiters valid.
+- **Ingress/TLS:** Caddy terminates TLS with automatic certificates and redirects
+  HTTP to HTTPS; `STOCKWISE_PUBLIC_WEB_ORIGIN` equals the exact `https://` demo
+  origin. Caddy is an accepted runtime dependency: official `caddy:2` image,
+  Apache-2.0, pinned by digest, used only as the reverse proxy/ACME client.
+- **Database:** RDS PostgreSQL 16, Single-AZ, encrypted, automated backups,
+  deletion protection, not publicly accessible, private subnets, SG-to-SG 5432
+  only; separate migration-owner and DML-only runtime roles. Forward-only
+  `prisma migrate deploy`; never reset, `db push` or edited migrations.
+- **Secrets:** SSM Parameter Store SecureString; values set out-of-band by the
+  owner, rendered to a root-only tmpfs env file for `api` only; names only in IaC,
+  Git and evidence. All dedicated keys, including
+  `STOCKWISE_INVITATION_CONTINUATION_KEY` (a startup requirement) and
+  `STOCKWISE_BETTER_AUTH_SECRET` (Native), are generated fresh for the lab and
+  are distinct.
+- **IaC:** Terraform run locally by the operator with lab session credentials;
+  zero `aws_iam_*` resources; region, sizes, hostname and role names are variables.
+- **Delivery:** digest-identified images; operator pull-deploy in a lab session.
+  Registry choice remains pending (D-05).
+- **Authentication (D-03R):** Better Auth Native Live under `ADR-035`/`ADR-036`
+  is the only authority the deployed API may run. The production runtime refuses
+  Legacy selection; there is no Legacy fallback and no downgrade after the
+  database is sealed NATIVE. The API starts only after the accepted D5-P4
+  preflight (`assertNativeCutoverReady`) passes against a database sealed by the
+  accepted D5-P3 transition contract (quiesce, reconcile, enroll, seal). Native
+  requires the dedicated `STOCKWISE_BETTER_AUTH_SECRET`, HTTPS on the exact
+  public origin, and production email delivery.
+- **Database initialization:** the demo database is a fresh, isolated RDS
+  database. Order: forward-only migrations → optional synthetic seeding while
+  the database is still LEGACY → the operator-run Native transition (an empty or
+  seeded database is quiesced, eligible identities are enrolled, and the fence is
+  sealed NATIVE) → API start. This is distinct from migrating an existing
+  populated production database, whose D5 production-only gates still apply.
+
+### Accepted exception (D-04)
+
+Least-privilege IAM is not achievable in Learner Lab. For this demo only, it is
+accepted with compensating controls: no AWS credentials in workloads (IMDS hop
+limit 1, no AWS SDK use), no SSH, SSM-only administration, DB-level least
+privilege, no secrets in Terraform state, digest-pinned images, single-operator
+lab access. This exception must not carry into any real-customer deployment.
+
+### Native Live status and operational prerequisites
+
+D5-P5 (Native Live activation) is required by D-03R but is **not complete and not
+independently accepted**. Deployment additionally requires Codex independent
+testing and security acceptance, then separate owner approval. The D5 production-only
+gates in `docs/development/BETTER_AUTH_MIGRATION.md` apply. For this fresh,
+synthetic, session-bound demo the following need an explicit owner disposition
+(D-13) rather than silent omission: physical restore verification, measured
+recovery timing and RPO/RTO, retained authority checkpoint/WAL reconciliation,
+durable maintenance exclusion, and dependency-security disposition. Least-privilege
+database roles that cannot own or disable the fence, HTTPS/Secure cookies, secret
+provisioning and production email delivery remain mandatory.
+
+### Pending decisions (not answered here)
+
+Native production-gate disposition for the demo (D-13), image registry (D-05), demo hostname/DNS record (D-06), synthetic data seeding path
+(D-08), real outbound email scope and DMARC (D-09; production runtime requires
+Resend configuration), AI scheduler deferral (D-10), operating pattern/budget hard
+stop (D-11), off-account backup encryption tool (D-12), and each execution gate
+(Git publication, image publication, chargeable provisioning, DNS, public deploy,
+email) require separate explicit owner approval.
+
+### Consequences
+
+- No application source change is required by the hosting topology itself; Native
+  Live activation (D5-P5) requires the separately reviewed implementation.
+- Uptime is session-bound; single AZ; no WAF; no distributed rate limiting.
+  `OQ-020` remains open.
+- All lab data is lost on budget overrun or at course end; only an off-account
+  encrypted export survives.
+- `OQ-015`, `OQ-019` and `OQ-020` remain open for real production. P8-M1-T02's
+  "least-privilege plan" acceptance is satisfied for the lab only through the
+  exception above.
+
+## ADR-040 — Restore the original AWS topology for the Learner Lab demo (ALB, ECS on EC2, RDS Multi-AZ)
+
+- **Date:** 2026-10-28
+- **Status:** Accepted for the Learner Lab demo only (2026-10-28). Supersedes the hosting topology of `ADR-039`. Infrastructure source is implemented and verified only locally (mocked Terraform tests and a local container rehearsal): NOT PROVISIONED, NOT VERIFIED IN AWS, NOT INDEPENDENTLY REVIEWED.
+- **Authority:**
+  - The owner's superseding requirements of 2026-10-28 (P8-ORIGINAL-ARCHITECTURE-RESTORATION).
+  - The owner's Phase 2 architecture decisions and Phase 3 authorization of 2026-10-28, which resolved OD-1 to OD-5 as recorded below.
+  - The owner prioritizes real AWS services, architectural correctness and a working application over minimum service count or long-term cost. The demonstration window ends 2026-10-31 23:59 Asia/Bangkok (`2026-10-31T16:59:00Z`).
+- **Type:** Cloud hosting / operations. A demo-scoped answer to `OQ-015` and the deployment-critical subset of `OQ-020`; it does not answer either for real production.
+
+### Context
+
+`ADR-039` chose Topology A: one EC2 instance running Docker Compose with Caddy, `web` and `api`, plus a Single-AZ private RDS instance and SSM Parameter Store. It rejected ECS + ALB on budget for a multi-week runtime. Topology A source was implemented and rehearsed locally but never reviewed or provisioned.
+
+The owner now requires the topology of the original Cloud Computing project design:
+
+> Browser → optional CloudFront → internet-facing ALB → ECS on EC2 with an Auto Scaling Group → private RDS PostgreSQL Multi-AZ.
+
+The required services are:
+- ALB with ACM HTTPS;
+- an EC2 Auto Scaling Group across Availability Zones;
+- ECS with EC2 capacity providers;
+- RDS Multi-AZ with one standby;
+- VPC, subnets, security groups and routing;
+- CloudWatch Logs, metrics and alarms;
+- Secrets Manager;
+- ECR where Learner Lab permits;
+- S3 with a concrete purpose;
+- Better Auth Native Live, never Legacy.
+
+The demonstration window is now about four days, which removes `ADR-039`'s cost objection.
+
+**Constraints that still hold.** Learner Lab (Track B capability matrix, from the lab README read 2026-10-27):
+- **Account limits:**
+  - us-east-1 and us-west-2 only;
+  - no IAM user, group or role creation; pre-created `LabRole` and `LabInstanceProfile` only;
+  - EC2 nano–large, at most 9 running instances and 32 vCPUs per region, and 20 concurrent instances deactivates the account;
+  - RDS nano–medium classes, gp2 storage of at most 100 GB, no enhanced monitoring.
+- **ECR:** `LabRole` has read-only ECR access; the console user can push.
+- **Session behaviour:** EC2 instances stop at session end and restart at the next session; RDS is not stopped.
+- **Budget:** a fixed $50 budget whose overrun deletes all resources.
+- **CloudFront:** absent from the supplied service list.
+
+Application constraints:
+- **Loopback API:** the Express API binds `127.0.0.1:3001` and is reached only through the Next.js same-origin rewrite.
+- **Process-local login limiter:** the login and password-proof credential-failure limiter, and its per-email serialization, live in process memory. Pending-registration quotas, Native password-reset quotas and OTP failure counts are database-backed.
+- **Native fence:** Native authentication requires a database sealed NATIVE by `native:cutover`. The runtime role must be unable to alter the fence, yet it needs the column-level `UPDATE ("id")` grant for the fence trigger's `FOR SHARE` lock.
+- **Demo seeder:** it accepts only loopback `*_demo` targets.
+
+### Alternatives considered
+
+1. **Keep Topology A** (Compose + Caddy on one EC2 instance, Single-AZ RDS).
+   - For: cheapest (≈ $0.05/h); already rehearsed locally.
+   - Against: it does not demonstrate the required ALB, ASG, ECS, Multi-AZ, ACM or Secrets Manager. It also leaves one instance and one AZ as single points of failure.
+2. **ECS on Fargate + ALB.**
+   - Permitted by Learner Lab, but the owner requires a real EC2 Auto Scaling Group.
+   - Kept only as the fallback if Learner Lab refuses an EC2 capacity provider.
+3. **Separate web and API services or target groups.**
+   - Requires application changes to the loopback API binding and the same-origin rewrite.
+4. **Bridge networking with dynamic host ports.**
+   - Loses shared-localhost communication between the two containers.
+5. **Several application replicas, with or without ALB stickiness.**
+   - An attacker can drop the stickiness cookie, so per-email login-failure budgets would multiply by the replica count. This would silently weaken an accepted security control.
+6. **Mandatory CloudFront.**
+   - Unverifiable in Learner Lab, so the architecture must work without it.
+7. **Kubernetes/EKS.**
+   - A non-goal under `ADR-009`.
+
+### Decision
+
+Adopt the original topology for the **time-limited educational demo with synthetic data only**.
+
+- **Region and network:**
+  - us-east-1; one VPC across two Availability Zones;
+  - public subnets: ALB and the NAT gateways;
+  - private app subnets: ECS container instances and task ENIs;
+  - private data subnets: RDS, with no internet route;
+  - two NAT gateways, one per AZ, each app subnet routing through its own AZ's gateway (OD-4);
+  - an S3 gateway endpoint.
+  - Security groups chain internet (or CloudFront) → ALB `:443` → task `:3000` → RDS `:5432`. Container instances accept no inbound traffic.
+- **Edge:**
+  - An internet-facing ALB with an ACM certificate (DNS-validated at the owner's DNS provider).
+  - A TLS 1.2/1.3 policy and an HTTP→HTTPS redirect.
+  - ALB response-header attributes for HSTS, `nosniff` and Server-header removal, replacing what Caddy provided. **Caddy is removed.**
+- **CloudFront, preferred if the Learner Lab account permits it** (OD-2). It stays off until an authorized read-only check of the correct lab account succeeds, its origin-secret handling is approved (amendment R1, F4), and an apply creates it. If it is unavailable, the ALB + ACM path stands and the restriction is documented. The ALB, ECS, ASG and RDS Multi-AZ requirements never depend on it.
+  - **Origin:** the ALB over HTTPS only. The ALB accepts only CloudFront origin-facing addresses plus a secret origin-verify header.
+  - **Cached:** only content-hashed `/_next/static/*` assets, forwarding no cookies or query strings.
+  - **Not cached:** everything else, including pages, `/api/*`, sessions, verification, OTP, invitations and password reset. These use caching disabled and forward every header (including Host and Origin), cookie and query string.
+- **Compute:**
+  - An ECS cluster whose EC2 capacity provider is backed by an Auto Scaling Group, created before the capacity provider as the lab README recommends.
+  - ECS-optimized Amazon Linux 2023 on t3.small: minimum two instances, one per AZ; maximum three; ECS managed scaling.
+  - `LabInstanceProfile`; IMDSv2 with hop limit 1; IMDS blocked for awsvpc tasks; no SSH. Administration is through SSM Session Manager.
+- **Application task:**
+  - One task definition with the `web` and `api` containers, using `awsvpc` networking. The containers share one network namespace, so the API stays loopback-only exactly as in `ADR-039`.
+  - The ALB target group uses IP targets on port 3000, health-checked on `/api/health`.
+  - `LabRole` is the execution role (image pull, secrets, logs). The application task has **no task role**, so it holds no AWS credentials.
+  - Native authority, `STOCKWISE_RUNTIME_ENV=production` and the exact `https://` public origin are fixed in the task definition.
+- **Replica rule:**
+  - Exactly one application task (desired count 0 or 1).
+  - Releases stop the old task before starting the new one (minimum healthy 0%, maximum 100%), so two API processes never run at once and the process-local login limiter keeps its accepted budget. Each release therefore has a short outage.
+  - **EC2 capacity scaling is not application-replica scaling.** The Auto Scaling Group keeps two container instances in two AZs, and ECS managed scaling may add a third for placement headroom. That scales where a task can run, never how many application tasks run.
+  - The initial configuration is **not fully highly available**. The database tolerates an AZ loss through the Multi-AZ standby. The application recovers by restart:
+    - ECS reschedules a failed task onto the other AZ's instance;
+    - the ALB health check gates traffic;
+    - a deployment circuit breaker rolls back failed releases.
+
+    Until the replacement task is healthy (typically minutes), the service is down. Every release also has a short outage.
+  - Running more than one replica requires the shared-limiter remediation below, as a separate security-sensitive task with its own review.
+- **Database:**
+  - RDS PostgreSQL 16 **Multi-AZ** (one synchronous standby), db.t4g.micro, encrypted gp2 storage.
+  - Private, not publicly accessible; `rds.force_ssl=1`; clients use `verify-full` against the RDS CA.
+  - Short automated backup retention, PostgreSQL logs exported to CloudWatch, no enhanced monitoring.
+  - The migration-owner and DML-only runtime roles and grants are unchanged from `ADR-039`.
+- **Secrets:**
+  - **Secrets Manager replaces SSM Parameter Store.** Secrets are created empty by IaC. Values are generated and stored out-of-band by the operator and injected per key by ECS at task start.
+  - The RDS master password is RDS-managed in Secrets Manager. The fallback is a write-only Terraform argument.
+  - No secret value goes in Git, images, Terraform state, logs or evidence. All dedicated application keys remain distinct and freshly generated.
+  - Each one-off ops task definition receives only its own secrets. Only the bootstrap task receives master credentials.
+- **Images:**
+  - CI builds digest-addressed `web`, `api` and `ops` images.
+  - The operator copies them by digest into ECR (immutable tags, scan on push) using lab console credentials. CI cannot push to ECR because GitHub OIDC needs IAM role creation.
+  - Task definitions accept digest references only. **Amazon ECR is the registry** (OD-3, which resolves D-05 for this demo). Pulling public GHCR digests is a fallback only with separate owner approval, if the console user cannot push to ECR.
+- **Operations:**
+  - Migrations, grants, fence checks, optional seeding, `native:cutover` and exports run as one-off ECS tasks from the `ops` image.
+  - The `ADR-039` order is preserved: forward-only migrations → grants → optional seed while LEGACY → Native cutover with the service at zero tasks → service to one task → smoke check.
+  - There are no down-migrations. Rollback redeploys the previous digests only after the database is NATIVE.
+- **S3:**
+  - A private, versioned, TLS-only, KMS-encrypted exports bucket for logical `pg_dump` exports: a pre-demo baseline, before risky steps, and before teardown. These are downloaded before destruction.
+  - No ALB access-log bucket: request logging is off (amendment R1, F1).
+  - The only task with AWS credentials (`LabRole`) is the export task.
+- **Observability:**
+  - CloudWatch Logs per container with short retention, ECS Container Insights and RDS log export.
+  - Alarms to SNS: ALB 5xx, unhealthy or no healthy target, p95 latency, ECS CPU/memory, RDS CPU, storage, memory and connections.
+  - A CloudWatch dashboard for the demonstration.
+- **Budget guard and teardown:**
+  - An Auto Scaling scheduled action scales container instances to zero at `2026-10-31T16:59:00Z` (OD-5). It needs no IAM role, but the ALB, NAT gateways and RDS keep billing, so it is only a backstop. Controlled teardown must complete before the deadline.
+  - An optional AWS Budgets alert (Budgets access is unverified).
+  - A scripted pause, and a mandatory scripted teardown at the end of the window, with verification of what remains.
+- **IaC:**
+  - Terraform run locally by the operator with lab session credentials.
+  - Zero `aws_iam_*` resources; `LabRole`/`LabInstanceProfile` are referenced by ARN.
+- **Unchanged from `ADR-039`:**
+  - D-03R Native Live with no Legacy fallback;
+  - database initialization order;
+  - D5 production-only gates and D-13;
+  - `OQ-015`/`OQ-019`/`OQ-020` remain open for real production.
+
+### Accepted exception (replaces `ADR-039` D-04 controls)
+
+Least-privilege IAM remains impossible in Learner Lab. The compensating controls are:
+- the application task has no task role and no IMDS access;
+- only the export task carries `LabRole`;
+- `LabRole` as execution role is limited by its use;
+- no SSH;
+- database-level least privilege;
+- no secrets in Terraform state;
+- digest-pinned images;
+- single-operator lab access.
+
+The exception must not carry into any real-customer deployment.
+
+### Consequences
+
+- **Cost:**
+  - Estimate ≈ $0.23/h (≈ $5.5/day) with everything running, against ≈ $0.05/h for Topology A. These are us-east-1 on-demand list prices, excluding data transfer.
+  - The main items are two NAT gateways, the ALB, two t3.small instances, Multi-AZ db.t4g.micro and public IPv4.
+  - The ALB, NAT gateways and RDS bill continuously, even between lab sessions.
+  - Running until the deadline fits the remaining budget only with teardown before `2026-10-31T16:59:00Z`. Leaving the stack running to course end would overrun the budget and lose the account.
+- **Availability:**
+  - The database tolerates the loss of one AZ (Multi-AZ failover).
+  - Compute capacity exists in both AZs, but the single application task is a single point of failure until ECS replaces it. The service is down for that gap, and for a short outage per release.
+- **Session behaviour:** lab session end stops the EC2 instances. How the ASG and ECS react (replacement or restart) is unverified, so live demonstrations must run inside an active session.
+- **Platform limits:**
+  - t3.small supports two awsvpc task ENIs per instance: enough for the application task plus one ops task.
+  - Process-local limiters stay valid only under the one-replica rule. `OQ-020` (distributed, IP-aware and edge controls, WAF) remains open.
+- **Prior evidence:** the Topology A local rehearsal evidence does not carry over. The ECS design needs its own rehearsal and independent review.
+
+### Migration risks (all UNVERIFIED until the first authorized apply)
+
+Create/update rights the README lists but nothing has exercised:
+- an ECS capacity provider with managed scaling (ASG scaling policies, ECS service-linked role);
+- NAT gateway and Elastic IP;
+- Multi-AZ on a micro class;
+- the RDS-managed master secret (Secrets Manager + KMS);
+- Secrets Manager create/put;
+- ECR push by the console user;
+- ACM issuance;
+- CloudWatch alarms, SNS and dashboard;
+- ASG scheduled actions;
+- AWS Budgets;
+- CloudFront.
+
+Each failure has a defined fallback that requires owner approval:
+- Fargate instead of the EC2 capacity provider;
+- a write-only master password instead of the RDS-managed secret;
+- public GHCR instead of ECR;
+- ALB + ACM directly instead of CloudFront.
+
+Other risks:
+- ACM DNS validation blocks the HTTPS listener until the owner adds the validation records (D-06).
+- Digest preservation when copying images from GHCR to ECR must be checked by the operator.
+- The window is very short.
+
+### Amendment R1 (2026-10-28): Codex infrastructure review remediation
+
+Codex's independent review (INFRA NEEDS FIX: 2 P1, 7 P2) led to these corrections. The topology and every owner decision below are unchanged.
+
+- **F1, no ALB request logging.** ALB access logs record full request URLs. The emailed verification, password-reset and invitation links carry their single-use credentials in the query string, so access logging would store bearer credentials. ALB access and connection logging stay disabled, and the log bucket and toggle variable are removed, so no configuration value can re-enable them.
+  - Observability remains through CloudWatch metrics, alarms and container logs; the API logs request paths without query strings.
+  - The links and the token transport are not changed.
+  - A future credential-safe request-logging design needs its own review.
+- **F2, teardown fails closed.** Teardown requires all of the following before anything destructive runs:
+  - a final export task bound to a fresh export id, with exactly one matching result marker;
+  - the exact S3 object, downloaded off-account;
+  - matching size and SHA-256 (marker and object metadata);
+  - a `pg_restore --list` that names the expected database and its core tables.
+
+  Only then may RDS deletion protection be lifted or `terraform destroy` run. Real teardown still needs separate owner authorization.
+- **F3, identity on every entry point.** Every operator entry point that calls AWS, `run-ops-task.sh` included, refuses to act unless the active identity is a `voclabs`/`LabRole` session in the account recorded in Terraform state. It fails closed when that account is unknown.
+- **F4, CloudFront gated.** The CloudFront origin-verify secret would be stored in plaintext in Terraform state, which `sensitive` does not prevent. CloudFront stays optional and off by default; the default configuration holds no origin secret.
+  - Enabling it fails closed unless `cloudfront_secret_in_state_approved` records the owner's explicit approval of that limitation, or of a secret-free design (for example CloudFront VPC origins with an internal ALB), which needs its own review.
+  - The origin restriction (prefix list plus header) is never relaxed.
+- **F5, verified seeder TLS.** The optional seed path no longer uses `no-verify`. Its forwarder negotiates PostgreSQL TLS like node-postgres and verifies the RDS CA chain, validity and hostname (`servername`) before forwarding. No-verify or override settings are refused.
+- **F6–F9, operations.**
+  - Secret payloads are removed on success, failure and interruption.
+  - Variable-file paths are resolved to absolute paths before `terraform -chdir`.
+  - The outage alarm treats a missing healthy-target metric as an outage, and notifies only while the service is meant to run.
+  - The runbook creates the public DNS record (G5) before the deploy (G6). The deploy refuses to migrate or cut over until the hostname answers over valid HTTPS.
+
+### Amendment R2 (2026-10-28): second Codex review remediation
+
+Codex's second review (INFRA NEEDS FIX) reopened four findings and added one. F2, F4, F6, F7 and F9 stay closed and unchanged, and so do the topology and the owner decisions.
+
+- **R2-F1 (log boundary).** Next.js proxy failures log the full upstream URL, query string included, and ECS ships container output to CloudWatch.
+  - The `web` and `api` images now run their server under `docker/redacting-log-pipe.mjs`, an out-of-process boundary. Before any byte reaches the container's stdout/stderr, it removes:
+    - every query string (`?`, `%3F`, `%253F`, `?`), whatever the parameter name;
+    - map-style `'k' => 'v'` entries and `&`-joined pairs;
+    - credential-shaped names and Bearer/Basic values.
+  - It works line by line across arbitrary chunking, and caps over-long lines, discarding their tail.
+  - Signals and the exit status pass through. Diagnostics such as path, error code and syscall remain.
+  - No `apps/` source, proxy behaviour, request parameter or authentication contract changes.
+- **R2-F3 (identity everywhere).** `budget-check.sh` and `verify-export.sh` now verify the identity themselves. The shared check also requires the active region to equal the Terraform-state region (us-east-1 or us-west-2). All nine AWS-calling entry points fail closed, before any service call, on:
+  - a wrong account, role or region;
+  - an IAM user, a malformed or missing identity;
+  - an unknown account binding.
+- **R2-F5 (bounded forwarder).** SSL negotiation settles exactly once, within its absolute deadline: on success, error, early EOF or close (before or during TLS), extra or malformed reply bytes, or timeout. Listeners are detached and both sockets destroyed. Certificate-chain, hostname, expiry and TLS 1.2+ verification are unchanged.
+- **R2-F8 (alarm across pause and resume).** The outage alarm evaluates `IF(FILL(desired,1) >= 1, FILL(healthy,0), 1)`, using the ECS service's `DesiredTaskCount` from Container Insights rather than EC2 capacity. A pause (desired 0) therefore evaluates as healthy, and an unknown desired count errs toward alerting.
+  - Because CloudWatch notifies only on a transition, `capacity.sh resume`, `deploy.sh` and `rollback.sh` reconcile after scaling to one task: an ALARM found then is set to INSUFFICIENT_DATA, which has no action. A continuing outage then makes a fresh, notifying transition to ALARM.
+  - Repeated resumes cannot duplicate notifications. An unreadable alarm state fails closed.
+  - Real CloudWatch evaluation of this expression, and the `cloudwatch:SetAlarmState` permission, remain AWS validation items.
+- **R2-NEW-F1 (secrets readiness).** `put-secrets.sh` checks every AWS exit status and response shape. AccessDenied, throttling, timeouts, and empty or non-numeric answers never count as "already set". It reads each required secret back and validates every key's format before printing `STOCKWISE_SECRETS:READY`, without exposing any value.
+
+### Amendment R3 (2026-10-28): bounded log and strict secret-readiness fixes
+
+The owner's `STOCKWISE-P8-ADR040-INFRA-REMEDIATION-R3` authorization moves Codex from reviewer to temporary implementer for the two remaining P2 findings only. These changes require a separate independent review; this amendment records their implementation contract, not acceptance or deployment authority. The AWS topology, application/authentication behavior and all earlier closed controls remain unchanged.
+
+- **R3-F1:** query redaction consumes punctuation-bearing values instead of treating parentheses, quotes or brackets as query terminators. Supported percent and Unicode/hex-escaped query delimiters are removed; Bearer/Basic matching is case-insensitive. CR and explicit backslash-newline continuations are joined before filtering; oversized records remain bounded and discard continued tails. Both server streams still pass through the same infrastructure wrapper. Unlabelled plaintext without URL or credential context is outside this contextual filter's guarantees.
+- **R3-F2:** `put-secrets.sh` uses the existing Node.js 24 platform to parse each entire secret JSON response. A separate whole-string-token scan rejects duplicate decoded names, including escaped spellings that `JSON.parse` alone would collapse. The exact expected flat fields and string formats are required; malformed syntax, ambiguous duplicates, null/nested/wrong-type values and missing/extra fields fail closed. Harmless JSON whitespace is accepted. Secret values use stdin only, parser exceptions never expose input, and the existing payload cleanup remains in force.
+
+### Owner decisions (2026-10-28)
+
+- **OD-1:** exactly one application task initially. The limiter is not weakened, and replicas are not enabled silently. The shared limiter is a separate task (below).
+- **OD-2:** CloudFront is preferred if the account permits it, after a read-only check of the correct lab account. Otherwise the ALB is used directly and the restriction is documented.
+- **OD-3:** the image registry is Amazon ECR.
+- **OD-4:** two NAT gateways, one per AZ.
+- **OD-5:** the demonstration ends 2026-10-31 23:59 Asia/Bangkok, so the planning deadline is `2026-10-31T16:59:00Z`. Teardown and budget monitoring are prepared but not executed by the implementation task.
+
+### Required remediation before more than one application replica (separate security-sensitive task)
+
+The Native runtime's login and password-proof limiter is process-local: `createLoginLimiter()`, wired in `better-auth-application-runtime.ts`. It allows five credential failures per canonical email per fixed 15-minute window, and serializes attempts per email inside one process.
+
+With N replicas behind the ALB:
+- the effective budget becomes up to 5×N failures per window;
+- concurrent attempts on different replicas are not serialized;
+- ALB stickiness does not help, because a client can drop the cookie.
+
+Pending-registration quotas, Native password-reset quotas and OTP failure counts are already PostgreSQL-backed.
+
+The remediation is a PostgreSQL-backed limiter keyed by the existing hashed canonical-email key, with identical window, threshold and success-does-not-reset semantics. The check and the failure record happen in one transaction under a per-key lock (`pg_advisory_xact_lock` or a row `FOR UPDATE`). It requires:
+- a reviewed forward migration with `stockwise_app` DML grants;
+- multi-process concurrency integration tests;
+- unchanged fixed-dummy verification;
+- security review under the Security and Auth adapter, and its own ADR.
+
+Until it is accepted, `app_desired_count` is limited to 0 or 1 in Terraform.
+
+### Still pending
+
+- D-06 (hostname/DNS record and ACM validation), D-08 (seeding), D-09 (Resend domain, key and recipients), D-11 (operating pattern) and D-13 (Native production-gate disposition).
+- The execution gates: Git publication, image publication to GHCR/ECR, chargeable provisioning, DNS, public deploy and Native cutover, and real email.
 
 ## 2. Explicitly superseded planning directions
 

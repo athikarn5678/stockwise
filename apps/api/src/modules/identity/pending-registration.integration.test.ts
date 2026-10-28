@@ -4,10 +4,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { loadTestDatabaseEnvironment } from "../../test/database-environment.ts";
 import { PrismaClient } from "../../generated/prisma/client.ts";
-import {
-  createBetterAuthNative,
-  BETTER_AUTH_NATIVE_ENABLED,
-} from "./better-auth-native.ts";
+import { createBetterAuthNative } from "./better-auth-native.ts";
+import { defaultAuthenticationAuthority } from "../../environment.ts";
 import { hashPassword, verifyPassword } from "./password-hasher.ts";
 import { createPendingRegistrationRepository } from "./pending-registration-repository.ts";
 import { createPendingRegistrationService } from "./pending-registration-service.ts";
@@ -146,7 +144,7 @@ describe("isolated D3 PostgreSQL pending registration", () => {
         password: "different password",
       }),
     ).toBe(false);
-    expect(BETTER_AUTH_NATIVE_ENABLED).toBe(false);
+    expect(defaultAuthenticationAuthority("test")).toBe("legacy");
   });
   it("requires exact initiating proof; mailbox-only and another attempt cannot activate the password", async () => {
     const row = await stage();

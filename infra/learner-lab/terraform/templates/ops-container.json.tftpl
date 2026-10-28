@@ -1,0 +1,38 @@
+[
+  {
+    "name": "ops",
+    "image": "${ops_image}",
+    "essential": true,
+    "readonlyRootFilesystem": true,
+    "linuxParameters": {
+      "initProcessEnabled": true,
+      "capabilities": { "drop": ["ALL"] },
+      "tmpfs": [{ "containerPath": "/tmp", "size": 512 }]
+    },
+    "memoryReservation": 512,
+    "memory": 1536,
+    "environment": [
+      { "name": "STOCKWISE_OPS_ROLE", "value": "${ops_role}" },
+      { "name": "STOCKWISE_DB_HOST", "value": "${db_host}" },
+      { "name": "STOCKWISE_DB_PORT", "value": "${db_port}" },
+      { "name": "STOCKWISE_DB_NAME", "value": "${db_name}" },
+      { "name": "STOCKWISE_EXPORT_BUCKET", "value": "${export_bucket}" },
+      { "name": "AWS_DEFAULT_REGION", "value": "${region}" },
+      { "name": "NODE_EXTRA_CA_CERTS", "value": "/etc/stockwise/rds-global-bundle.pem" },
+      { "name": "CHECKPOINT_DISABLE", "value": "1" },
+      { "name": "PRISMA_HIDE_UPDATE_MESSAGE", "value": "1" },
+      { "name": "XDG_CACHE_HOME", "value": "/tmp" },
+      { "name": "HOME", "value": "/tmp" }
+    ],
+    "secrets": ${secrets},
+    "stopTimeout": 30,
+    "logConfiguration": {
+      "logDriver": "awslogs",
+      "options": {
+        "awslogs-group": "${ops_log_group}",
+        "awslogs-region": "${region}",
+        "awslogs-stream-prefix": "ops"
+      }
+    }
+  }
+]

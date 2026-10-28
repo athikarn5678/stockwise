@@ -4,6 +4,12 @@ import { readdirSync } from "node:fs";
 import { Prisma, type PrismaClient } from "../generated/prisma/client.ts";
 import { verifyPassword } from "../modules/identity/password-hasher.ts";
 import { buildDemoFixture } from "./demo-fixture.ts";
+import {
+  DEMO_COUNTED_TABLES,
+  DEMO_TRANSITION_TABLE,
+  DEMO_USER_NATIVE_DEFAULTS,
+  assertDemoSchema,
+} from "./demo-schema.ts";
 
 type Transaction = Prisma.TransactionClient;
 type Fixture = Awaited<ReturnType<typeof buildDemoFixture>>;
@@ -46,41 +52,7 @@ function demoLogicalFingerprint(fixture: Fixture): string {
     .digest("hex");
 }
 
-const tables = [
-  "users",
-  "organizations",
-  "suppliers",
-  "categories",
-  "products",
-  "purchase_orders",
-  "purchase_order_items",
-  "purchase_receipts",
-  "purchase_receipt_items",
-  "sales",
-  "sale_items",
-  "payments",
-  "sale_refunds",
-  "sale_refund_items",
-  "refund_payments",
-  "organization_memberships",
-  "branches",
-  "branch_status_events",
-  "analytics_snapshots",
-  "ai_insight_reports",
-  "ai_insight_attempts",
-  "inventory_balances",
-  "inventory_cost_states",
-  "inventory_transactions",
-  "first_organization_onboardings",
-  "branch_assignments",
-  "sessions",
-  "email_verification_challenges",
-  "password_reset_tokens",
-  "invitations",
-  "invitation_branch_scopes",
-  "membership_access_events",
-  "membership_access_event_branch_scopes",
-] as const;
+const tables = DEMO_COUNTED_TABLES;
 
 function canonical(value: unknown): unknown {
   if (value instanceof Date) return value.toISOString();
@@ -116,16 +88,13 @@ function equalRows(
   }
 }
 
-async function schemaReady(tx: Transaction): Promise<void> {
-  const actual = await tx.$queryRaw<Array<{ tablename: string }>>(Prisma.sql`
+/** Refuses any target that is not exactly the committed, LEGACY-fenced schema. */
+export async function assertDemoTargetSchema(tx: Transaction): Promise<void> {
+  const publicTables = await tx.$queryRaw<
+    Array<{ tablename: string }>
+  >(Prisma.sql`
     SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
   `);
-  const expected = [...tables, "_prisma_migrations"].sort();
-  equalRows(
-    "Database schema",
-    expected,
-    actual.map((row) => row.tablename),
-  );
   const migrations = await tx.$queryRaw<
     Array<{
       migration_name: string;
@@ -135,25 +104,29 @@ async function schemaReady(tx: Transaction): Promise<void> {
   >(Prisma.sql`
     SELECT migration_name, finished_at, rolled_back_at FROM _prisma_migrations
   `);
-  const local = readdirSync(
+  const localMigrations = readdirSync(
     new URL("../../prisma/migrations/", import.meta.url),
     { withFileTypes: true },
   )
     .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort();
-  if (
-    migrations.some(
-      (row) => row.finished_at === null || row.rolled_back_at !== null,
-    )
-  ) {
-    throw new Error("Demo target has incomplete or rolled-back migrations.");
-  }
-  equalRows(
-    "Migration state",
-    local,
-    migrations.map((row) => row.migration_name),
-  );
+    .map((entry) => entry.name);
+  const tableNames = publicTables.map((row) => row.tablename);
+  // The fence row is read only when its table is part of the exact manifest.
+  const transition = tableNames.includes(DEMO_TRANSITION_TABLE)
+    ? await tx.$queryRaw<Array<{ state: string }>>(Prisma.sql`
+        SELECT state FROM native_auth_transition
+      `)
+    : [];
+  assertDemoSchema({
+    tables: tableNames,
+    migrations: migrations.map((row) => ({
+      name: row.migration_name,
+      finished: row.finished_at !== null,
+      rolledBack: row.rolled_back_at !== null,
+    })),
+    localMigrations,
+    transitionStates: transition.map((row) => row.state),
+  });
 }
 
 async function tableCounts(tx: Transaction): Promise<Map<string, number>> {
@@ -229,13 +202,31 @@ async function verifyManifest(
   equalRows(
     "users",
     fixture.userRows,
-    userRows.map(({ credentialVersion, ...user }) => {
-      if (credentialVersion !== 1n)
-        throw new Error(
-          "A demo user credential version differs from the initial generation.",
-        );
-      return user;
-    }),
+    userRows.map(
+      ({
+        credentialVersion,
+        emailVerified,
+        image,
+        nativeRegistrationCompletedAt,
+        ...user
+      }) => {
+        if (credentialVersion !== 1n)
+          throw new Error(
+            "A demo user credential version differs from the initial generation.",
+          );
+        // Native columns stay at their pre-cutover values until native:cutover.
+        if (
+          emailVerified !== DEMO_USER_NATIVE_DEFAULTS.emailVerified ||
+          image !== DEMO_USER_NATIVE_DEFAULTS.image ||
+          nativeRegistrationCompletedAt !==
+            DEMO_USER_NATIVE_DEFAULTS.nativeRegistrationCompletedAt
+        )
+          throw new Error(
+            "A demo user Native authentication field differs from its pre-cutover value.",
+          );
+        return user;
+      },
+    ),
   );
   for (const user of userRows) {
     if (
@@ -360,7 +351,7 @@ export async function runDemoFixture(
       await tx.$queryRaw(Prisma.sql`
       SELECT 1::integer FROM (SELECT pg_advisory_xact_lock(76437281065431::bigint)) AS demo_lock
     `);
-      await schemaReady(tx);
+      await assertDemoTargetSchema(tx);
       const counts = await tableCounts(tx);
       if ([...counts.values()].every((count) => count === 0)) {
         await insert(tx, fixture);

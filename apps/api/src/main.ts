@@ -3,8 +3,10 @@ import { Router } from "express";
 import { createAuthenticationRuntime } from "./modules/identity/authentication-runtime.ts";
 import { selectAuthenticationAuthority } from "./modules/identity/authentication-authority-selection.ts";
 import { createBetterAuthApplicationRuntime } from "./modules/identity/better-auth-application-runtime.ts";
-import { BETTER_AUTH_NATIVE_ENABLED } from "./modules/identity/better-auth-native.ts";
-import { assertNativeCutoverReady } from "./modules/identity/better-auth-cutover-preflight.ts";
+import {
+  assertLegacyAuthorityAllowed,
+  assertNativeCutoverReady,
+} from "./modules/identity/better-auth-cutover-preflight.ts";
 import { createApp } from "./app.ts";
 import { loadApiEnvironment } from "./environment.ts";
 import { createPrismaAnalyticsBranchRepository } from "./modules/analytics/analytics-branch-repository.ts";
@@ -88,13 +90,18 @@ async function main(): Promise<void> {
       "identity email delivery failed",
     );
   };
-  // Only one auth authority may be constructed per process. Live Native stays
-  // compile-time disabled until route parity and cutover review are accepted.
-  if (BETTER_AUTH_NATIVE_ENABLED) {
+  // Only one auth authority may be constructed per process, chosen before any
+  // listener opens. Native requires a sealed NATIVE database; Legacy requires
+  // an untouched LEGACY fence. Neither ever falls back to the other.
+  const nativeEnabled =
+    environment.STOCKWISE_AUTHENTICATION_AUTHORITY === "native";
+  if (nativeEnabled) {
     await assertNativeCutoverReady(prisma);
+  } else {
+    await assertLegacyAuthorityAllowed(prisma);
   }
   const authentication = selectAuthenticationAuthority({
-    nativeEnabled: BETTER_AUTH_NATIVE_ENABLED,
+    nativeEnabled,
     legacy: () =>
       createAuthenticationRuntime({
         environment,

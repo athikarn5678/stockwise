@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Architecture Freeze v1; application functionality implemented through Phase 7; final acceptance with explicit MT-L04 verification limitation; PRE-CLOUD READY YES; Phase 8 NOT STARTED |
+| Status | Architecture Freeze v1; application functionality implemented through Phase 7; final acceptance with explicit MT-L04 verification limitation; PRE-CLOUD READY YES; Phase 8 STARTED for the Learner Lab demo only (`ADR-040`, superseding `ADR-039`; infrastructure source implemented and verified locally, nothing provisioned) |
 | Baseline | Architecture Freeze v1 |
 | Last updated | 2026-10-08 |
 
@@ -10,7 +10,7 @@
 
 This document is the Source of Truth for system boundaries, component responsibilities, data flows, module dependency rules, tenancy, and conceptual deployment. Product requirements are owned by `BUILD_SPEC.md`; physical tables by `docs/architecture/DATABASE.md`; formulas by `docs/contracts/ANALYTICS.md`; and HTTP contracts by `docs/contracts/API.md`.
 
-The repository layout is accepted by `ADR-011`. The exact production hosting topology (`OQ-015`) remains unresolved. Diagrams below are logical, not a claim that infrastructure exists.
+The repository layout is accepted by `ADR-011`. The exact production hosting topology (`OQ-015`) remains unresolved; `ADR-040` (superseding `ADR-039`) accepts a demo-only AWS Academy Learner Lab topology and does not resolve production `OQ-015`. Diagrams below are logical, not a claim that infrastructure exists.
 
 ## 2. Architecture summary
 
@@ -58,7 +58,7 @@ flowchart TD
 
 The Next.js/Express applications, operational probes, local PostgreSQL/Prisma foundation, identity/access lifecycle, Catalog and Supplier persistence/API/UI, branch inventory balance/history/manual adjustment, Purchase Orders and Receiving, POS/checkout, Sales History/detail/browser receipt, and linked refunds with optional same-branch restock are implemented. Phase 6 includes deterministic Sales/Category/Branch/Inventory Analytics, Forecasting and Reorder API/UI, and the synthetic demo dataset. Phase 7 includes immutable aggregate snapshots, the OpenRouter provider and minimized prompt layer, idempotent insight generation/persistence, callable cadence orchestration, and persisted insight API/dashboard delivery.
 
-Phase 7 is COMPLETE and PRE-CLOUD READY YES under final acceptance with the explicit MT-L04 verification limitation. Historical MT-L04 remains BLOCKED; native layout/clipping/scaling/pagination/blank-page behavior remains unverified. Post-Phase-7 maintenance/UI tasks do not reopen Phase 7. Phase 8 is NOT STARTED: the runtime timer, AWS resources, cloud scheduling, and production deployment remain unimplemented.
+Phase 7 is COMPLETE and PRE-CLOUD READY YES under final acceptance with the explicit MT-L04 verification limitation. Historical MT-L04 remains BLOCKED; native layout/clipping/scaling/pagination/blank-page behavior remains unverified. Post-Phase-7 maintenance/UI tasks do not reopen Phase 7. Phase 8 is started only for the time-limited Learner Lab demo under `ADR-040`; its infrastructure source exists but no AWS resource is provisioned. The runtime timer, cloud scheduling and production deployment remain unimplemented.
 
 ### Public and application navigation
 
@@ -477,13 +477,20 @@ The browser never receives a JWT or refresh token and never stores an auth token
 #### Better Auth pre-cutover transition boundary
 
 ADR-035/036 and owner-approved D5-P3 DEC-01/02/03 retain StockWise User UUIDs,
-tenant/branch relationships and RBAC. The unmounted disposable-only transition
-tool transfers only validated eligible Legacy PHCs into missing canonical Native
-accounts. A durable PostgreSQL singleton fences Legacy authentication/writers
-with one-way LEGACY/QUIESCED/NATIVE state; append-only generation-bound enrollment
-provenance makes exact retry a no-op and changed-state retry a conflict.
-No runtime startup or HTTP route invokes the writer. The normal runtime remains
-Legacy with `BETTER_AUTH_NATIVE_ENABLED=false`.
+tenant/branch relationships and RBAC. The accepted transition writer
+(`native-auth-transition.ts`) transfers only validated eligible Legacy PHCs into
+missing canonical Native accounts. A durable PostgreSQL singleton fences Legacy
+authentication/writers with one-way LEGACY/QUIESCED/NATIVE state; append-only
+generation-bound enrollment provenance makes exact retry a no-op and changed-state
+retry a conflict. No runtime startup or HTTP route invokes the writer; only the
+receipt-bound disposable rehearsal tool and the explicitly confirmed operator
+command (`native:cutover`) construct it.
+
+D5-P5 (in progress; Codex acceptance pending) selects the authority at runtime
+with `STOCKWISE_AUTHENTICATION_AUTHORITY`: production is Native-only (`ADR-039`
+D-03R), and local development/test default to Legacy. Native requires the D5-P4
+sealed-NATIVE preflight; Legacy refuses any database whose fence has left LEGACY.
+Each process constructs exactly one authority and never falls back.
 The D5-P4 source startup gate reads shipped migration checksums and one consistent
 read-only database snapshot before a future Native listener can open. It requires
 sealed authority, enabled fence triggers and reconciled credential generations;
@@ -930,7 +937,32 @@ flowchart TD
     JOB -. telemetry .-> CW
 ```
 
-The final design must decide public/private subnets, ingress, Next.js hosting mode, Docker compute, TLS, DNS, secrets, IAM, security groups, backups, multi-AZ, infrastructure as code, region, deployment strategy, recovery, and cost through `OQ-015` and `OQ-020`.
+The final design must decide public/private subnets, ingress, Next.js hosting mode, Docker compute, TLS, DNS, secrets, IAM, security groups, backups, multi-AZ, infrastructure as code, region, deployment strategy, recovery, and cost through `OQ-015` and `OQ-020`. The Learner Lab demo answers these for its scope only in `ADR-040`, which supersedes the `ADR-039` topology.
+
+### Learner Lab demo topology (`ADR-040`)
+
+The source lives in `infra/learner-lab`. Its diagram and service-by-service explanation are in `infra/learner-lab/ARCHITECTURE.md`. It is not provisioned.
+
+```mermaid
+flowchart LR
+    B[Browser] -->|HTTPS| CF["CloudFront (optional)"] --> ALB
+    B -->|HTTPS| ALB["ALB + ACM (public subnets)"]
+    ALB -->|":3000, IP target"| T
+    subgraph T["ECS task on the EC2 ASG (private app subnets, 2 AZs) — one task"]
+        W["web: Next.js"] -->|"loopback 127.0.0.1:3001"| A["api: Express, Better Auth Native"]
+    end
+    A -->|"TLS verify-full, stockwise_app"| R[("RDS PostgreSQL Multi-AZ<br/>private data subnets")]
+    A -->|"HTTPS via per-AZ NAT"| E[Resend]
+    SM[Secrets Manager] -.-> T
+    ECR[ECR] -.-> T
+    T -.-> CW[CloudWatch]
+    O["one-off ops tasks"] --> R
+    O -->|pg_dump| S3[(S3 exports)]
+```
+
+- **Same trust boundaries as the local design.** The web container is the only target, the API stays loopback-only inside the task's network namespace, and the database is reachable only from task security groups.
+- **Exactly one application task.** The login/password-proof limiter is process-local. The Auto Scaling Group scales EC2 capacity, not application replicas, so the demo is not fully highly available.
+- **Database operations run as one-off ECS tasks** from the `ops` image, in the ADR-040 order: migrate → grants → optional seed while LEGACY → Native cutover → application.
 
 ## 12. Security architecture
 

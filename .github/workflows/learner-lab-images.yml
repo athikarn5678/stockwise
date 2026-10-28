@@ -1,0 +1,76 @@
+name: Learner Lab images
+
+# Builds the three digest-addressed demo images (ADR-040) for one commit and
+# pushes them to GHCR. Manual only; publication itself is an owner gate (G3).
+# No AWS credentials exist in GitHub (Learner Lab cannot create an OIDC role):
+# the operator copies these digests into ECR with
+# infra/learner-lab/operator/mirror-images.sh and deploys by ECR digest.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: learner-lab-images-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  images:
+    # Mirrored course repositories receive this file but must never publish.
+    if: github.repository == 'athikarn5678/stockwise'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      checks: read
+      packages: write
+    steps:
+      - name: Check out the selected commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Require passing CI quality gates for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          conclusion="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs" \
+            --jq '[.check_runs[] | select(.name == "Quality gates")][0].conclusion // "missing"')"
+          echo "Quality gates: ${conclusion}"
+          [[ "$conclusion" == "success" ]]
+
+      - name: Log in to GHCR with the workflow token
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
+
+      - name: Build and push web, api and ops
+        run: |
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          {
+            echo "## Learner Lab images for \`${GITHUB_SHA}\`"
+            echo
+            echo "Copy into ECR with: \`infra/learner-lab/operator/mirror-images.sh --web <web> --api <api> --ops <ops> --revision ${GITHUB_SHA}\`"
+            echo
+          } >>"$GITHUB_STEP_SUMMARY"
+          for target in web api ops; do
+            image="ghcr.io/${owner}/stockwise-${target}"
+            docker buildx build \
+              --file infra/learner-lab/docker/Dockerfile \
+              --target "$target" \
+              --platform linux/amd64 \
+              --provenance=mode=min \
+              --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+              --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+              --tag "${image}:sha-${GITHUB_SHA}" \
+              --metadata-file "metadata-${target}.json" \
+              --push .
+            digest="$(jq -r '."containerimage.digest"' "metadata-${target}.json")"
+            echo "- ${target}: \`${image}@${digest}\`" >>"$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Log out
+        if: always()
+        run: docker logout ghcr.io

@@ -249,15 +249,18 @@ function InventoryContent({
         >
           {t("backToWorkspace")}
         </Link>
-        <h1 className="text-2xl font-semibold">Inventory</h1>
+        <h1 className="text-2xl font-semibold">{t("inventoryTitle")}</h1>
         <p className="text-muted-foreground">
-          Current branch stock for {branch.code} — {branch.name}.
+          {t("inventorySubtitle").replace(
+            "{branch}",
+            `${branch.code} — ${branch.name}`,
+          )}
         </p>
       </header>
 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <Label className="form-field">
-          Product status
+          {t("inventoryProductStatus")}
           <NativeSelect
             className="w-full "
             onChange={(event) =>
@@ -266,12 +269,14 @@ function InventoryContent({
             value={status}
           >
             <NativeSelectOption value="ACTIVE">
-              Active products
+              {t("inventoryActiveProducts")}
             </NativeSelectOption>
             <NativeSelectOption value="INACTIVE">
-              Inactive products
+              {t("inventoryInactiveProducts")}
             </NativeSelectOption>
-            <NativeSelectOption value="ALL">All products</NativeSelectOption>
+            <NativeSelectOption value="ALL">
+              {t("inventoryAllProducts")}
+            </NativeSelectOption>
           </NativeSelect>
         </Label>
         <Button
@@ -279,7 +284,7 @@ function InventoryContent({
           onClick={() => void balancesQuery.refetch()}
           type="button"
         >
-          Refresh inventory
+          {t("inventoryRefresh")}
         </Button>
       </div>
 
@@ -325,7 +330,9 @@ function BalanceList({
   onSelect: (productId: string) => void;
   selectedProductId: string | null;
 }) {
-  if (isLoading) return <p aria-live="polite">Loading inventory balances…</p>;
+  const { t } = useLanguage();
+  if (isLoading)
+    return <p aria-live="polite">{t("inventoryLoadingBalances")}</p>;
   if (error !== null)
     return (
       <p className="form-message" role="alert">
@@ -346,7 +353,7 @@ function BalanceList({
           <Button
             variant="outline"
             aria-pressed={selectedProductId === item.product.id}
-            className="bg-card p-4 text-left transition-colors"
+            className="block h-auto w-full min-w-0 whitespace-normal bg-card p-4 text-left transition-colors"
             key={item.product.id}
             onClick={() => onSelect(item.product.id)}
             type="button"
@@ -359,7 +366,9 @@ function BalanceList({
                 </p>
               </div>
               <span className="rounded-full border px-2 py-1 text-xs">
-                {item.product.status === "ACTIVE" ? "Active" : "Inactive"}
+                {item.product.status === "ACTIVE"
+                  ? t("inventoryActive")
+                  : t("inventoryInactive")}
               </span>
             </div>
             <p className="mt-5 text-2xl font-semibold">
@@ -367,11 +376,11 @@ function BalanceList({
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
               {item.balance.exists
-                ? "Persisted balance"
-                : "No persisted balance (zero)"}
+                ? t("inventoryPersisted")
+                : t("inventoryNoBalance")}
             </p>
             <span className="mt-4 inline-block text-sm underline">
-              View history
+              {t("inventoryViewHistory")}
             </span>
           </Button>
         ))}
@@ -383,7 +392,7 @@ function BalanceList({
           onClick={onLoadMore}
           type="button"
         >
-          {isLoadingNext ? "Loading more…" : "Load more products"}
+          {isLoadingNext ? t("inventoryLoadingMore") : t("inventoryLoadMore")}
         </Button>
       ) : null}
     </section>

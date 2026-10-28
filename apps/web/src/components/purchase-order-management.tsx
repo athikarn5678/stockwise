@@ -6,6 +6,7 @@ import {
   NativeSelectOption,
 } from "@/components/ui/native-select";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -458,19 +459,17 @@ function PurchaseOrderContent({
         </Label>
         <Label className="form-field">
           Order date from
-          <Input
+          <DateInput
             className="form-control--date"
             onChange={(event) => setOrderDateFrom(event.target.value)}
-            type="date"
             value={orderDateFrom}
           />
         </Label>
         <Label className="form-field">
           Order date to
-          <Input
+          <DateInput
             className="form-control--date"
             onChange={(event) => setOrderDateTo(event.target.value)}
-            type="date"
             value={orderDateTo}
           />
         </Label>
@@ -702,7 +701,7 @@ function PurchaseOrderForm({
         </Label>
         <Label className="form-field" htmlFor={orderDateId}>
           Order date
-          <Input
+          <DateInput
             aria-describedby={describedBy}
             aria-invalid={validation !== null}
             className="form-control--date"
@@ -713,13 +712,12 @@ function PurchaseOrderForm({
                 orderDate: event.target.value,
               }))
             }
-            type="date"
             value={input.orderDate}
           />
         </Label>
         <Label className="form-field" htmlFor={expectedDateId}>
           Expected date (optional)
-          <Input
+          <DateInput
             aria-describedby={describedBy}
             aria-invalid={validation !== null}
             className="form-control--date"
@@ -730,7 +728,6 @@ function PurchaseOrderForm({
                 expectedDate: event.target.value || null,
               }))
             }
-            type="date"
             value={input.expectedDate ?? ""}
           />
         </Label>
@@ -1226,12 +1223,11 @@ function ReceivingPanel({
         </Label>
         <Label className="form-field">
           Supplier tax document date
-          <Input
+          <DateInput
             aria-describedby={
               validationMessage === null ? undefined : validationId
             }
             aria-invalid={!vatValid}
-            type="date"
             className="form-control--date"
             value={vat.supplierTaxDocumentDate}
             onChange={(e) => {

@@ -674,6 +674,7 @@ function ProductResults({
   onLoadMore: () => void;
   products: PosProduct[];
 }) {
+  const { t } = useLanguage();
   if (isLoading) return <p aria-live="polite">Loading sellable products…</p>;
   if (error)
     return (
@@ -700,11 +701,11 @@ function ProductResults({
                 </p>
               </div>
               <span className="rounded-full border px-2 py-1 text-xs">
-                {product.available ? "Available" : "Unavailable"}
+                {product.available ? t("posAvailable") : t("posUnavailable")}
               </span>
             </div>
             <p className="mt-3 text-sm text-muted-foreground">
-              In stock at this branch:{" "}
+              {t("posInStock")}{" "}
               <span className="font-medium text-foreground">
                 {trimQuantity(product.availableQuantity)} {product.unit}
               </span>
@@ -716,7 +717,7 @@ function ProductResults({
               onClick={() => onAdd(product)}
               type="button"
             >
-              {product.available ? `Add ${product.name}` : "Unavailable"}
+              {product.available ? `Add ${product.name}` : t("posUnavailable")}
             </Button>
           </article>
         ))}

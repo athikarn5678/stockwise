@@ -8,7 +8,7 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import {
   NativeSelect,
   NativeSelectOption,
@@ -603,9 +603,8 @@ function AnalyticsContent({
         <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-[12rem_12rem_10rem_minmax(0,1fr)]">
           <Label className="form-field">
             From (inclusive)
-            <Input
+            <DateInput
               required
-              type="date"
               value={draftPeriod.from}
               onChange={(event) =>
                 setDraftPeriod({ ...draftPeriod, from: event.target.value })
@@ -615,9 +614,8 @@ function AnalyticsContent({
           </Label>
           <Label className="form-field">
             To (exclusive)
-            <Input
+            <DateInput
               required
-              type="date"
               value={draftPeriod.to}
               onChange={(event) =>
                 setDraftPeriod({ ...draftPeriod, to: event.target.value })

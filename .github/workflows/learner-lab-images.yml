@@ -45,6 +45,10 @@ jobs:
           GHCR_TOKEN: ${{ github.token }}
         run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
 
+      # The default docker driver cannot write provenance attestations.
+      - name: Create a container-driver buildx builder
+        run: docker buildx create --name learner-lab --driver docker-container --use
+
       - name: Build and push web, api and ops
         run: |
           set -euo pipefail

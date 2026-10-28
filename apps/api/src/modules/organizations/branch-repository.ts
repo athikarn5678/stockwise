@@ -145,6 +145,22 @@ function hasDriverBranchCodeConstraint(meta: unknown): boolean {
   );
 }
 
+async function nextGeneratedBranchCode(
+  transaction: Prisma.TransactionClient,
+  organizationId: string,
+): Promise<string> {
+  const rows = await transaction.branch.findMany({
+    select: { code: true },
+    where: { code: { startsWith: "BR-" }, organizationId },
+  });
+  let highest = 0;
+  for (const { code } of rows) {
+    const match = /^BR-([0-9]{1,12})$/.exec(code);
+    if (match?.[1] !== undefined) highest = Math.max(highest, Number(match[1]));
+  }
+  return `BR-${String(highest + 1).padStart(3, "0")}`;
+}
+
 export function isBranchCodeConflict(error: unknown): boolean {
   return (
     error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -233,6 +249,51 @@ export function createPrismaBranchRepository(
   prisma: BranchPrismaClient,
   now: () => Date = () => new Date(),
 ): BranchRepository {
+  async function createOnce(
+    actorUserId: string,
+    organizationId: string,
+    input: BranchCreateInput,
+  ): Promise<BranchMutationOutcome> {
+    try {
+      return await prisma.$transaction(async (transaction) => {
+        if (!(await lockOrganization(transaction, organizationId))) {
+          return { kind: "forbidden" } as const;
+        }
+
+        const context = await authorizationContext(
+          transaction,
+          actorUserId,
+          organizationId,
+        );
+        if (!canManage(context, organizationId)) {
+          return { kind: "forbidden" } as const;
+        }
+
+        // The organization-row lock above serializes generation, so two
+        // concurrent requests cannot read the same maximum.
+        const code =
+          input.code ??
+          (await nextGeneratedBranchCode(transaction, organizationId));
+        const branch = await transaction.branch.create({
+          data: {
+            address: input.address,
+            code,
+            name: input.name,
+            organizationId,
+            phone: input.phone,
+          },
+          select: branchSelection,
+        });
+        return { kind: "success", branch: safeBranch(branch) } as const;
+      });
+    } catch (error: unknown) {
+      if (isBranchCodeConflict(error)) {
+        return { kind: "code_conflict" };
+      }
+      throw error;
+    }
+  }
+
   return {
     async accessContext(actorUserId) {
       const user = await prisma.user.findUnique({
@@ -360,38 +421,15 @@ export function createPrismaBranchRepository(
     },
 
     async create(actorUserId, organizationId, input) {
-      try {
-        return await prisma.$transaction(async (transaction) => {
-          if (!(await lockOrganization(transaction, organizationId))) {
-            return { kind: "forbidden" } as const;
-          }
-
-          const context = await authorizationContext(
-            transaction,
-            actorUserId,
-            organizationId,
-          );
-          if (!canManage(context, organizationId)) {
-            return { kind: "forbidden" } as const;
-          }
-
-          const branch = await transaction.branch.create({
-            data: {
-              address: input.address,
-              code: input.code,
-              name: input.name,
-              organizationId,
-              phone: input.phone,
-            },
-            select: branchSelection,
-          });
-          return { kind: "success", branch: safeBranch(branch) } as const;
-        });
-      } catch (error: unknown) {
-        if (isBranchCodeConflict(error)) {
-          return { kind: "code_conflict" };
+      // A generated code can lose a race: the snapshot that computed the next
+      // number may predate a concurrent commit. The unique constraint stays
+      // authoritative, so a generated code simply retries on conflict.
+      const attempts = input.code === undefined ? 25 : 1;
+      for (let attempt = 1; ; attempt += 1) {
+        const outcome = await createOnce(actorUserId, organizationId, input);
+        if (outcome.kind !== "code_conflict" || attempt >= attempts) {
+          return outcome;
         }
-        throw error;
       }
     },
 

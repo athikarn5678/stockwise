@@ -75,6 +75,8 @@ export type MembershipApiErrorKind =
   | "invitation_scope_invalid"
   | "last_active_owner"
   | "membership_exists"
+  | "membership_inactive_exists"
+  | "self_modification"
   | "not_found"
   | "stale"
   | "state_invalid"
@@ -121,6 +123,8 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
       INVITATION_SCOPE_INVALID: "invitation_scope_invalid",
       LAST_ACTIVE_OWNER: "last_active_owner",
       MEMBERSHIP_ALREADY_EXISTS: "membership_exists",
+      MEMBERSHIP_INACTIVE_EXISTS: "membership_inactive_exists",
+      SELF_MODIFICATION_FORBIDDEN: "self_modification",
       MEMBERSHIP_NOT_FOUND: "not_found",
       MEMBERSHIP_STALE: "stale",
       MEMBERSHIP_STATE_INVALID: "state_invalid",

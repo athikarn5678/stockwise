@@ -105,6 +105,10 @@ function displayScaled(value: bigint, scale: number): string {
   return scale === 0 ? whole.toString() : `${whole}.${fraction}`;
 }
 
+function trimQuantity(value: string): string {
+  return value.includes(".") ? value.replace(/\.?0+$/, "") : value;
+}
+
 function addOne(quantity: string): string {
   const scaled = decimalToScaled(quantity, 4);
   if (scaled === null) return quantity;
@@ -699,6 +703,12 @@ function ProductResults({
                 {product.available ? "Available" : "Unavailable"}
               </span>
             </div>
+            <p className="mt-3 text-sm text-muted-foreground">
+              In stock at this branch:{" "}
+              <span className="font-medium text-foreground">
+                {trimQuantity(product.availableQuantity)} {product.unit}
+              </span>
+            </p>
             <p className="mt-4 font-medium">{formatThb(product.basePrice)}</p>
             <Button
               className="mt-4 w-full"

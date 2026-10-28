@@ -157,7 +157,11 @@ function CreateBranchForm({
     <form className="rounded-lg border bg-card p-5" onSubmit={submit}>
       <h2 className="font-semibold">Create branch</h2>
       <div className="mt-4 grid max-w-4xl items-start gap-4 sm:grid-cols-2">
-        <Field label="Code" maxLength={16} name="code" required />
+        <Field
+          label="Code (optional — generated as BR-001, BR-002… if blank)"
+          maxLength={16}
+          name="code"
+        />
         <Field label="Name" maxLength={200} name="name" required />
         <Field label="Phone (optional)" maxLength={32} name="phone" />
         <Field label="Address (optional)" maxLength={500} name="address" />

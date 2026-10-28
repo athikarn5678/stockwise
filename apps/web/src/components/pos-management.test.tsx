@@ -53,6 +53,7 @@ vi.mock("@/sales-api-client", async (importOriginal) => {
 
 const coffee = {
   available: true,
+  availableQuantity: "5.0000",
   barcode: "8850000000000",
   basePrice: "0.1000",
   id: PRODUCT_ID,
@@ -63,6 +64,7 @@ const coffee = {
 const unavailableTea = {
   ...coffee,
   available: false,
+  availableQuantity: "0.0000",
   id: "30000000-0000-4000-8000-000000000002",
   name: "Unavailable tea",
   sku: "TEA-02",

@@ -29,6 +29,7 @@ export interface SafeSalesVatProfile {
 
 export interface SafePosProduct {
   available: boolean;
+  availableQuantity: string;
   barcode: string | null;
   basePrice: string;
   id: string;
@@ -847,6 +848,9 @@ export function createPrismaSalesApiRepository(
           products: page.map((product) => ({
             available:
               product.inventoryBalances[0]?.quantity.greaterThan(0) ?? false,
+            availableQuantity: (
+              product.inventoryBalances[0]?.quantity ?? new Prisma.Decimal(0)
+            ).toFixed(4),
             barcode: product.barcode,
             basePrice: product.basePrice.toFixed(4),
             id: product.id,

@@ -22,6 +22,7 @@ const salesVatProfileSchema = z.object({
 });
 const posProductSchema = z.object({
   available: z.boolean(),
+  availableQuantity: z.string(),
   barcode: z.string().nullable(),
   basePrice: z.string(),
   id: z.string().uuid(),

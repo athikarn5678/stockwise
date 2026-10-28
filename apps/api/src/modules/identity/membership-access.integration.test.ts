@@ -252,7 +252,7 @@ describe("membership invitation and access management with PostgreSQL", () => {
         },
         organizationId: store.id,
       }),
-    ).resolves.toEqual({ kind: "membership_exists" });
+    ).resolves.toEqual({ kind: "membership_exists", status: "INACTIVE" });
   });
 
   it("reissues with a fresh token, preserves replacement history, compensates delivery failure, and revokes safely", async () => {

@@ -281,6 +281,59 @@ describe("branch management with PostgreSQL", () => {
     ).toEqual([{ status: "ACTIVE", effectiveAt: created.createdAt }]);
   });
 
+  it("generates unique BR-NNN codes under concurrency, preserving existing and explicit codes", async () => {
+    const organization = await prisma.organization.create({
+      data: { name: "Generated Store" },
+    });
+    const other = await prisma.organization.create({
+      data: { name: "Other Store" },
+    });
+    const owner = await user("owner-generated@example.com");
+    await membership(organization.id, owner.id, "OWNER");
+    await prisma.branch.create({
+      data: { code: "MAIN", name: "Main", organizationId: organization.id },
+    });
+    await prisma.branch.create({
+      data: { code: "BR-007", name: "Seven", organizationId: other.id },
+    });
+    const blank = branchCreateRequestSchema.parse({ code: "  ", name: "A" });
+    const omitted = branchCreateRequestSchema.parse({ name: "B" });
+    expect(blank.code).toBeUndefined();
+    expect(omitted.code).toBeUndefined();
+
+    const outcomes = await Promise.all(
+      [blank, omitted, blank, omitted, blank].map((input) =>
+        repository.create(owner.id, organization.id, input),
+      ),
+    );
+    expect(outcomes.map((outcome) => outcome.kind)).toEqual(
+      Array(5).fill("success"),
+    );
+    const codes = (
+      await prisma.branch.findMany({
+        orderBy: { code: "asc" },
+        select: { code: true },
+        where: { organizationId: organization.id },
+      })
+    ).map(({ code }) => code);
+    expect(codes).toEqual([
+      "BR-001",
+      "BR-002",
+      "BR-003",
+      "BR-004",
+      "BR-005",
+      "MAIN",
+    ]);
+    // Explicit codes still work; another organization is independent.
+    await expect(
+      repository.create(
+        owner.id,
+        organization.id,
+        branchCreateRequestSchema.parse({ code: "east", name: "East" }),
+      ),
+    ).resolves.toMatchObject({ kind: "success", branch: { code: "EAST" } });
+  });
+
   it("preserves historical Branch state through repeated lifecycle changes", async () => {
     const organization = await prisma.organization.create({
       data: { name: "History Store" },

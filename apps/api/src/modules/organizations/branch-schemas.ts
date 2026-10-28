@@ -53,7 +53,13 @@ export const branchCreateRequestSchema = z
     address: optionalText(500)
       .optional()
       .transform((value) => value ?? null),
-    code: branchCodeSchema,
+    // A blank or omitted code asks the server to generate the next BR-NNN code.
+    code: z
+      .string()
+      .trim()
+      .optional()
+      .transform((value) => (value === "" ? undefined : value))
+      .pipe(branchCodeSchema.optional()),
     name: requiredBranchNameSchema,
     phone: optionalText(32)
       .optional()

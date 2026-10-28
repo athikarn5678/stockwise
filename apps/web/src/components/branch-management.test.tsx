@@ -107,7 +107,7 @@ describe("branch management UI", () => {
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Deactivate" })).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText("Code"), {
+    fireEvent.change(screen.getByLabelText(/^Code/), {
       target: { value: " bkk-1 " },
     });
     fireEvent.change(screen.getAllByLabelText("Name")[0]!, {

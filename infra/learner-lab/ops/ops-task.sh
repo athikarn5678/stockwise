@@ -5,7 +5,8 @@
 # Each ops task definition receives only its own secrets and sets
 # STOCKWISE_OPS_ROLE; an action outside that role is refused:
 #   bootstrap  bootstrap-roles                       (RDS master credentials)
-#   ops        prepare | migrate | grants | fence-state | status | seed | cutover
+#   ops        prepare | migrate | grants | fence-state | status | seed | cutover |
+#              uat-provision
 #   export     export                                (LabRole task role, S3)
 # Credentials travel only in environment variables, never in arguments or
 # output. Machine-readable result lines start with STOCKWISE_.
@@ -39,7 +40,7 @@ require STOCKWISE_OPS_ROLE STOCKWISE_DB_HOST STOCKWISE_DB_PORT STOCKWISE_DB_NAME
 
 case "${STOCKWISE_OPS_ROLE}:${action}" in
   bootstrap:bootstrap-roles | export:export) ;;
-  ops:prepare | ops:migrate | ops:grants | ops:fence-state | ops:status | ops:seed | ops:cutover) ;;
+  ops:prepare | ops:migrate | ops:grants | ops:fence-state | ops:status | ops:seed | ops:cutover | ops:uat-provision) ;;
   *) die "action '${action}' is not permitted for the '${STOCKWISE_OPS_ROLE}' task definition" ;;
 esac
 
@@ -105,6 +106,16 @@ case "$action" in
     [[ "$(fence_state)" == "LEGACY" ]] || die "seeding requires the LEGACY state (seed before the Native cutover)"
     step "seeding synthetic stockwise-demo-v1 data (optional, D-08)"
     node /opt/stockwise/seed-through-loopback.mjs
+    ;;
+  uat-provision)
+    # Owner-authorized UAT accounts/memberships (apps/api/src/uat): verified
+    # Native users for uat-*@owner-domain only, hash-only input, no email.
+    as_migrator
+    require STOCKWISE_UAT_PHASE STOCKWISE_UAT_SPEC_B64
+    [[ "$STOCKWISE_UAT_PHASE" =~ ^(accounts|memberships)$ ]] || die "STOCKWISE_UAT_PHASE must be accounts or memberships"
+    [[ "$(fence_state)" == "NATIVE" ]] || die "UAT provisioning requires the NATIVE state"
+    step "uat-provision ${STOCKWISE_UAT_PHASE} on ${STOCKWISE_DB_NAME}"
+    node dist/uat/uat-provision-main.js
     ;;
   cutover)
     as_migrator

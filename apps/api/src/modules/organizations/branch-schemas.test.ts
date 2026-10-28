@@ -24,7 +24,7 @@ describe("branch boundary schemas", () => {
     });
   });
 
-  it.each(["", "-A", "_A", "A B", "A!", "A".repeat(17)])(
+  it.each(["-A", "_A", "A B", "A!", "A".repeat(17)])(
     "rejects invalid code %j",
     (code) => {
       expect(

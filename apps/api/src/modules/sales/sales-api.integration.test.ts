@@ -443,6 +443,7 @@ describe("sales HTTP API with PostgreSQL", () => {
     expect(firstBody.data.products).toEqual([
       expect.objectContaining({
         available: true,
+        availableQuantity: expect.stringMatching(/^[1-9][0-9]*.[0-9]{4}$/),
         basePrice: "1.2345",
         id: products[1]!.id,
         name: "Alpha",
@@ -455,7 +456,12 @@ describe("sales HTTP API with PostgreSQL", () => {
     expect(await second.json()).toMatchObject({
       data: {
         products: [
-          { available: false, basePrice: "2.5000", id: products[0]!.id },
+          {
+            available: false,
+            availableQuantity: "0.0000",
+            basePrice: "2.5000",
+            id: products[0]!.id,
+          },
         ],
       },
     });
@@ -475,7 +481,11 @@ describe("sales HTTP API with PostgreSQL", () => {
     const text = JSON.stringify(firstBody);
     expect(text).not.toContain(products[2]!.id);
     expect(text).not.toContain(products[3]!.id);
-    expect(text).not.toMatch(/quantity|cost|cogs|inventoryValue/i);
+    // Inventory view is allowed for every role (BUILD_SPEC section 8), so the branch-scoped
+    // availableQuantity is fine; cost, COGS and value stay out of the POS payload.
+    expect(text.replaceAll("availableQuantity", "")).not.toMatch(
+      /quantity|cost|cogs|inventoryValue/i,
+    );
     expect(
       (
         await fetch(

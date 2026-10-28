@@ -76,7 +76,7 @@ export type InvitationIssueOutcome =
     }
   | { kind: "forbidden" }
   | { kind: "invalid_branch_scope" }
-  | { kind: "membership_exists" };
+  | { kind: "membership_exists"; status: "ACTIVE" | "INACTIVE" };
 
 export type InvitationRevokeOutcome =
   | { kind: "success"; invitation: SafeInvitation }
@@ -97,7 +97,8 @@ export type MembershipMutationOutcome =
   | { kind: "already_active" }
   | { kind: "invalid_branch_scope" }
   | { kind: "stale" }
-  | { kind: "last_active_owner" };
+  | { kind: "last_active_owner" }
+  | { kind: "self_modification" };
 
 export type MembershipListOutcome =
   | { kind: "success"; page: Page<SafeMembership> }
@@ -348,6 +349,7 @@ async function authorization(
 ): Promise<{
   context: TrustedAuthorizationContext;
   membershipId: string;
+  role: OrganizationRole;
 } | null> {
   const membership = await transaction.organizationMembership.findUnique({
     where: { organizationId_userId: { organizationId, userId: actorUserId } },
@@ -382,7 +384,9 @@ async function authorization(
     },
   };
   const context = createTrustedAuthorizationContext(state);
-  return context === null ? null : { context, membershipId: membership.id };
+  return context === null
+    ? null
+    : { context, membershipId: membership.id, role: membership.role };
 }
 
 function canManageRole(
@@ -592,10 +596,13 @@ export function createPrismaMembershipAccessRepository(
                 organizationId: input.organizationId,
                 user: { email: input.invitation.email },
               },
-              select: { id: true },
+              select: { id: true, status: true },
             });
           if (existingMembership !== null) {
-            return { kind: "membership_exists" } as const;
+            return {
+              kind: "membership_exists",
+              status: existingMembership.status,
+            } as const;
           }
 
           const replaceableInvitationWhere = {
@@ -1035,6 +1042,11 @@ async function mutateMembership(
       },
     });
     if (target === null) return { kind: "not_found" };
+    // Only an OWNER may change or leave their own membership (still bound by
+    // the last-owner rule); every other actor, ADMIN included, may not.
+    if (target.userId === input.actorUserId && actor.role !== "OWNER") {
+      return { kind: "self_modification" };
+    }
     const desiredRole =
       input.mode === "deactivate" ? target.role : input.replacement.role;
     if (

@@ -151,6 +151,7 @@ describe("sales router", () => {
         products: [
           {
             available: true,
+            availableQuantity: "5.0000",
             barcode: "8850000000000",
             basePrice: "60.1234",
             id: PRODUCT_ID,
@@ -523,7 +524,10 @@ describe("sales router", () => {
     });
     const text = JSON.stringify(await response.json());
     expect(text).toContain('"basePrice":"60.1234"');
-    expect(text).not.toMatch(/quantity|cost|cogs/i);
+    // Inventory view is allowed for every role; only availableQuantity may appear.
+    expect(text.replaceAll("availableQuantity", "")).not.toMatch(
+      /quantity|cost|cogs/i,
+    );
   });
 
   it("maps POS search authorization, inactive branch, cursor, and invalid query outcomes", async () => {

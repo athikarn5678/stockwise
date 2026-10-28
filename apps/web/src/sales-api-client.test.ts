@@ -47,6 +47,7 @@ describe("sales API client", () => {
           products: [
             {
               available: true,
+              availableQuantity: "5.0000",
               barcode: "8850000000000",
               basePrice: "60.1234",
               id: PRODUCT_ID,
@@ -69,7 +70,9 @@ describe("sales API client", () => {
     expect(page.data.products[0]).toEqual(
       expect.objectContaining({ basePrice: "60.1234", name: "Coffee" }),
     );
-    expect(JSON.stringify(page)).not.toMatch(/cost|quantity|cogs/i);
+    expect(
+      JSON.stringify(page).replaceAll("availableQuantity", ""),
+    ).not.toMatch(/cost|quantity|cogs/i);
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
       `/api/v1/organizations/${ORGANIZATION_ID}/branches/${BRANCH_ID}/pos/products?limit=25&barcode=8850000000000&q=coffee`,
     );

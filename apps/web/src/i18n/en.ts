@@ -444,6 +444,9 @@ export const en = {
   teamErrorOwner: "An organization must retain one active owner.",
   teamErrorExists:
     "That email already has a membership in this organization. Use Include inactive to find deactivated members.",
+  teamErrorInactiveExists:
+    "This person was removed earlier. Turn on Include inactive, find them in the list and use Reactivate instead of inviting again.",
+  teamErrorSelf: "You cannot change or deactivate your own membership.",
   teamErrorNotFound: "The membership no longer exists.",
   teamErrorState:
     "This membership is not in the required state. Refresh the team.",

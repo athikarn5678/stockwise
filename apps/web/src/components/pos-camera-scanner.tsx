@@ -131,10 +131,22 @@ export function PosCameraScanner({
           // A missing or partially implemented native detector uses the local decoder.
         }
         if (!active) return;
-        const acquired = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: { facingMode: { ideal: "environment" } },
-        });
+        // Desktop browsers and some devices reject the rear-camera hint; retry
+        // once with any available camera before reporting a failure.
+        const acquired = await navigator.mediaDevices
+          .getUserMedia({
+            audio: false,
+            video: { facingMode: { ideal: "environment" } },
+          })
+          .catch((error: unknown) => {
+            const name = (error as { name?: string } | null)?.name;
+            if (name !== "OverconstrainedError" && name !== "NotFoundError")
+              throw error;
+            return navigator.mediaDevices.getUserMedia({
+              audio: false,
+              video: true,
+            });
+          });
         if (!active) {
           acquired.getTracks().forEach((track) => track.stop());
           return;

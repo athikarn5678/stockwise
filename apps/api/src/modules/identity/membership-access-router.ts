@@ -77,6 +77,15 @@ function sendInvitationCreate(
       );
       return;
     case "membership_exists":
+      if (outcome.status === "INACTIVE") {
+        error(
+          response,
+          409,
+          "MEMBERSHIP_INACTIVE_EXISTS",
+          "This person was removed earlier. Reactivate the existing membership instead of inviting again.",
+        );
+        return;
+      }
       error(
         response,
         409,
@@ -208,6 +217,14 @@ function sendMembershipMutation(
         409,
         "LAST_ACTIVE_OWNER",
         "An organization must retain at least one active owner.",
+      );
+      return;
+    case "self_modification":
+      error(
+        response,
+        403,
+        "SELF_MODIFICATION_FORBIDDEN",
+        "You cannot change or deactivate your own membership.",
       );
   }
 }

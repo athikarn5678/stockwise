@@ -25,6 +25,7 @@ const product = {
   unit: "EA" as const,
   barcode: "00Abc",
   available: true,
+  availableQuantity: "5.0000",
   basePrice: "1.2345",
 };
 const response = { data: { products: [product] }, meta: { nextCursor: null } };
@@ -105,7 +106,11 @@ describe("POS barcode input", () => {
       .mockResolvedValueOnce({ ...response, data: { products: [] } })
       .mockResolvedValueOnce({
         ...response,
-        data: { products: [{ ...product, available: false }] },
+        data: {
+          products: [
+            { ...product, available: false, availableQuantity: "0.0000" },
+          ],
+        },
       })
       .mockRejectedValueOnce(new SalesApiError("unavailable"));
     setup();

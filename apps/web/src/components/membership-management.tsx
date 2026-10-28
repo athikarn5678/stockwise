@@ -79,6 +79,8 @@ const ERRORS: Record<MembershipApiError["kind"], TranslationKey> = {
   invitation_scope_invalid: "teamErrorInvitationScope",
   last_active_owner: "teamErrorOwner",
   membership_exists: "teamErrorExists",
+  membership_inactive_exists: "teamErrorInactiveExists",
+  self_modification: "teamErrorSelf",
   not_found: "teamErrorNotFound",
   stale: "teamAccessChanged",
   state_invalid: "teamErrorState",

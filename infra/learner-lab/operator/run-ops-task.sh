@@ -6,6 +6,8 @@
 #   prepare | migrate | grants | fence-state | status | seed | cutover
 #                                -> <prefix>-ops-ops
 #   run-ops-task.sh export --export-id <id>   binds the export to <id>
+#   run-ops-task.sh uat-provision --uat-phase accounts|memberships --uat-spec-file <json>
+#                                passes the hash-only UAT spec (apps/api/src/uat) to the ops task
 #                                (teardown.sh verifies exactly that export)
 # Prints the task's CloudWatch log (credential-free by construction) and exits
 # with the container's exit code. Every invocation first verifies the Learner
@@ -17,22 +19,33 @@ require_tools aws terraform
 
 action="${1:-}"
 export_id=""
+uat_phase=""
+uat_spec_file=""
 case "$action" in
   bootstrap-roles) role="bootstrap" ;;
   export) role="export" ;;
-  prepare | migrate | grants | fence-state | status | seed | cutover) role="ops" ;;
-  *) die "usage: run-ops-task.sh bootstrap-roles|prepare|migrate|grants|fence-state|status|seed|cutover|export [--export-id <id>]" ;;
+  prepare | migrate | grants | fence-state | status | seed | cutover | uat-provision) role="ops" ;;
+  *) die "usage: run-ops-task.sh bootstrap-roles|prepare|migrate|grants|fence-state|status|seed|cutover|uat-provision|export [--export-id <id>] [--uat-phase <p> --uat-spec-file <f>]" ;;
 esac
 shift
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --export-id) export_id="${2:-}"; shift 2 ;;
+    --uat-phase) uat_phase="${2:-}"; shift 2 ;;
+    --uat-spec-file) uat_spec_file="${2:-}"; shift 2 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
 if [[ -n "$export_id" ]]; then
   [[ "$action" == export && "$export_id" =~ ^[a-z0-9-]{8,64}$ ]] ||
     die "--export-id applies to export only and must be 8-64 of [a-z0-9-]"
+fi
+
+if [[ "$action" == "uat-provision" ]]; then
+  [[ "$uat_phase" =~ ^(accounts|memberships)$ ]] || die "--uat-phase must be accounts or memberships"
+  [[ -f "$uat_spec_file" ]] || die "--uat-spec-file must name an existing file"
+elif [[ -n "$uat_phase$uat_spec_file" ]]; then
+  die "--uat-phase and --uat-spec-file apply to uat-provision only"
 fi
 
 aws_region
@@ -56,6 +69,12 @@ fi
 
 environment=""
 [[ -n "$export_id" ]] && environment=",\"environment\":[{\"name\":\"STOCKWISE_EXPORT_ID\",\"value\":\"${export_id}\"}]"
+if [[ "$action" == "uat-provision" ]]; then
+  # Base64 keeps the JSON spec shell- and JSON-safe; it holds hashes only.
+  spec_b64="$(base64 <"$uat_spec_file" | tr -d "\n\r ")"
+  [[ ${#spec_b64} -le 7000 ]] || die "the UAT spec exceeds the ECS override size budget"
+  environment=",\"environment\":[{\"name\":\"STOCKWISE_UAT_PHASE\",\"value\":\"${uat_phase}\"},{\"name\":\"STOCKWISE_UAT_SPEC_B64\",\"value\":\"${spec_b64}\"}]"
+fi
 step "starting ${family} ${action}"
 task_arn="$(aws ecs run-task --cluster "$cluster" --task-definition "$family" \
   --capacity-provider-strategy "capacityProvider=${capacity_provider},weight=1" \

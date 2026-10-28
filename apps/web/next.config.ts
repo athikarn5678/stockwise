@@ -25,6 +25,8 @@ const nextConfig: NextConfig = {
         headers: [
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+          // POS barcode scanning needs the camera on this origin only.
+          { key: "Permissions-Policy", value: "camera=(self)" },
         ],
       },
       {

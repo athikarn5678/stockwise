@@ -17,8 +17,21 @@ WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'stockwise_migrator') \ge
 SELECT 'CREATE ROLE stockwise_app LOGIN'
 WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'stockwise_app') \gexec
 
-ALTER ROLE stockwise_migrator WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD :'migrator_password';
-ALTER ROLE stockwise_app WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT PASSWORD :'app_password';
+-- CREATE ROLE already yields NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION
+-- NOBYPASSRLS. They are not restated here: PostgreSQL 16 only lets a role change
+-- those attributes if it holds them, and the RDS master is not a superuser. The
+-- guard below fails the bootstrap instead if either role is ever privileged.
+ALTER ROLE stockwise_migrator WITH LOGIN PASSWORD :'migrator_password';
+ALTER ROLE stockwise_app WITH LOGIN NOINHERIT PASSWORD :'app_password';
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname IN ('stockwise_migrator', 'stockwise_app')
+             AND (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls)) THEN
+    RAISE EXCEPTION 'stockwise_migrator and stockwise_app must not hold elevated role attributes';
+  END IF;
+END
+$$;
 
 -- The master must be a member to hand the schema to the migrator (RDS master
 -- is not a true superuser).

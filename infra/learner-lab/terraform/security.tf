@@ -23,7 +23,7 @@ resource "aws_vpc_security_group_ingress_rule" "alb_https" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "alb_http_redirect" {
-  for_each          = var.enable_cloudfront ? toset([]) : toset(var.allowed_ingress_ipv4_cidrs)
+  for_each          = var.enable_cloudfront ? toset([]) : toset(var.allowed_http_ingress_ipv4_cidrs)
   security_group_id = aws_security_group.alb.id
   description       = "HTTP, redirected to HTTPS by the listener"
   ip_protocol       = "tcp"

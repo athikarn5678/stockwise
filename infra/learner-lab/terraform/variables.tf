@@ -92,7 +92,13 @@ variable "existing_certificate_arn" {
 }
 
 variable "allowed_ingress_ipv4_cidrs" {
-  description = "Sources allowed to reach the ALB when CloudFront is disabled."
+  description = "Sources allowed to reach the ALB on 443 when CloudFront is disabled. Behind the Cloudflare proxy: the official Cloudflare IPv4 ranges (operator/cloudflare-ranges.sh)."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
+variable "allowed_http_ingress_ipv4_cidrs" {
+  description = "Sources allowed on ALB port 80 (redirect to HTTPS only) when CloudFront is disabled. Empty closes port 80, as behind the Cloudflare proxy."
   type        = list(string)
   default     = ["0.0.0.0/0"]
 }

@@ -212,3 +212,17 @@ node --test infra/learner-lab/operator/validate-secret-json.test.mjs
 # Outage-alarm scenario model (pause/resume; reads terraform/monitoring.tf)
 node --test infra/learner-lab/operator/tests/outage-alarm-model.test.mjs
 ```
+
+## Cloudflare proxy in front of the ALB (owner-approved 2026-10-29)
+
+CloudFront is denied to the Learner Lab role, so `stockwise.hcn920.com` is a **proxied** Cloudflare record (orange cloud) pointing at the same ALB. Cloudflare config (zone `hcn920.com`, this hostname only, set through the API; not in Terraform):
+
+- TLS: Configuration Rule `ssl = strict` for the hostname (Full strict against the ACM certificate); zone-wide mode untouched (`full`).
+- WAF: Cloudflare Free Managed Ruleset executed for the hostname (default actions); no blanket challenges.
+- Cache Rules: only `/_next/static/*` is cache-eligible (respect origin); everything else, including `/api/*`, is bypassed.
+
+ALB security group `alb` (Terraform: `allowed_ingress_ipv4_cidrs`, `allowed_http_ingress_ipv4_cidrs`): TCP 443 and 80 (redirect only) from the official Cloudflare IPv4 ranges. The ALB is IPv4-only. This is a **network-source restriction only**: it does not prove a request came through our Cloudflare zone, because any Cloudflare customer can send traffic from these ranges.
+
+Refreshing the ranges (Cloudflare publishes them at <https://www.cloudflare.com/ips-v4>; changes are rare, check before each release): run `operator/cloudflare-ranges.sh`, replace both lists in `demo.tfvars`, then `terraform apply -refresh=false -var-file=demo.tfvars -target=aws_vpc_security_group_ingress_rule.alb_https -target=aws_vpc_security_group_ingress_rule.alb_http_redirect`. Keep the old ranges in place until the new apply succeeds.
+
+Rollback, in this order: (1) reopen the ALB: set both lists to `["0.0.0.0/0"]` in `demo.tfvars` and apply the same targeted command; (2) confirm `https://<alb-dns>/api/health` answers directly; (3) set the Cloudflare record `proxied` to `false` (original: CNAME to the ALB DNS name, DNS-only, TTL 300); (4) optionally empty the `http_request_cache_settings`, `http_config_settings` and `http_request_firewall_managed` entrypoint rulesets. Original values are in `D:\Projects\stockwise-deploy-r3\rollback-cloudflare-proxy\`.

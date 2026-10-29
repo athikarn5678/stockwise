@@ -13,6 +13,21 @@ import "./globals.css";
 export const metadata: Metadata = {
   description: "StockWise retail operations platform",
   title: "StockWise",
+  icons: {
+    icon: [
+      {
+        url: "/branding/logo-tap-light.png",
+        type: "image/png",
+        media: "(prefers-color-scheme: light)",
+      },
+      {
+        url: "/branding/logo-tap-dark.png",
+        type: "image/png",
+        media: "(prefers-color-scheme: dark)",
+      },
+    ],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 interface RootLayoutProps {

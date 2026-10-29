@@ -93,7 +93,7 @@ case "$command_name" in
     approvals="$1" work="$2"
     load_restore
     require_tools node
-    DATABASE_URL="$DATABASE_URL" node "${api_dir}/owner-reconciliation-spec-main.ts" \
+    DATABASE_URL="$DATABASE_URL" node "$(native_path "${api_dir}/owner-reconciliation-spec-main.ts")" \
       "$(native_path "$approvals")" "$(native_path "${work}/spec.json")"
     ;;
 
@@ -154,7 +154,7 @@ case "$command_name" in
     [[ -r "${work}/spec.json" ]] || die "no spec.json; run spec first"
     spec_b64="$(base64 <"${work}/spec.json" | tr -d '\n\r ')"
     DATABASE_URL="$DATABASE_URL" STOCKWISE_RECONCILE_MODE=dry-run STOCKWISE_RECONCILE_SPEC_B64="$spec_b64" \
-      node "${api_dir}/owner-reconciliation-main.ts"
+      node "$(native_path "${api_dir}/owner-reconciliation-main.ts")"
     ;;
 
   cleanup)

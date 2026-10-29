@@ -187,7 +187,17 @@ describe("branch management with PostgreSQL", () => {
         userId: inactiveUser.id,
       },
     });
-    await membership(organization.id, onboardedUser.id, "OWNER");
+    // Already left the organization, so the single-active-OWNER index (ADR-041)
+    // still allows the issuer to be the active OWNER.
+    await prisma.organizationMembership.create({
+      data: {
+        deactivatedAt: NOW,
+        organizationId: organization.id,
+        role: "OWNER",
+        status: "INACTIVE",
+        userId: onboardedUser.id,
+      },
+    });
     await prisma.firstOrganizationOnboarding.create({
       data: {
         branchId: branch.id,
@@ -196,16 +206,6 @@ describe("branch management with PostgreSQL", () => {
         userId: onboardedUser.id,
       },
     });
-    await prisma.organizationMembership.update({
-      where: {
-        organizationId_userId: {
-          organizationId: organization.id,
-          userId: onboardedUser.id,
-        },
-      },
-      data: { deactivatedAt: NOW, status: "INACTIVE" },
-    });
-
     await expect(repository.accessContext(newUser.id)).resolves.toMatchObject({
       firstOrganizationOnboarding: { eligible: true },
       organizations: [],

@@ -349,11 +349,15 @@ describe("sale refunds with PostgreSQL", () => {
     "enforces %s refund creation authority",
     async (role, allowed) => {
       const value = await fixture();
-      const refundActor = await actor({
-        branchId: value.branch.id,
-        organizationId: value.organization.id,
-        role,
-      });
+      // The fixture already holds the organization's single OWNER (ADR-041).
+      const refundActor =
+        role === "OWNER"
+          ? value.owner
+          : await actor({
+              branchId: value.branch.id,
+              organizationId: value.organization.id,
+              role,
+            });
       const result = await createPrismaRefundRepository(prisma).createRefund(
         request(value, { actorUserId: refundActor.id }),
       );

@@ -1,4 +1,16 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  dropSingleOwnerIndex,
+  restoreSingleOwnerIndex,
+} from "../../test/single-owner-index.ts";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { Router } from "express";
 import { createApp } from "../../app.ts";
 import { createMembershipAccessRouter } from "./membership-access-router.ts";
@@ -177,12 +189,18 @@ async function postInvitationViaHttp(
 }
 
 describe("membership invitation and access management with PostgreSQL", () => {
+  // Legacy multi-owner fixtures need the pre-reconciliation schema.
+  beforeAll(async () => {
+    await dropSingleOwnerIndex(prisma);
+  });
+
   beforeEach(async () => {
     await resetTestDatabase(environment);
   });
 
   afterAll(async () => {
     await resetTestDatabase(environment);
+    await restoreSingleOwnerIndex(prisma);
     await prisma.$disconnect();
   });
 

@@ -1,4 +1,8 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  dropSingleOwnerIndex,
+  restoreSingleOwnerIndex,
+} from "../test/single-owner-index.ts";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createRecordingEmailProvider } from "../modules/identity/email-provider.ts";
 import { createPrismaMembershipAccessRepository } from "../modules/identity/membership-access-repository.ts";
@@ -155,12 +159,18 @@ function ownerCount(organizationId: string) {
 }
 
 describe("one-time OWNER reconciliation with PostgreSQL", () => {
+  // Legacy multi-owner fixtures need the pre-reconciliation schema.
+  beforeAll(async () => {
+    await dropSingleOwnerIndex(prisma);
+  });
+
   beforeEach(async () => {
     await resetTestDatabase(environment);
   });
 
   afterAll(async () => {
     await resetTestDatabase(environment);
+    await restoreSingleOwnerIndex(prisma);
     await prisma.$disconnect();
   });
 

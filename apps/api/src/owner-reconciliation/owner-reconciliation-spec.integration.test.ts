@@ -1,4 +1,8 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  dropSingleOwnerIndex,
+  restoreSingleOwnerIndex,
+} from "../test/single-owner-index.ts";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadTestDatabaseEnvironment } from "../test/database-environment.ts";
 import {
@@ -35,11 +39,17 @@ async function owner(organizationId: string, email: string) {
 }
 
 describe("owner reconciliation spec resolution", () => {
+  // Legacy multi-owner fixtures need the pre-reconciliation schema.
+  beforeAll(async () => {
+    await dropSingleOwnerIndex(prisma);
+  });
+
   beforeEach(async () => {
     await resetTestDatabase(environment);
   });
   afterAll(async () => {
     await resetTestDatabase(environment);
+    await restoreSingleOwnerIndex(prisma);
     await prisma.$disconnect();
   });
 

@@ -181,6 +181,9 @@ export async function register(input: Scenario) {
   await input.page.goto("/register");
   await input.page.getByLabel("Email address").fill(input.email);
   await input.page.getByLabel("Password", { exact: true }).fill(input.password);
+  await input.page
+    .getByLabel("Confirm password", { exact: true })
+    .fill(input.password);
   const response = input.page.waitForResponse(
     (r) =>
       r.url().endsWith("/auth/register") && r.request().method() === "POST",

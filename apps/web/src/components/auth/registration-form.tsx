@@ -29,6 +29,7 @@ export function RegistrationForm() {
   const errorMessage = useRef<HTMLDivElement>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<
     { key: TranslationKey } | { cause: unknown } | null
   >(null);
@@ -74,6 +75,15 @@ export function RegistrationForm() {
       return;
     }
 
+    if (confirmPassword === "") {
+      setError({ key: "authConfirmPasswordRequired" });
+      return;
+    }
+    if (confirmPassword !== password) {
+      setError({ key: "authPasswordMismatch" });
+      return;
+    }
+
     setError(null);
     setIsSubmitting(true);
     pending.current = true;
@@ -95,6 +105,7 @@ export function RegistrationForm() {
         savedAt: Date.now(),
       });
       setPassword("");
+      setConfirmPassword("");
       if (!saved) {
         // Cannot safely recover the OTP challenge without the one-use
         // continuation. Preserve the generic enrollment response.
@@ -150,6 +161,23 @@ export function RegistrationForm() {
         <p className="mt-2 text-xs leading-5 text-muted-foreground">
           {t("authPasswordLength")}
         </p>
+      </div>
+      <div>
+        <Label className="form-field" htmlFor="registration-confirm-password">
+          {t("authConfirmPassword")}
+        </Label>
+        <Input
+          aria-describedby={error !== null ? "registration-error" : undefined}
+          autoComplete="new-password"
+          className="mt-1"
+          disabled={isSubmitting}
+          id="registration-confirm-password"
+          name="confirmPassword"
+          onChange={(event) => setConfirmPassword(event.target.value)}
+          required
+          type="password"
+          value={confirmPassword}
+        />
       </div>
       {error === null ? null : (
         <Alert

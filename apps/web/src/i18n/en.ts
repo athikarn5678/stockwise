@@ -101,6 +101,11 @@ export const en = {
   CASHIER: "CASHIER",
   authEmail: "Email address",
   authPassword: "Password",
+  authConfirmPassword: "Confirm password",
+  authConfirmPasswordRequired:
+    "Confirm your password before creating an account.",
+  authPasswordMismatch:
+    "Passwords do not match. Enter the same password in both fields.",
   authSignIn: "Sign in",
   authSigningIn: "Signing in…",
   authCreateAccount: "Create account",
@@ -199,9 +204,6 @@ export const en = {
   pricingTitle: "A starting point for every stage.",
   pricingIntro:
     "From your first store to a growing branch network, explore how StockWise can fit the way you work.",
-  pricingNoticeTitle: "Proposed pricing — not available for purchase",
-  pricingNotice:
-    "These are proposed marketing concepts only. The allowances below are not enforced in the application. No paid subscription, plan selection, checkout, or payment is available.",
   pricingPlansLabel: "Proposed plans",
   pricingProposed: "Proposed plan",
   pricingStarterAudience: "For a small, single-location shop.",

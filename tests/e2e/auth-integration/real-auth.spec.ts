@@ -50,6 +50,9 @@ async function registerSuccessor(input: Scenario, email: string) {
   await input.page.getByRole("link", { name: "Get started" }).first().click();
   await input.page.getByLabel("Email address").fill(email);
   await input.page.getByLabel("Password", { exact: true }).fill(input.password);
+  await input.page
+    .getByLabel("Confirm password", { exact: true })
+    .fill(input.password);
   const response = input.page
     .waitForResponse(
       (r) =>

@@ -55,9 +55,15 @@ test("a11y Thai registration and OTP support labelled keyboard submission", asyn
     await input.page.keyboard.press("Tab");
     await expect(password).toBeFocused();
     await input.page.keyboard.press("Tab");
+    const confirmation = input.page.getByLabel("ยืนยันรหัสผ่าน", {
+      exact: true,
+    });
+    await expect(confirmation).toBeFocused();
+    await input.page.keyboard.press("Tab");
     await expect(submit).toBeFocused();
     await email.fill(input.email);
     await password.fill(input.password);
+    await confirmation.fill(input.password);
     const response = input.page.waitForResponse(
       (r) =>
         r.url().endsWith("/auth/register") && r.request().method() === "POST",

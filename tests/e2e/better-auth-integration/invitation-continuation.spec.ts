@@ -317,6 +317,9 @@ journey(
       .getByLabel("Password", { exact: true })
       .fill(input.password);
     await input.page
+      .getByLabel("Confirm password", { exact: true })
+      .fill(input.password);
+    await input.page
       .getByRole("button", { name: "Create account", exact: true })
       .click();
     await expect(input.page).toHaveURL(`${origin}/verify-email`);
@@ -352,6 +355,9 @@ journey(
     await input.page.getByLabel("Email address").fill(input.email);
     await input.page
       .getByLabel("Password", { exact: true })
+      .fill(input.password);
+    await input.page
+      .getByLabel("Confirm password", { exact: true })
       .fill(input.password);
     await input.page
       .getByRole("button", { name: "Create account", exact: true })

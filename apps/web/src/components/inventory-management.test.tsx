@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -20,6 +21,15 @@ import {
 } from "@/inventory-api-client";
 
 import { InventoryManagement } from "./inventory-management";
+import { LanguageProvider } from "@/providers/language-provider";
+import { en } from "@/i18n/en";
+import { th } from "@/i18n/th";
+
+const scrollIntoView = vi.fn();
+const originalScrollIntoView = Object.getOwnPropertyDescriptor(
+  Element.prototype,
+  "scrollIntoView",
+);
 
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const BRANCH_ID = "20000000-0000-4000-8000-000000000001";
@@ -63,19 +73,29 @@ const item = {
   },
 };
 
-function renderInventory() {
+function renderInventory(localized = false) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   render(
     <QueryClientProvider client={queryClient}>
-      <InventoryManagement />
+      {localized ? (
+        <LanguageProvider>
+          <InventoryManagement />
+        </LanguageProvider>
+      ) : (
+        <InventoryManagement />
+      )}
     </QueryClientProvider>,
   );
   return queryClient;
 }
 
 beforeEach(() => {
+  Object.defineProperty(Element.prototype, "scrollIntoView", {
+    configurable: true,
+    value: scrollIntoView,
+  });
   role = "OWNER";
   currentSearchParams = new URLSearchParams({
     branchId: BRANCH_ID,
@@ -135,9 +155,99 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  localStorage.clear();
+  if (originalScrollIntoView) {
+    Object.defineProperty(
+      Element.prototype,
+      "scrollIntoView",
+      originalScrollIntoView,
+    );
+  } else {
+    delete (Element.prototype as Partial<Element>).scrollIntoView;
+  }
 });
 
 describe("inventory management UI", () => {
+  it("scrolls to the newly selected product history without changing the filter", async () => {
+    const other = {
+      ...item,
+      product: {
+        ...item.product,
+        id: "30000000-0000-4000-8000-000000000002",
+        name: "Coffee",
+        sku: "COFFEE-01",
+      },
+    };
+    vi.mocked(listInventory).mockResolvedValue({
+      data: [item, other],
+      meta: { nextCursor: null },
+    });
+    vi.mocked(getInventoryItem).mockImplementation(
+      async (_context, productId) => (productId === PRODUCT_ID ? item : other),
+    );
+    renderInventory();
+    fireEvent.click(await screen.findByRole("button", { name: /Tea/ }));
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+    const status = screen.getByLabelText(en.inventoryProductStatus);
+    fireEvent.click(screen.getByRole("button", { name: /Coffee/ }));
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(2));
+    expect(status).toHaveProperty("value", "ACTIVE");
+    expect(getInventoryItem).toHaveBeenLastCalledWith(
+      { organizationId: ORGANIZATION_ID, branchId: BRANCH_ID },
+      other.product.id,
+    );
+    expect(listInventoryHistory).toHaveBeenLastCalledWith(
+      { organizationId: ORGANIZATION_ID, branchId: BRANCH_ID },
+      other.product.id,
+      { cursor: null },
+    );
+    expect(
+      screen
+        .getByRole("button", { name: /Coffee/ })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+  it.each(["en", "th"] as const)(
+    "reveals the selected history after delayed content and on repeated clicks in %s",
+    async (language) => {
+      localStorage.setItem("stockwise.language", language);
+      const detail = Promise.withResolvers<typeof item>();
+      const history =
+        Promise.withResolvers<
+          Awaited<ReturnType<typeof listInventoryHistory>>
+        >();
+      vi.mocked(getInventoryItem).mockReturnValueOnce(detail.promise);
+      vi.mocked(listInventoryHistory).mockReturnValueOnce(history.promise);
+      renderInventory(true);
+      const button = await screen.findByRole("button", { name: /Tea/ });
+      fireEvent.click(button);
+      await screen.findByText(
+        (language === "th" ? th : en).uiLoadingProductInventory,
+      );
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      await act(async () => detail.resolve(item));
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      await act(async () =>
+        history.resolve({ data: [], meta: { nextCursor: null } }),
+      );
+      const section = screen.getByRole("region", {
+        name: (language === "th" ? th : en).uiTransactionHistory,
+      });
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+      expect(scrollIntoView.mock.contexts[0]).toBe(section);
+      expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "start" });
+      expect(document.activeElement).toBe(section);
+      expect(section.className).toContain("scroll-mt-20");
+      fireEvent.click(button);
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(2));
+      expect(button.getAttribute("aria-pressed")).toBe("true");
+      expect(listInventoryHistory).toHaveBeenCalledWith(
+        { organizationId: ORGANIZATION_ID, branchId: BRANCH_ID },
+        PRODUCT_ID,
+        { cursor: null },
+      );
+    },
+  );
   it.each([
     ["MANUAL_ADJUSTMENT", "Manual adjustment"],
     ["PURCHASE_RECEIVE", "Purchase receive"],

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ArrowRight, Check } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -93,11 +92,7 @@ export function PricingContent() {
           {t("pricingIntro")}
         </p>
       </section>
-      <Alert className="my-10">
-        <AlertTitle>{t("pricingNoticeTitle")}</AlertTitle>
-        <AlertDescription>{t("pricingNotice")}</AlertDescription>
-      </Alert>
-      <div className="mb-6 flex justify-center">
+      <div className="mb-6 mt-10 flex justify-center">
         <div
           aria-label={t("pricingBillingPeriod")}
           className="inline-flex rounded-lg border p-1"

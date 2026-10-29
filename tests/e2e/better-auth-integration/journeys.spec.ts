@@ -860,6 +860,9 @@ journey(
       await secondaryPage
         .getByLabel("Password", { exact: true })
         .fill(secondaryPassword);
+      await secondaryPage
+        .getByLabel("Confirm password", { exact: true })
+        .fill(secondaryPassword);
       const registration = secondaryPage.waitForResponse(
         (response) =>
           response.url().endsWith("/auth/register") &&
@@ -1176,6 +1179,9 @@ journey(
       await secondPage.getByLabel("Email address").fill(secondEmail);
       await secondPage
         .getByLabel("Password", { exact: true })
+        .fill(secondPassword);
+      await secondPage
+        .getByLabel("Confirm password", { exact: true })
         .fill(secondPassword);
       const registration = secondPage.waitForResponse(
         (response) =>

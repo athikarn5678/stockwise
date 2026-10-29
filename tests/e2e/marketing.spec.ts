@@ -181,6 +181,9 @@ for (const detour of [false, true]) {
     await page
       .getByLabel("Password", { exact: true })
       .fill("test password for journey");
+    await page
+      .getByLabel("Confirm password", { exact: true })
+      .fill("test password for journey");
     await page.getByRole("button", { name: "Create account" }).click();
     await expect(page).toHaveURL("/verify-email");
     await page.getByLabel("6-digit verification code").fill("123456");
@@ -254,6 +257,11 @@ for (const language of ["en", "th"] as const) {
       .fill("person@example.test");
     await page
       .getByLabel(language === "en" ? "Password" : "รหัสผ่าน", { exact: true })
+      .fill("test password for journey");
+    await page
+      .getByLabel(language === "en" ? "Confirm password" : "ยืนยันรหัสผ่าน", {
+        exact: true,
+      })
       .fill("test password for journey");
     await page
       .getByRole("button", {

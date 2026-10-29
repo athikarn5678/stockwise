@@ -42,6 +42,7 @@ const post = (page: Page, path: string) =>
 async function register(page: Page, email: string, password: string) {
   await page.getByLabel("Email address").fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByLabel("Confirm password", { exact: true }).fill(password);
   const registration = post(page, "/api/v1/auth/register");
   await page
     .getByRole("button", { name: "Create account", exact: true })

@@ -98,6 +98,9 @@ function credentials() {
   fireEvent.change(screen.getByLabelText("Password"), {
     target: { value: password },
   });
+  const confirmation = screen.queryByLabelText("Confirm password");
+  if (confirmation)
+    fireEvent.change(confirmation, { target: { value: password } });
 }
 beforeEach(() => {
   window.history.replaceState(null, "", "/verify-email");

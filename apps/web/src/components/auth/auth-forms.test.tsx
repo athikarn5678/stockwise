@@ -89,6 +89,9 @@ function fillCredentials(password = "  password with Unicode Ω  ") {
   fireEvent.change(screen.getByLabelText("Password"), {
     target: { value: password },
   });
+  const confirmation = screen.queryByLabelText("Confirm password");
+  if (confirmation)
+    fireEvent.change(confirmation, { target: { value: password } });
 }
 
 function renderWithQueryClient(ui: ReactNode, queryClient = new QueryClient()) {
@@ -97,6 +100,75 @@ function renderWithQueryClient(ui: ReactNode, queryClient = new QueryClient()) {
 }
 
 describe("registration form", () => {
+  it.each(["en", "th"] as const)(
+    "requires exact password confirmation and preserves the OTP request in %s",
+    async (language) => {
+      localStorage.setItem("stockwise.language", language);
+      const copy = language === "th" ? th : en;
+      vi.mocked(register).mockResolvedValue({
+        data: {
+          status: "accepted",
+          nextStep: "verify_email",
+          verification: { challengeId: "11111111-1111-4111-8111-111111111111" },
+        },
+      });
+      render(
+        <LanguageProvider>
+          <TestLanguageToggle />
+          <RegistrationForm />
+        </LanguageProvider>,
+      );
+      const password = "  password with Unicode Ω  ";
+      const input = screen.getByLabelText(copy.authPassword);
+      const confirmation = screen.getByLabelText(copy.authConfirmPassword);
+      expect(input.hasAttribute("required")).toBe(true);
+      expect(confirmation.hasAttribute("required")).toBe(true);
+      expect(confirmation.getAttribute("type")).toBe("password");
+      fireEvent.change(screen.getByLabelText(copy.authEmail), {
+        target: { value: "person@example.com" },
+      });
+      fireEvent.change(input, { target: { value: password } });
+      const form = screen
+        .getByRole("button", { name: copy.authCreateAccount })
+        .closest("form")!;
+      fireEvent.submit(form);
+      expect((await screen.findByRole("alert")).textContent).toBe(
+        copy.authConfirmPasswordRequired,
+      );
+      expect(register).not.toHaveBeenCalled();
+      fireEvent.change(confirmation, { target: { value: password.trim() } });
+      fireEvent.submit(form);
+      expect((await screen.findByRole("alert")).textContent).toBe(
+        copy.authPasswordMismatch,
+      );
+      expect(register).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "Switch language" }));
+      expect(screen.getByRole("alert").textContent).toBe(
+        (language === "th" ? en : th).authPasswordMismatch,
+      );
+      fireEvent.change(confirmation, { target: { value: password } });
+      fireEvent.change(input, { target: { value: password + "!" } });
+      fireEvent.submit(form);
+      expect(screen.getByRole("alert").textContent).toBe(
+        (language === "th" ? en : th).authPasswordMismatch,
+      );
+      expect(register).not.toHaveBeenCalled();
+      fireEvent.change(input, { target: { value: password } });
+      fireEvent.submit(form);
+      await waitFor(() =>
+        expect(register).toHaveBeenCalledExactlyOnceWith({
+          email: "person@example.com",
+          password,
+        }),
+      );
+      await waitFor(() =>
+        expect(routerReplace).toHaveBeenCalledWith("/verify-email"),
+      );
+      expect((input as HTMLInputElement).value).toBe("");
+      expect((confirmation as HTMLInputElement).value).toBe("");
+      localStorage.clear();
+    },
+  );
   it("goes directly to OTP verification after the privacy-neutral accepted response", async () => {
     vi.mocked(register).mockResolvedValue({
       data: {

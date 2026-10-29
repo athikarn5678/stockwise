@@ -103,6 +103,10 @@ export const th: Dictionary = {
   CASHIER: "พนักงานขาย",
   authEmail: "อีเมล",
   authPassword: "รหัสผ่าน",
+  authConfirmPassword: "ยืนยันรหัสผ่าน",
+  authConfirmPasswordRequired: "กรุณายืนยันรหัสผ่านก่อนสร้างบัญชี",
+  authPasswordMismatch:
+    "รหัสผ่านไม่ตรงกัน กรุณากรอกรหัสผ่านให้เหมือนกันทั้งสองช่อง",
   authSignIn: "เข้าสู่ระบบ",
   authSigningIn: "กำลังเข้าสู่ระบบ…",
   authCreateAccount: "สร้างบัญชี",
@@ -193,9 +197,6 @@ export const th: Dictionary = {
   pricingTitle: "จุดเริ่มต้นสำหรับทุกช่วงการเติบโต",
   pricingIntro:
     "ตั้งแต่ร้านสาขาเดียวไปจนถึงธุรกิจที่มีหลายสาขา มาดูกันว่า StockWise จะเหมาะกับรูปแบบการทำงานของคุณอย่างไร",
-  pricingNoticeTitle: "ราคาเสนอเบื้องต้น — ยังไม่เปิดจำหน่าย",
-  pricingNotice:
-    "นี่เป็นเพียงแนวคิดทางการตลาดที่เสนอไว้เท่านั้น ระบบยังไม่ได้บังคับใช้จำนวนสาขาและผู้ใช้ตามที่แสดง และยังไม่มีบริการสมัครแพ็กเกจแบบชำระเงิน การเลือกแพ็กเกจ การชำระเงิน หรือขั้นตอนซื้อ",
   pricingPlansLabel: "แพ็กเกจที่เสนอ",
   pricingProposed: "แพ็กเกจที่เสนอ",
   pricingStarterAudience: "สำหรับร้านค้าขนาดเล็กที่มีสาขาเดียว",

@@ -233,7 +233,10 @@ async function registerSuccessor(page: Page) {
   await page.getByRole("link", { name: "Get started" }).first().click();
   await expect(page).toHaveURL(/\/register$/);
   await page.getByLabel("Email address").fill("successor@example.com");
-  await page.getByLabel("Password").fill("correct-horse-123");
+  await page.getByLabel("Password", { exact: true }).fill("correct-horse-123");
+  await page
+    .getByLabel("Confirm password", { exact: true })
+    .fill("correct-horse-123");
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page).toHaveURL(/\/verify-email$/);
   await expect

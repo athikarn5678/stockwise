@@ -19,7 +19,7 @@ import {
 } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useId, useRef, useState } from "react";
+import { type RefObject, useEffect, useId, useRef, useState } from "react";
 
 import {
   applicationContextUrl,
@@ -230,6 +230,7 @@ function InventoryContent({
   const [selectedProductId, setSelectedProductId] = useState<string | null>(
     null,
   );
+  const [historyRequest, setHistoryRequest] = useState(0);
   const requestContext = {
     branchId: branch.id,
     organizationId: organization.id,
@@ -309,7 +310,10 @@ function InventoryContent({
         isLoadingNext={balancesQuery.isFetchingNextPage}
         items={balances}
         onLoadMore={() => void balancesQuery.fetchNextPage()}
-        onSelect={setSelectedProductId}
+        onSelect={(productId) => {
+          setSelectedProductId(productId);
+          setHistoryRequest((request) => request + 1);
+        }}
         selectedProductId={selectedProductId}
       />
 
@@ -317,6 +321,7 @@ function InventoryContent({
         <InventoryDetail
           canAdjust={ADJUSTMENT_ROLES.has(organization.role)}
           context={requestContext}
+          historyRequest={historyRequest}
           productId={selectedProductId}
           scopeKey={scopeKey}
         />
@@ -416,16 +421,18 @@ function BalanceList({
 function InventoryDetail({
   canAdjust,
   context,
+  historyRequest,
   productId,
   scopeKey,
 }: {
   canAdjust: boolean;
   context: InventoryRequestContext;
+  historyRequest: number;
   productId: string;
   scopeKey: readonly unknown[];
 }) {
   const { t } = useLanguage();
-
+  const historyRef = useRef<HTMLElement>(null);
   const detailQuery = useQuery({
     queryFn: () => getInventoryItem(context, productId),
     queryKey: [...scopeKey, "product", productId],
@@ -445,6 +452,17 @@ function InventoryDetail({
   });
   const transactions =
     historyQuery.data?.pages.flatMap((page) => page.data) ?? [];
+
+  useEffect(() => {
+    if (detailQuery.isPending || historyQuery.isPending) return;
+    historyRef.current?.scrollIntoView({ block: "start" });
+    historyRef.current?.focus({ preventScroll: true });
+  }, [
+    detailQuery.isPending,
+    historyQuery.isPending,
+    productId,
+    historyRequest,
+  ]);
 
   return (
     <section
@@ -489,6 +507,7 @@ function InventoryDetail({
         </>
       ) : null}
       <HistoryList
+        historyRef={historyRef}
         error={historyQuery.error}
         hasNextPage={historyQuery.hasNextPage}
         isLoading={historyQuery.isPending}
@@ -642,6 +661,7 @@ const MOVEMENT_LABELS: Record<string, TranslationKey> = {
 
 function HistoryList({
   error,
+  historyRef,
   hasNextPage,
   isLoading,
   isLoadingNext,
@@ -649,6 +669,7 @@ function HistoryList({
   transactions,
 }: {
   error: Error | null;
+  historyRef: RefObject<HTMLElement | null>;
   hasNextPage: boolean;
   isLoading: boolean;
   isLoadingNext: boolean;
@@ -658,7 +679,12 @@ function HistoryList({
   const { t } = useLanguage();
 
   return (
-    <section aria-labelledby="inventory-history-heading" className="space-y-4">
+    <section
+      aria-labelledby="inventory-history-heading"
+      className="scroll-mt-20 space-y-4"
+      ref={historyRef}
+      tabIndex={-1}
+    >
       <div>
         <h3 className="font-semibold" id="inventory-history-heading">
           {t("uiTransactionHistory")}

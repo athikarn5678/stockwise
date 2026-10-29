@@ -19,6 +19,43 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/pricing" }));
 afterEach(cleanup);
 beforeEach(() => localStorage.clear());
 describe("public marketing", () => {
+  it.each(["en", "th"] as const)(
+    "removes the pricing notice without adding purchase actions in %s",
+    (language) => {
+      localStorage.setItem("stockwise.language", language);
+      render(
+        <LanguageProvider>
+          <PricingPage />
+        </LanguageProvider>,
+      );
+      const copy = language === "th" ? th : en;
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(
+        screen.queryByText("Proposed pricing — not available for purchase"),
+      ).toBeNull();
+      expect(
+        screen.queryByText("ราคาเสนอเบื้องต้น — ยังไม่เปิดจำหน่าย"),
+      ).toBeNull();
+      expect(
+        screen.queryByText(/These are proposed marketing concepts only/),
+      ).toBeNull();
+      expect(
+        screen.queryByText(/นี่เป็นเพียงแนวคิดทางการตลาดที่เสนอไว้เท่านั้น/),
+      ).toBeNull();
+      expect(screen.getByText(copy.pricingBadge)).toBeTruthy();
+      expect(screen.getByText(copy.pricingAccountDisclaimer)).toBeTruthy();
+      expect(
+        screen.queryByRole("button", {
+          name: /buy|purchase|checkout|ซื้อ|ชำระเงิน/i,
+        }),
+      ).toBeNull();
+      expect(
+        screen
+          .getAllByRole("link")
+          .filter((link) => link.getAttribute("href") === "/register"),
+      ).toHaveLength(3);
+    },
+  );
   it("uses real navigation and labels the illustrative product data", () => {
     render(
       <MarketingShell>

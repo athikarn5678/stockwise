@@ -8,6 +8,11 @@
 #   run-ops-task.sh export --export-id <id>   binds the export to <id>
 #   run-ops-task.sh uat-provision --uat-phase accounts|memberships --uat-spec-file <json>
 #                                passes the hash-only UAT spec (apps/api/src/uat) to the ops task
+#   run-ops-task.sh reconcile-owners --reconcile-mode verify
+#   run-ops-task.sh reconcile-owners --reconcile-mode dry-run|apply --reconcile-spec-file <json> [--reconcile-confirm-digest <16 hex>]
+#                                one-time ADR-041 OWNER reconciliation (apps/api/src/owner-reconciliation):
+#                                verify = read-only census, dry-run = read-only preflight that prints the
+#                                spec digest, apply = writes and requires that digest as confirmation
 #                                (teardown.sh verifies exactly that export)
 # Prints the task's CloudWatch log (credential-free by construction) and exits
 # with the container's exit code. Every invocation first verifies the Learner
@@ -21,11 +26,14 @@ action="${1:-}"
 export_id=""
 uat_phase=""
 uat_spec_file=""
+reconcile_mode=""
+reconcile_spec_file=""
+reconcile_digest=""
 case "$action" in
   bootstrap-roles) role="bootstrap" ;;
   export) role="export" ;;
-  prepare | migrate | grants | fence-state | status | seed | cutover | uat-provision) role="ops" ;;
-  *) die "usage: run-ops-task.sh bootstrap-roles|prepare|migrate|grants|fence-state|status|seed|cutover|uat-provision|export [--export-id <id>] [--uat-phase <p> --uat-spec-file <f>]" ;;
+  prepare | migrate | grants | fence-state | status | seed | cutover | uat-provision | reconcile-owners) role="ops" ;;
+  *) die "usage: run-ops-task.sh bootstrap-roles|prepare|migrate|grants|fence-state|status|seed|cutover|uat-provision|reconcile-owners|export [--export-id <id>] [--uat-phase <p> --uat-spec-file <f>] [--reconcile-mode <m> --reconcile-spec-file <f> --reconcile-confirm-digest <d>]" ;;
 esac
 shift
 while [[ $# -gt 0 ]]; do
@@ -33,6 +41,9 @@ while [[ $# -gt 0 ]]; do
     --export-id) export_id="${2:-}"; shift 2 ;;
     --uat-phase) uat_phase="${2:-}"; shift 2 ;;
     --uat-spec-file) uat_spec_file="${2:-}"; shift 2 ;;
+    --reconcile-mode) reconcile_mode="${2:-}"; shift 2 ;;
+    --reconcile-spec-file) reconcile_spec_file="${2:-}"; shift 2 ;;
+    --reconcile-confirm-digest) reconcile_digest="${2:-}"; shift 2 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -46,6 +57,22 @@ if [[ "$action" == "uat-provision" ]]; then
   [[ -f "$uat_spec_file" ]] || die "--uat-spec-file must name an existing file"
 elif [[ -n "$uat_phase$uat_spec_file" ]]; then
   die "--uat-phase and --uat-spec-file apply to uat-provision only"
+fi
+
+if [[ "$action" == "reconcile-owners" ]]; then
+  [[ "$reconcile_mode" =~ ^(verify|dry-run|apply)$ ]] || die "--reconcile-mode must be verify, dry-run or apply"
+  if [[ "$reconcile_mode" == "verify" ]]; then
+    [[ -z "$reconcile_spec_file$reconcile_digest" ]] || die "verify takes no spec file or digest"
+  else
+    [[ -f "$reconcile_spec_file" ]] || die "--reconcile-spec-file must name an existing file"
+  fi
+  if [[ "$reconcile_mode" == "apply" ]]; then
+    [[ "$reconcile_digest" =~ ^[0-9a-f]{16}$ ]] || die "apply requires --reconcile-confirm-digest (the 16 hex digit digest printed by dry-run)"
+  else
+    [[ -z "$reconcile_digest" ]] || die "--reconcile-confirm-digest applies to apply only"
+  fi
+elif [[ -n "$reconcile_mode$reconcile_spec_file$reconcile_digest" ]]; then
+  die "--reconcile-* options apply to reconcile-owners only"
 fi
 
 aws_region
@@ -74,6 +101,19 @@ if [[ "$action" == "uat-provision" ]]; then
   spec_b64="$(base64 <"$uat_spec_file" | tr -d "\n\r ")"
   [[ ${#spec_b64} -le 7000 ]] || die "the UAT spec exceeds the ECS override size budget"
   environment=",\"environment\":[{\"name\":\"STOCKWISE_UAT_PHASE\",\"value\":\"${uat_phase}\"},{\"name\":\"STOCKWISE_UAT_SPEC_B64\",\"value\":\"${spec_b64}\"}]"
+fi
+if [[ "$action" == "reconcile-owners" ]]; then
+  # Base64 keeps the JSON spec shell- and JSON-safe; it holds full IDs and email
+  # SHA-256 digests only, never an address or a secret.
+  environment=",\"environment\":[{\"name\":\"STOCKWISE_RECONCILE_MODE\",\"value\":\"${reconcile_mode}\"}"
+  if [[ "$reconcile_mode" != "verify" ]]; then
+    spec_b64="$(base64 <"$reconcile_spec_file" | tr -d "
+ ")"
+    [[ ${#spec_b64} -le 7000 ]] || die "the reconcile spec exceeds the ECS override size budget"
+    environment+=",{\"name\":\"STOCKWISE_RECONCILE_SPEC_B64\",\"value\":\"${spec_b64}\"}"
+  fi
+  [[ -z "$reconcile_digest" ]] || environment+=",{\"name\":\"STOCKWISE_RECONCILE_CONFIRM_DIGEST\",\"value\":\"${reconcile_digest}\"}"
+  environment+="]"
 fi
 step "starting ${family} ${action}"
 task_arn="$(aws ecs run-task --cluster "$cluster" --task-definition "$family" \

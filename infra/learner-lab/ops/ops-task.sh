@@ -6,7 +6,7 @@
 # STOCKWISE_OPS_ROLE; an action outside that role is refused:
 #   bootstrap  bootstrap-roles                       (RDS master credentials)
 #   ops        prepare | migrate | grants | fence-state | status | seed | cutover |
-#              uat-provision
+#              uat-provision | reconcile-owners
 #   export     export                                (LabRole task role, S3)
 # Credentials travel only in environment variables, never in arguments or
 # output. Machine-readable result lines start with STOCKWISE_.
@@ -40,7 +40,7 @@ require STOCKWISE_OPS_ROLE STOCKWISE_DB_HOST STOCKWISE_DB_PORT STOCKWISE_DB_NAME
 
 case "${STOCKWISE_OPS_ROLE}:${action}" in
   bootstrap:bootstrap-roles | export:export) ;;
-  ops:prepare | ops:migrate | ops:grants | ops:fence-state | ops:status | ops:seed | ops:cutover | ops:uat-provision) ;;
+  ops:prepare | ops:migrate | ops:grants | ops:fence-state | ops:status | ops:seed | ops:cutover | ops:uat-provision | ops:reconcile-owners) ;;
   *) die "action '${action}' is not permitted for the '${STOCKWISE_OPS_ROLE}' task definition" ;;
 esac
 
@@ -116,6 +116,24 @@ case "$action" in
     [[ "$(fence_state)" == "NATIVE" ]] || die "UAT provisioning requires the NATIVE state"
     step "uat-provision ${STOCKWISE_UAT_PHASE} on ${STOCKWISE_DB_NAME}"
     node dist/uat/uat-provision-main.js
+    ;;
+  reconcile-owners)
+    # One-time ADR-041 OWNER reconciliation (apps/api/src/owner-reconciliation):
+    # full-ID allowlist, locked per organization, refuses any unexpected state.
+    # verify and dry-run only read; apply needs the digest printed by dry-run.
+    as_migrator
+    require STOCKWISE_RECONCILE_MODE
+    [[ "$STOCKWISE_RECONCILE_MODE" =~ ^(verify|dry-run|apply)$ ]] || die "STOCKWISE_RECONCILE_MODE must be verify, dry-run or apply"
+    if [[ "$STOCKWISE_RECONCILE_MODE" != "verify" ]]; then
+      require STOCKWISE_RECONCILE_SPEC_B64
+    fi
+    if [[ "$STOCKWISE_RECONCILE_MODE" == "apply" ]]; then
+      require STOCKWISE_RECONCILE_CONFIRM_DIGEST
+      [[ "$STOCKWISE_RECONCILE_CONFIRM_DIGEST" =~ ^[0-9a-f]{16}$ ]] || die "STOCKWISE_RECONCILE_CONFIRM_DIGEST must be 16 hex digits"
+    fi
+    [[ "$(fence_state)" == "NATIVE" ]] || die "owner reconciliation requires the NATIVE state"
+    step "reconcile-owners ${STOCKWISE_RECONCILE_MODE} on ${STOCKWISE_DB_NAME}"
+    node dist/owner-reconciliation/owner-reconciliation-main.js
     ;;
   cutover)
     as_migrator

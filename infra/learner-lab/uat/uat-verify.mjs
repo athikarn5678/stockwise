@@ -482,6 +482,66 @@ if (owner && orgAId) {
       }),
       (r) => denied(r.status),
     );
+  // ADR-041 single-owner hierarchy: denial-only probes, no state change, no mail.
+  const peerAdminRow = byEmail.get("uat-admin2@hcn920.com");
+  if (ownerRow) {
+    check(
+      "owner",
+      "OWNER-03: owner deactivates self -> rejected",
+      "403 SELF_MODIFICATION_FORBIDDEN",
+      await owner.post(
+        `organizations/${orgAId}/members/${ownerRow.id}/deactivate`,
+        { expectedUpdatedAt: ownerRow.updatedAt },
+      ),
+      (r) => r.status === 403 && errorCode(r) === "SELF_MODIFICATION_FORBIDDEN",
+    );
+    check(
+      "owner",
+      "OWNER-04: owner invites a new OWNER -> rejected",
+      "403",
+      await owner.post(`organizations/${orgAId}/invitations`, {
+        email: "uat-governance-probe@hcn920.com",
+        role: "OWNER",
+        branchIds: [],
+      }),
+      (r) => r.status === 403,
+    );
+  }
+  if (cashierRow)
+    check(
+      "owner",
+      "OWNER-05: owner promotes a member to OWNER -> rejected",
+      "403",
+      await owner.patch(`organizations/${orgAId}/members/${cashierRow.id}`, {
+        role: "OWNER",
+        branchIds: [],
+        expectedUpdatedAt: cashierRow.updatedAt,
+      }),
+      (r) => r.status === 403,
+    );
+  if (admin && peerAdminRow)
+    check(
+      "admin",
+      "ADMIN-02: admin deactivates a peer ADMIN -> rejected",
+      "403",
+      await admin.post(
+        `organizations/${orgAId}/members/${peerAdminRow.id}/deactivate`,
+        { expectedUpdatedAt: peerAdminRow.updatedAt },
+      ),
+      (r) => r.status === 403,
+    );
+  if (admin)
+    check(
+      "admin",
+      "ADMIN-03: admin invites an ADMIN -> rejected",
+      "403",
+      await admin.post(`organizations/${orgAId}/invitations`, {
+        email: "uat-governance-probe@hcn920.com",
+        role: "ADMIN",
+        branchIds: [],
+      }),
+      (r) => r.status === 403,
+    );
   // Active member invite is a conflict, never an email.
   check(
     "owner",

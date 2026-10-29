@@ -459,6 +459,42 @@ for target in database master; do
   expect "R3F2_FINAL_NOOP_EXIT_ZERO_${target}_REFUSED" secret_invocation_case "${work}/noop/operator" "$target" valid refused
 done
 
+# ---- ADR-041: reconcile-owners argument handling and ECS override contents ----
+printf '{"version":1,"organizations":[]}
+' >"${work}/reconcile-spec.json"
+reconcile_refused() {
+  # reconcile_refused <case> <args...>: refused before any ECS submission
+  new_case "gov-$1"
+  shift
+  operator_run run run-ops-task.sh reconcile-owners "$@" && rc=0 || rc=$?
+  [[ $rc != 0 ]] && no_run_task
+}
+spec_arg="$(native "${work}/reconcile-spec.json")"
+expect GOV_RECONCILE_NO_MODE_REFUSED reconcile_refused nomode
+expect GOV_RECONCILE_BAD_MODE_REFUSED reconcile_refused badmode --reconcile-mode delete
+expect GOV_RECONCILE_APPLY_WITHOUT_DIGEST_REFUSED reconcile_refused nodigest --reconcile-mode apply --reconcile-spec-file "$spec_arg"
+expect GOV_RECONCILE_APPLY_SHORT_DIGEST_REFUSED reconcile_refused shortdigest --reconcile-mode apply --reconcile-spec-file "$spec_arg" --reconcile-confirm-digest abc123
+expect GOV_RECONCILE_DRYRUN_WITH_DIGEST_REFUSED reconcile_refused drydigest --reconcile-mode dry-run --reconcile-spec-file "$spec_arg" --reconcile-confirm-digest 0123456789abcdef
+expect GOV_RECONCILE_DRYRUN_MISSING_SPEC_REFUSED reconcile_refused nospec --reconcile-mode dry-run
+expect GOV_RECONCILE_VERIFY_WITH_SPEC_REFUSED reconcile_refused verifyspec --reconcile-mode verify --reconcile-spec-file "$spec_arg"
+new_case gov-options-on-other-action
+operator_run run run-ops-task.sh status --reconcile-mode verify && rc=0 || rc=$?
+expect GOV_RECONCILE_OPTIONS_ONLY_FOR_RECONCILE_ACTION bash -c "[[ $rc != 0 ]] && ! grep -q '^ecs run-task' '${case_dir}/aws.log'"
+override_case() {
+  # override_case <case> <expected substring> <args...>
+  new_case "gov-$1"
+  local needle="$2"
+  shift 2
+  printf 'STOCKWISE_OPS: reconcile-owners
+' >"${case_dir}/task-log.txt"
+  operator_run run run-ops-task.sh reconcile-owners "$@" && rc=0 || rc=$?
+  [[ $rc == 0 ]] && grep '^ecs run-task' "${case_dir}/aws.log" | grep -q -- "$needle" &&
+    ! grep '^ecs run-task' "${case_dir}/aws.log" | grep -q '@'
+}
+expect GOV_RECONCILE_VERIFY_OVERRIDE override_case verify 'STOCKWISE_RECONCILE_MODE' --reconcile-mode verify
+expect GOV_RECONCILE_DRYRUN_OVERRIDE override_case dry 'STOCKWISE_RECONCILE_SPEC_B64' --reconcile-mode dry-run --reconcile-spec-file "$spec_arg"
+expect GOV_RECONCILE_APPLY_OVERRIDE override_case apply 'STOCKWISE_RECONCILE_CONFIRM_DIGEST' --reconcile-mode apply --reconcile-spec-file "$spec_arg" --reconcile-confirm-digest 0123456789abcdef
+
 failed=0
 for result in "${results[@]}"; do [[ "$result" == *":PASS" ]] || failed=1; done
 printf '%s\n' "${results[@]}" >"${work}/summary.txt"

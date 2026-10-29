@@ -30,9 +30,9 @@ export const BRANCHES_A = [
 
 export const PERMISSIONS = {
   OWNER:
-    "Everything in the organization incl. members/owners, branches, settings, VAT, catalog, suppliers, purchasing, receiving, inventory, POS, sales, refunds, analytics, forecasts, AI; only OWNER manages OWNER rows",
+    "Everything in the organization incl. members, branches, settings, VAT, catalog, suppliers, purchasing, receiving, inventory, POS, sales, refunds, analytics, forecasts, AI; the single OWNER of the organization, never assignable or modifiable by anyone else",
   ADMIN:
-    "Same operations as OWNER except cannot grant/demote/remove OWNER or transfer ownership; manages branches and non-owner members; cannot change own membership",
+    "Same operations as OWNER except cannot manage the OWNER, another ADMIN, or itself, and cannot grant ADMIN/OWNER; manages branches and BRANCH_MANAGER/INVENTORY_STAFF/CASHIER members",
   BRANCH_MANAGER:
     "Assigned branches only: catalog edit/deactivate, suppliers, purchasing/receiving, stock adjustment, POS + discount, sales history + cost + refunds, analytics/forecast/AI; no members, branches or settings",
   INVENTORY_STAFF:
@@ -56,7 +56,9 @@ export const ACCOUNTS = [
   {
     key: "owner2",
     local: "uat-owner2",
-    role: "OWNER",
+    // ADR-041: one OWNER per organization. Production reconciled this account
+    // from OWNER to ADMIN; the account keeps its original name and email.
+    role: "ADMIN",
     org: ORG_A,
     branches: [],
     name: "UAT เจ้าของร่วม (Owner 2)",

@@ -35,17 +35,18 @@ StockWise has exactly **five** built-in organization roles (`ORGANIZATION_ROLES`
 | Organization settings (name) | ✔ | ✔ | ✖ | ✖ | ✖ |
 | Branch create / edit / deactivate | ✔ | ✔ | ✖ | ✖ | ✖ |
 | View members and invitations | ✔ | ✔ | ✖ | ✖ | ✖ |
-| Invite / change / remove **non-owner** members | ✔ | ✔ ★2 | ✖ | ✖ | ✖ |
-| Invite / change / remove **OWNER** members | ✔ | ✖ | ✖ | ✖ | ✖ |
-| Change or remove **own** membership | ✔ ★3 | ✖ | ✖ | ✖ | ✖ |
-| Last active OWNER can be removed or demoted | ✖ | ✖ | ✖ | ✖ | ✖ |
+| Invite / change / remove **ADMIN** members | ✔ | ✖ ★2 | ✖ | ✖ | ✖ |
+| Invite / change / remove BRANCH_MANAGER, INVENTORY_STAFF, CASHIER | ✔ | ✔ | ✖ | ✖ | ✖ |
+| Invite, promote or reactivate someone as **OWNER** | ✖ ★3 | ✖ | ✖ | ✖ | ✖ |
+| Change or remove **own** membership | ✖ ★3 | ✖ | ✖ | ✖ | ✖ |
+| Change, demote or remove the **OWNER** | ✖ | ✖ | ✖ | ✖ | ✖ |
 | Ownership *transfer* workflow | not implemented ★4 | — | — | — | — |
 
 Notes
 1. A branch manager asking for organization-scope analytics receives figures filtered to the assigned branches (verified: totals differ per manager).
-2. ADMIN can never grant `OWNER`, and can neither demote nor remove an OWNER.
-3. Only an OWNER may change or leave their own membership, and only while another active OWNER remains (`409 LAST_ACTIVE_OWNER` otherwise). Every other role gets `403 SELF_MODIFICATION_FORBIDDEN`.
-4. The accepted model (ADR-021) allows **several OWNERs**; one OWNER may grant OWNER to another and may deactivate another OWNER while at least one remains. A separate "primary owner / transfer ownership" workflow is not part of the accepted model and is not implemented. This is a product decision for the owner of the project.
+2. Strict hierarchy (ADR-041): `OWNER > ADMIN > BRANCH_MANAGER > INVENTORY_STAFF > CASHIER`. An actor may manage only members strictly below their own role and may assign only roles strictly below their own, so an ADMIN manages only the three roles under ADMIN and cannot manage another ADMIN. Violations return `403 FORBIDDEN`.
+3. Each organization has exactly **one** OWNER (the creator). Nobody can invite, promote, accept or reactivate an OWNER, and nobody, the OWNER included, can change, demote or remove themselves (`403 SELF_MODIFICATION_FORBIDDEN`).
+4. Ownership transfer is not implemented and is not part of the accepted model. This is a product decision for the owner of the project. BRANCH_MANAGER has no member-management permission and none was added.
 
 Removed (deactivated) members lose access immediately on their next request, even with an open session. An invitation is refused for any email that already has a membership in that organization: an active member returns `409 MEMBERSHIP_ALREADY_EXISTS`; a removed member returns `409 MEMBERSHIP_INACTIVE_EXISTS` and is brought back with **Include inactive → Reactivate** (not with a new invitation).
 
@@ -56,8 +57,8 @@ Passwords are in the credential CSV. Emails are `@hcn920.com` addresses that bel
 | Account | Role | Organization / branches | Typical use |
 | --- | --- | --- | --- |
 | `uat-owner` | OWNER | A, all | creator; full control |
-| `uat-owner2` | OWNER | A, all | second owner: grant/remove/step-down tests |
-| `uat-admin`, `uat-admin2` | ADMIN | A, all | admin limits; self-demotion; owner protection |
+| `uat-owner2` | ADMIN (was OWNER until the ADR-041 reconciliation) | A, all | peer-ADMIN limits: cannot be managed by another ADMIN; managed by `uat-owner` |
+| `uat-admin`, `uat-admin2` | ADMIN | A, all | admin limits; self-modification; peer-ADMIN and owner protection |
 | `uat-manager-main` | BRANCH_MANAGER | A: MAIN | branch-scoped management, refunds, discounts |
 | `uat-manager-cm` | BRANCH_MANAGER | A: BR-001 | cross-branch isolation |
 | `uat-manager-multi` | BRANCH_MANAGER | A: MAIN + BR-002 | branch switcher |
@@ -98,8 +99,8 @@ The UI hides what a role cannot do; the real authority is the API, so a denied d
 
 Record each line as PASS / FAIL / BLOCKED.
 
-- **OWNER** — create a branch without typing a code (expect `BR-003`); invite a new owner and an admin; change a member's role and branch scope; reach organization settings, VAT, analytics, AI, refunds; cannot remove or demote the last owner.
-- **ADMIN** — everything operational; open Members: cannot offer **OWNER** as a role, cannot edit or deactivate an owner row, cannot change own role or deactivate self (message shown).
+- **OWNER** — create a branch without typing a code (expect `BR-003`); invite an admin and lower roles (OWNER is not offered); change a lower member's role and branch scope, demote or remove an ADMIN; reach organization settings, VAT, analytics, AI, refunds; your own row and any OWNER row are read-only.
+- **ADMIN** — everything operational; open Members: can offer only BRANCH_MANAGER, INVENTORY_STAFF and CASHIER; owner rows, ADMIN rows (including another admin) and the own row are read-only; an API call attempting any of them returns 403.
 - **BRANCH_MANAGER** — sees only assigned branches; can apply a discount, refund a sale, adjust stock, receive a PO; Members / Branches / Settings are unavailable; pasting the other branch's id in the URL shows nothing.
 - **INVENTORY_STAFF** — create a PO, mark ORDERED, receive it; adjust stock; no POS, no sales history, no cost, no AI; other branches unavailable.
 - **CASHIER** — POS shows **In stock at this branch: N unit** per product; add to cart, pay cash and transfer; no discount control; cannot open catalog edit, suppliers, purchasing; other branches unavailable. Oversell attempt (quantity above stock) is rejected, stock never goes negative.
@@ -107,8 +108,8 @@ Record each line as PASS / FAIL / BLOCKED.
 ## 7. Scenarios
 
 1. **Role change:** as `uat-owner` change `uat-cashier-main` to BRANCH_MANAGER (MAIN) and back; the cashier profile must pick up the new access on its next request.
-2. **Grant OWNER:** `uat-admin` tries to make someone OWNER (not offered; direct API call returns 403); `uat-owner` can.
-3. **Self-demotion:** `uat-admin` edits own row → blocked; `uat-owner2` steps down to ADMIN while `uat-owner` remains → allowed; then `uat-owner` cannot step down (`LAST_ACTIVE_OWNER`).
+2. **No OWNER grant:** neither `uat-admin` nor `uat-owner` can make anyone OWNER (the role is not offered; a direct API call, an invitation with role OWNER and a reactivation as OWNER all return 403).
+3. **Hierarchy and self-modification:** `uat-admin` edits its own row → blocked; `uat-admin` tries to change or deactivate `uat-admin2` or `uat-owner2` (both ADMIN) → blocked; `uat-owner` tries to deactivate or demote itself → blocked (`SELF_MODIFICATION_FORBIDDEN`); `uat-owner` can demote an ADMIN (restore afterwards).
 4. **Remove and re-invite:** in profile B sign in as `uat-removed` and keep the tab open; in profile A `uat-owner` deactivates that member; B's next click must lose access; invite the same email → clear "removed earlier, use Reactivate" message and **no email**; Include inactive → Reactivate restores access once, no duplicate row.
 5. **Real invitation + email:** invite *your own* mailbox (any role) and accept it through your own register/OTP/login; a removed member cannot be silently restored by an old link.
 6. **Branch switching:** `uat-manager-multi` switches MAIN ↔ BR-002; the product/stock lists must change and carry no data from the previous branch.

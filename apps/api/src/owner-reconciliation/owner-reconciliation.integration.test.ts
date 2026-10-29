@@ -276,8 +276,10 @@ describe("one-time OWNER reconciliation with PostgreSQL", () => {
     const fixture = await twoOwnerOrganization("Mango");
     const spec = specFor(fixture);
 
-    const outcomes = await Promise.all([apply(spec), apply(spec), apply(spec)]);
-    expect(outcomes).toHaveLength(3);
+    const outcomes = await Promise.all(
+      Array.from({ length: 8 }, () => apply(spec)),
+    );
+    expect(outcomes).toHaveLength(8);
     const retry = await apply(spec);
 
     expect(retry.join("\n")).toContain("ALREADY_RECONCILED");

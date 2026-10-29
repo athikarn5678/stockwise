@@ -229,11 +229,19 @@ async function reconcileOrganization(
   now: Date,
 ): Promise<OrganizationOutcome> {
   const { demoted, organizationId, retained } = entry;
+  if (mode === "dry-run") {
+    // One snapshot for every read: with the default READ COMMITTED a concurrent
+    // apply could commit between two of the inspection queries and make a
+    // consistent state look like a mismatch.
+    return prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+        return inspectOrganization(tx, entry);
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+  }
   return prisma.$transaction(async (tx) => {
-    if (mode === "dry-run") {
-      await tx.$executeRaw`SET TRANSACTION READ ONLY`;
-      return inspectOrganization(tx, entry);
-    }
     // Serializes with every API membership mutation, which takes the same lock.
     const locked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT "id" FROM "organizations"

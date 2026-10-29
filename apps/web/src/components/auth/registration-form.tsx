@@ -30,6 +30,15 @@ export function RegistrationForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [confirmationTouched, setConfirmationTouched] = useState(false);
+  const confirmationInput = useRef<HTMLInputElement>(null);
+  const confirmationError = !confirmationTouched
+    ? null
+    : confirmPassword === ""
+      ? "authConfirmPasswordRequired"
+      : confirmPassword !== password
+        ? "authPasswordMismatch"
+        : null;
   const [error, setError] = useState<
     { key: TranslationKey } | { cause: unknown } | null
   >(null);
@@ -75,12 +84,10 @@ export function RegistrationForm() {
       return;
     }
 
-    if (confirmPassword === "") {
-      setError({ key: "authConfirmPasswordRequired" });
-      return;
-    }
-    if (confirmPassword !== password) {
-      setError({ key: "authPasswordMismatch" });
+    if (confirmPassword === "" || confirmPassword !== password) {
+      setConfirmationTouched(true);
+      setError(null);
+      confirmationInput.current?.focus();
       return;
     }
 
@@ -106,6 +113,7 @@ export function RegistrationForm() {
       });
       setPassword("");
       setConfirmPassword("");
+      setConfirmationTouched(false);
       if (!saved) {
         // Cannot safely recover the OTP challenge without the one-use
         // continuation. Preserve the generic enrollment response.
@@ -167,17 +175,35 @@ export function RegistrationForm() {
           {t("authConfirmPassword")}
         </Label>
         <Input
-          aria-describedby={error !== null ? "registration-error" : undefined}
+          aria-describedby={
+            confirmationError !== null
+              ? "registration-confirm-error"
+              : error !== null
+                ? "registration-error"
+                : undefined
+          }
+          aria-invalid={confirmationError !== null}
           autoComplete="new-password"
           className="mt-1"
           disabled={isSubmitting}
           id="registration-confirm-password"
           name="confirmPassword"
+          onBlur={() => setConfirmationTouched(true)}
           onChange={(event) => setConfirmPassword(event.target.value)}
+          ref={confirmationInput}
           required
           type="password"
           value={confirmPassword}
         />
+        {confirmationError !== null && (
+          <p
+            className="mt-2 text-sm text-destructive"
+            id="registration-confirm-error"
+            role="alert"
+          >
+            {t(confirmationError)}
+          </p>
+        )}
       </div>
       {error === null ? null : (
         <Alert

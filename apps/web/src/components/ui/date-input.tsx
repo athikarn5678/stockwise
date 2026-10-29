@@ -4,9 +4,9 @@ import * as React from "react";
 import { CalendarIcon } from "lucide-react";
 import { DayPicker } from "react-day-picker";
 import { th } from "react-day-picker/locale";
-import "react-day-picker/style.css";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import {
   Popover,
@@ -52,7 +52,7 @@ export function DateInput({
   value,
   ...props
 }: Omit<React.ComponentProps<"input">, "type">) {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const input = React.useRef<HTMLInputElement>(null);
   const [open, setOpen] = React.useState(false);
   const text = typeof value === "string" ? value : "";
@@ -72,11 +72,11 @@ export function DateInput({
   }
 
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className="inline-flex w-full min-w-0 max-w-full items-center gap-1">
       <Input
         {...props}
         aria-invalid={props["aria-invalid"] ?? (invalid ? true : undefined)}
-        className={className}
+        className={cn("min-w-0 flex-1", className)}
         disabled={disabled}
         inputMode="numeric"
         maxLength={10}
@@ -91,7 +91,7 @@ export function DateInput({
         <PopoverTrigger
           render={
             <Button
-              aria-label={language === "th" ? "เลือกวันที่" : "Choose date"}
+              aria-label={t("dateChoose")}
               disabled={disabled}
               size="icon"
               type="button"
@@ -101,9 +101,44 @@ export function DateInput({
         >
           <CalendarIcon aria-hidden="true" />
         </PopoverTrigger>
-        <PopoverContent>
+        <PopoverContent className="w-auto max-w-[calc(100vw-2rem)]">
           <DayPicker
+            autoFocus
+            className="p-1 text-foreground"
+            classNames={{
+              months: "relative flex flex-col",
+              month: "flex flex-col gap-3",
+              nav: "absolute inset-x-0 top-0 flex justify-between",
+              button_previous: buttonVariants({
+                variant: "outline",
+                size: "icon",
+              }),
+              button_next: buttonVariants({ variant: "outline", size: "icon" }),
+              chevron: "size-4 fill-current",
+              month_caption: "flex h-8 items-center justify-center px-9",
+              caption_label: "text-sm font-medium",
+              month_grid: "w-full border-collapse",
+              weekdays: "flex",
+              weekday:
+                "w-9 text-center text-xs font-normal text-muted-foreground",
+              week: "mt-1 flex",
+              day: "relative size-9 p-0 text-center text-sm",
+              day_button: cn(
+                buttonVariants({ variant: "ghost" }),
+                "size-9 rounded-md p-0 font-normal",
+              ),
+              selected:
+                "[&>button]:bg-primary [&>button]:text-primary-foreground",
+              today: "rounded-md bg-muted",
+              outside: "text-muted-foreground opacity-50",
+              disabled: "text-muted-foreground opacity-40",
+              hidden: "invisible",
+            }}
             mode="single"
+            labels={{
+              labelNext: () => t("dateNextMonth"),
+              labelPrevious: () => t("datePreviousMonth"),
+            }}
             onSelect={pick}
             {...(selected === undefined
               ? {}

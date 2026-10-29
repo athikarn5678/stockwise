@@ -1,4 +1,7 @@
 export const en = {
+  dateChoose: "Choose date",
+  dateNextMonth: "Next month",
+  datePreviousMonth: "Previous month",
   home: "Home",
   features: "Features",
   pricing: "Pricing",
@@ -366,7 +369,7 @@ export const en = {
   teamReissue: "Reissue",
   teamIncludeInactive: "Include inactive",
   teamUnavailable: "Member management unavailable",
-  teamOwnerOnly: "Only an owner may change owner access.",
+  teamReadOnlyMember: "This member's access is read-only for you.",
   teamOrganizationScope: "Organization-wide scope",
   teamBranchScope: "Branch scope",
   teamNoAssignments: "No branches assigned",
@@ -403,12 +406,12 @@ export const en = {
     "Owner or administrator access is required for this organization.",
   teamRules: "Access rules",
   teamRulesHelp:
-    "Owners manage all five roles. Administrators manage non-owner roles only. At least one active owner must remain. The server checks every change.",
+    "Owners and administrators manage only lower roles, never themselves or peers. Owner access cannot be assigned here. The server checks every change.",
   teamRoleGuide: "Fixed role guide",
   teamRoleOwner:
-    "Full organization operations and visibility; manages all roles, including owners.",
+    "Full organization operations and visibility; manages lower roles, never owner access or their own membership.",
   teamRoleAdmin:
-    "Organization-wide operations; manages branches and non-owner team access. Cannot change owners.",
+    "Organization-wide operations; manages branches and lower team roles, never administrators, owners or their own membership.",
   teamRoleManager:
     "Assigned-branch operations, checkout, refunds, reporting and AI summaries. Cannot administer team access or branches.",
   teamRoleInventory:
@@ -454,8 +457,7 @@ export const en = {
     "This membership is not in the required state. Refresh the team.",
   teamErrorUnavailable: "The membership service is unavailable. Try again.",
   teamErrorValidation: "Check the submitted values and try again.",
-  teamInviteOwnerOnly: "Only an owner may manage owner invitations.",
-  teamReadOnlyInvitation: "This invitation is final and cannot be changed.",
+  teamReadOnlyInvitation: "This invitation is read-only for you.",
   teamUnsaved: "Unsaved access changes",
   teamCancel: "Cancel changes",
   inventoryTitle: "Inventory",

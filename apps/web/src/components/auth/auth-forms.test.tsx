@@ -101,6 +101,50 @@ function renderWithQueryClient(ui: ReactNode, queryClient = new QueryClient()) {
 
 describe("registration form", () => {
   it.each(["en", "th"] as const)(
+    "validates touched confirmation inline on blur and subsequent edits in %s",
+    (language) => {
+      localStorage.setItem("stockwise.language", language);
+      const copy = language === "th" ? th : en;
+      render(
+        <LanguageProvider>
+          <RegistrationForm />
+        </LanguageProvider>,
+      );
+      const password = screen.getByLabelText(copy.authPassword);
+      const confirmation = screen.getByLabelText(copy.authConfirmPassword);
+      fireEvent.change(password, {
+        target: { value: "a sufficiently long password" },
+      });
+      fireEvent.change(confirmation, { target: { value: "different" } });
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(confirmation.getAttribute("aria-invalid")).toBe("false");
+      fireEvent.blur(confirmation);
+      const message = screen.getByRole("alert");
+      expect(message.textContent).toBe(copy.authPasswordMismatch);
+      expect(confirmation.nextElementSibling).toBe(message);
+      expect(message.classList.contains("text-destructive")).toBe(true);
+      expect(confirmation.getAttribute("aria-invalid")).toBe("true");
+      expect(confirmation.getAttribute("aria-describedby")).toBe(message.id);
+      fireEvent.change(confirmation, {
+        target: { value: "a sufficiently long password" },
+      });
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(confirmation.getAttribute("aria-invalid")).toBe("false");
+      fireEvent.change(password, {
+        target: { value: "an updated long password" },
+      });
+      expect(screen.getByRole("alert").textContent).toBe(
+        copy.authPasswordMismatch,
+      );
+      fireEvent.change(confirmation, { target: { value: "" } });
+      expect(screen.getByRole("alert").textContent).toBe(
+        copy.authConfirmPasswordRequired,
+      );
+      expect(register).not.toHaveBeenCalled();
+      localStorage.clear();
+    },
+  );
+  it.each(["en", "th"] as const)(
     "requires exact password confirmation and preserves the OTP request in %s",
     async (language) => {
       localStorage.setItem("stockwise.language", language);

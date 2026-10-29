@@ -311,6 +311,76 @@ afterEach(() => {
 });
 
 describe("purchase order management UI", () => {
+  it.each(["en", "th"] as const)(
+    "preserves long order values in wrapping cards and read-only details in %s",
+    async (language) => {
+      localStorage.setItem("stockwise.language", language);
+      const longName = "ชื่อสินค้าที่ยาวมากVeryLongProductName".repeat(4);
+      const longSupplier = "ผู้จำหน่ายSupplierWithoutSpaces".repeat(4);
+      const reference = "PO-" + "1234567890".repeat(8);
+      const amount = "9999999999999999.1234";
+      const quantity = "999999999.999";
+      const longOrder = {
+        ...cancelledOrder,
+        reference,
+        expectedTotal: amount,
+        items: [
+          {
+            ...order.items[0]!,
+            productNameSnapshot: longName,
+            productSkuSnapshot: "LONG-SKU".repeat(10),
+            quantity,
+            expectedUnitCost: amount,
+          },
+        ],
+      };
+      vi.mocked(listPurchaseOrders).mockResolvedValue({
+        data: { purchaseOrders: [longOrder] },
+        meta: { nextCursor: null },
+      });
+      vi.mocked(getPurchaseOrder).mockResolvedValue(longOrder);
+      vi.mocked(listSuppliers).mockResolvedValue({
+        data: {
+          suppliers: [
+            {
+              address: null,
+              contactName: null,
+              createdAt: order.createdAt,
+              email: null,
+              id: SUPPLIER_ID,
+              name: longSupplier,
+              organizationId: ORGANIZATION_ID,
+              phone: null,
+              status: "ACTIVE",
+              updatedAt: order.updatedAt,
+            },
+          ],
+        },
+        meta: { nextCursor: null },
+      });
+      renderManagement(true);
+      const card = await screen.findByRole("button", {
+        name: new RegExp(reference),
+      });
+      expect(card.textContent).toContain(`${amount} THB`);
+      expect(card.textContent).toContain(longSupplier);
+      expect(card.classList.contains("h-auto")).toBe(true);
+      expect(card.classList.contains("whitespace-normal")).toBe(true);
+      expect(card.classList.contains("block")).toBe(true);
+      fireEvent.click(card);
+      const detail = (
+        await screen.findByRole("heading", { name: reference })
+      ).closest("article")!;
+      expect(detail.textContent).toContain(longName);
+      expect(detail.textContent).toContain(longSupplier);
+      expect(detail.textContent).toContain(`${quantity} × ${amount} THB`);
+      expect(detail.closest("section")?.className).toContain(
+        "[overflow-wrap:anywhere]",
+      );
+      expect(updatePurchaseOrder).not.toHaveBeenCalled();
+      localStorage.clear();
+    },
+  );
   it("formats frozen receiving costs without formatting quantities or entered costs", async () => {
     vi.mocked(getPurchaseOrder).mockResolvedValue({
       ...order,

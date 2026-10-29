@@ -25,6 +25,7 @@ import {
 import { LanguageProvider } from "@/providers/language-provider";
 import { notifySessionChange } from "@/session-lifecycle";
 import { th } from "@/i18n/th";
+import { en } from "@/i18n/en";
 
 import { MembershipManagement } from "./membership-management";
 
@@ -181,6 +182,129 @@ afterEach(() => {
 });
 
 describe("membership management UI", () => {
+  it.each(
+    (["en", "th"] as const).flatMap((language) =>
+      (["OWNER", "ADMIN"] as const).flatMap((actorRole) =>
+        (["ACTIVE", "INACTIVE"] as const).map((status) => ({
+          language,
+          actorRole,
+          status,
+        })),
+      ),
+    ),
+  )(
+    "keeps self/equal/higher targets read-only for $actorRole in $language ($status)",
+    async ({ language, actorRole, status }) => {
+      localStorage.setItem("stockwise.language", language);
+      const copy = language === "th" ? th : en;
+      const access = context(actorRole);
+      const roles = [
+        "OWNER",
+        "ADMIN",
+        "BRANCH_MANAGER",
+        "INVENTORY_STAFF",
+        "CASHIER",
+      ] as const;
+      const allowed =
+        actorRole === "OWNER"
+          ? ["ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF", "CASHIER"]
+          : ["BRANCH_MANAGER", "INVENTORY_STAFF", "CASHIER"];
+      vi.mocked(fetchAccessContext).mockResolvedValue(access);
+      vi.mocked(fetchMemberships).mockResolvedValue({
+        data: [
+          ...roles.map((role) => ({
+            ...membership,
+            id: role,
+            role,
+            status,
+            branchAssignments:
+              role === "OWNER" || role === "ADMIN"
+                ? []
+                : membership.branchAssignments,
+            user: {
+              ...membership.user,
+              id: role,
+              displayName: `${role} target`,
+            },
+          })),
+          {
+            ...membership,
+            id: "self",
+            role: actorRole,
+            status,
+            user: access.user,
+            branchAssignments: [],
+          },
+        ],
+        meta: { nextCursor: null },
+      });
+      vi.mocked(fetchInvitations).mockResolvedValue({
+        data: [
+          ...roles.map((intendedRole) => ({
+            ...invitation,
+            id: intendedRole,
+            intendedRole,
+            invitedEmail: `${intendedRole.toLowerCase()}.target@example.com`,
+            state:
+              status === "ACTIVE" ? ("PENDING" as const) : ("EXPIRED" as const),
+          })),
+          { ...invitation, id: "self", invitedEmail: access.user.email },
+        ],
+        meta: { nextCursor: null },
+      });
+      renderManagement();
+      for (const role of roles) {
+        const member = within(
+          (
+            await screen.findByRole("heading", { name: `${role} target` })
+          ).closest("article")!,
+        );
+        expect(
+          member.getByText(
+            `${copy[role]} · ${copy[status === "ACTIVE" ? "teamActive" : "teamInactive"]}`,
+          ),
+        ).toBeTruthy();
+        expect(member.queryByRole("combobox") !== null).toBe(
+          allowed.includes(role),
+        );
+        expect(
+          member.queryByRole("button", {
+            name:
+              status === "ACTIVE" ? copy.teamDeactivate : copy.teamReactivate,
+          }) !== null,
+        ).toBe(allowed.includes(role));
+        const invite = within(
+          (
+            await screen.findByRole("heading", {
+              name: `${role.toLowerCase()}.target@example.com`,
+            })
+          ).closest("article")!,
+        );
+        expect(
+          invite.queryByRole("button", { name: copy.teamReissue }) !== null,
+        ).toBe(allowed.includes(role));
+        expect(
+          invite.queryByRole("button", { name: copy.teamRevoke }) !== null,
+        ).toBe(allowed.includes(role));
+      }
+      for (const heading of [access.user.displayName, access.user.email]) {
+        const self = within(
+          screen.getByRole("heading", { name: heading }).closest("article")!,
+        );
+        expect(self.queryByRole("combobox")).toBeNull();
+        expect(self.queryByRole("button")).toBeNull();
+      }
+      for (const select of screen.getAllByRole("combobox")) {
+        expect(
+          Array.from(
+            (select as HTMLSelectElement).options,
+            (option) => option.value,
+          ),
+        ).toEqual(allowed);
+      }
+    },
+  );
+
   it.each(["BRANCH_MANAGER", "INVENTORY_STAFF", "CASHIER"] as const)(
     "denies %s without loading management resources",
     async (role) => {
@@ -270,7 +394,7 @@ describe("membership management UI", () => {
     expect(prompt).toMatch(/replace|invalidat/i);
   });
 
-  it.each(["OWNER", "ADMIN"] as const)(
+  it.each(["OWNER"] as const)(
     "%s may invite with organization-wide scope",
     async (role) => {
       vi.mocked(fetchAccessContext).mockResolvedValue(context(role));
@@ -544,7 +668,7 @@ describe("membership management UI", () => {
       meta: { nextCursor: null },
     });
     renderManagement();
-    await screen.findByText("Only an owner may change owner access.");
+    await screen.findByText(en.teamReadOnlyMember);
     expect(screen.queryByRole("button", { name: "Deactivate" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Revoke" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Reissue" })).toBeNull();

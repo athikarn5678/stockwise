@@ -400,7 +400,7 @@ function PurchaseOrderContent({
   };
 
   return (
-    <section className="w-full space-y-6">
+    <section className="w-full min-w-0 space-y-6 [overflow-wrap:anywhere]">
       <header className="space-y-2">
         <Link
           className="text-sm underline"
@@ -508,7 +508,7 @@ function PurchaseOrderContent({
           {records.map((order) => (
             <Button
               variant="outline"
-              className="bg-card p-4 text-left"
+              className="block h-auto w-full min-w-0 bg-card p-4 text-left whitespace-normal"
               key={order.id}
               onClick={() => setSelectedId(order.id)}
               type="button"
@@ -524,7 +524,7 @@ function PurchaseOrderContent({
                   t("uiHistoricalSupplier")}{" "}
                 · {order.orderDate}
               </p>
-              <p className="mt-1 text-sm">
+              <p className="mt-1 text-sm tabular-nums">
                 {t("uiExpectedTotal")} {formatMoney(order.expectedTotal)} THB
               </p>
             </Button>
@@ -678,7 +678,7 @@ function PurchaseOrderForm({
           {t(validation)}
         </p>
       ) : null}
-      <div className="mt-4 grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_12rem_12rem]">
+      <div className="mt-4 grid min-w-0 items-start gap-4 sm:grid-cols-2">
         <Label className="form-field" htmlFor={supplierId}>
           {t("uiSupplier")}
           <NativeSelect
@@ -760,7 +760,7 @@ function PurchaseOrderForm({
           const selected = productById.get(line.productId);
           return (
             <fieldset
-              className="grid min-w-0 grid-cols-1 gap-3 rounded-md border p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_9rem_10rem_auto]"
+              className="grid min-w-0 grid-cols-1 gap-3 rounded-md border p-4 sm:grid-cols-2"
               key={`${line.productId}-${index}`}
             >
               <legend className="sr-only">
@@ -1155,10 +1155,10 @@ function ReceivingPanel({
       </p>
       {order.items.map((item) => (
         <fieldset
-          className="grid gap-2 rounded border p-3 sm:grid-cols-3"
+          className="grid min-w-0 gap-2 rounded border p-3 sm:grid-cols-3"
           key={item.id}
         >
-          <legend className="text-sm font-medium">
+          <legend className="max-w-full text-sm font-medium">
             {item.productNameSnapshot} · {item.productSkuSnapshot}
           </legend>
           <p className="text-sm">
@@ -1356,7 +1356,7 @@ function ReadOnlyPurchaseOrder({
 
   return (
     <div className="space-y-4">
-      <dl className="grid gap-3 text-sm sm:grid-cols-2">
+      <dl className="grid min-w-0 gap-3 text-sm sm:grid-cols-2 [&>div]:min-w-0">
         <div>
           <dt className="text-muted-foreground">{t("uiSupplier")}</dt>
           <dd>{supplierName}</dd>
@@ -1371,13 +1371,18 @@ function ReadOnlyPurchaseOrder({
         </div>
         <div>
           <dt className="text-muted-foreground">{t("uiExpectedTotal3")}</dt>
-          <dd>{formatMoney(order.expectedTotal)} THB</dd>
+          <dd className="tabular-nums">
+            {formatMoney(order.expectedTotal)} THB
+          </dd>
         </div>
       </dl>
       <div className="space-y-2">
         <h3 className="font-medium">{t("uiFrozenProductLines")}</h3>
         {order.items.map((item) => (
-          <div className="rounded-md border p-3 text-sm" key={item.id}>
+          <div
+            className="min-w-0 rounded-md border p-3 text-sm tabular-nums"
+            key={item.id}
+          >
             {item.productNameSnapshot} · {item.productSkuSnapshot}
             <br />
             {item.quantity} × {formatMoney(item.expectedUnitCost)} THB

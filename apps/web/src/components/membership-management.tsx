@@ -153,6 +153,7 @@ export function MembershipManagement() {
   return (
     <TeamWorkspace
       key={`${organization.id}:${accountDraftAuthority(context.data)}`}
+      actor={context.data.user}
       organization={organization}
       branchId={params.get("branchId")}
     />
@@ -167,9 +168,11 @@ export function MembershipManagementFallback() {
 function TeamWorkspace({
   organization,
   branchId,
+  actor,
 }: {
   organization: AccessibleOrganization;
   branchId: string | null;
+  actor: AccessContext["user"];
 }) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
@@ -333,6 +336,7 @@ function TeamWorkspace({
         {members.map((member) => (
           <MemberEditor
             key={member.id}
+            actorId={actor.id}
             actorRole={organization.role}
             member={member}
             branches={branches}
@@ -372,6 +376,7 @@ function TeamWorkspace({
         {invitations.map((invitation) => (
           <InvitationCard
             key={invitation.id}
+            actorEmail={actor.email}
             actorRole={organization.role}
             invitation={invitation}
             organizationId={organizationId}
@@ -474,6 +479,7 @@ function InviteForm({
     if (
       submissionLocked.current ||
       mutation.isPending ||
+      !canAssignRole(actorRole, role) ||
       !scopeReady ||
       (branchRole(role) && !branchIds.length)
     )
@@ -582,18 +588,21 @@ function InviteForm({
 
 function InvitationCard({
   actorRole,
+  actorEmail,
   invitation,
   organizationId,
   onSaved,
 }: {
   actorRole: AccessibleOrganization["role"];
+  actorEmail: string;
   invitation: Invitation;
   organizationId: string;
   onSaved: EditorProps["onSaved"];
 }) {
   const { t, language } = useLanguage();
   const canDelegate =
-    actorRole === "OWNER" || invitation.intendedRole !== "OWNER";
+    canAssignRole(actorRole, invitation.intendedRole) &&
+    invitation.invitedEmail.toLowerCase() !== actorEmail.toLowerCase();
   const open = invitation.state === "PENDING" || invitation.state === "EXPIRED";
   const mutation = useMutation({
     mutationFn: async (action: "revoke" | "reissue") => {
@@ -666,7 +675,7 @@ function InvitationCard({
         </div>
       ) : (
         <p className="mt-3 text-sm text-muted-foreground">
-          {t(canDelegate ? "teamReadOnlyInvitation" : "teamInviteOwnerOnly")}
+          {t("teamReadOnlyInvitation")}
         </p>
       )}
       {mutation.isError && <Failure error={mutation.error} />}
@@ -676,19 +685,21 @@ function InvitationCard({
 
 function MemberEditor({
   actorRole,
+  actorId,
   branches,
   scopeReady,
   member,
   organizationId,
   onSaved,
-}: EditorProps & { member: Membership }) {
+}: EditorProps & { actorId: string; member: Membership }) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   // Ordinary refetch must not silently rebase an unsaved privileged change.
   const [base, setBase] = useState(member);
   const [role, setRole] = useState<MembershipRole>(member.role);
   const [branchIds, setBranchIds] = useState(() => effectiveBranchIds(member));
-  const canMutate = actorRole === "OWNER" || member.role !== "OWNER";
+  const canMutate =
+    actorId !== member.user.id && canAssignRole(actorRole, member.role);
   const mutation = useMutation({
     mutationFn: async (action: "save" | "deactivate") => {
       const signal = currentPrivateSessionSignal();
@@ -863,7 +874,7 @@ function MemberEditor({
         </div>
       ) : (
         <p className="mt-3 text-sm text-muted-foreground">
-          {t("teamOwnerOnly")}
+          {t("teamReadOnlyMember")}
         </p>
       )}
     </article>
@@ -904,6 +915,13 @@ function ConfiguredScope({
     </div>
   );
 }
+function canAssignRole(actorRole: MembershipRole, targetRole: MembershipRole) {
+  return (
+    targetRole !== "OWNER" &&
+    (actorRole === "OWNER" || (actorRole === "ADMIN" && targetRole !== "ADMIN"))
+  );
+}
+
 function RoleSelect({
   actorRole,
   onChange,
@@ -922,17 +940,20 @@ function RoleSelect({
           className="mt-1 w-full"
           value={value}
           onChange={(event) => {
-            const next = ALL_ROLES.find((role) => role === event.target.value);
+            const next = ALL_ROLES.find(
+              (role) =>
+                role === event.target.value && canAssignRole(actorRole, role),
+            );
             if (next) onChange(next);
           }}
         >
-          {ALL_ROLES.filter(
-            (role) => actorRole === "OWNER" || role !== "OWNER",
-          ).map((role) => (
-            <NativeSelectOption key={role} value={role}>
-              {t(role)}
-            </NativeSelectOption>
-          ))}
+          {ALL_ROLES.filter((role) => canAssignRole(actorRole, role)).map(
+            (role) => (
+              <NativeSelectOption key={role} value={role}>
+                {t(role)}
+              </NativeSelectOption>
+            ),
+          )}
         </NativeSelect>
       </Label>
       <p className="text-sm text-muted-foreground">{t(ROLE_HELP[value])}</p>

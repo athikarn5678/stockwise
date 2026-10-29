@@ -1,8 +1,15 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { LanguageProvider } from "@/providers/language-provider";
 
 import { DateInput, formatIsoDate, parseIsoDate } from "./date-input";
 
@@ -33,8 +40,13 @@ describe("calendar date handling", () => {
   });
 });
 
-function Harness() {
-  const [value, setValue] = useState("");
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
+
+function Harness({ initialValue = "" }: { initialValue?: string }) {
+  const [value, setValue] = useState(initialValue);
   return (
     <label>
       Order date
@@ -47,6 +59,61 @@ function Harness() {
 }
 
 describe("DateInput", () => {
+  it.each(["en", "th"] as const)(
+    "selects an ISO date and preserves calendar keyboard focus in %s",
+    async (language) => {
+      localStorage.setItem("stockwise.language", language);
+      render(
+        <LanguageProvider>
+          <Harness initialValue="2026-10-15" />
+        </LanguageProvider>,
+      );
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: language === "th" ? "เลือกวันที่" : "Choose date",
+        }),
+      );
+      const grid = await screen.findByRole("grid");
+      expect(
+        screen.getByRole("button", {
+          name: language === "th" ? "เดือนถัดไป" : "Next month",
+        }),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole("button", {
+          name: language === "th" ? "เดือนก่อนหน้า" : "Previous month",
+        }),
+      ).toBeTruthy();
+      expect(grid.getAttribute("aria-label")).toContain(
+        language === "th" ? "ตุลาคม" : "October",
+      );
+      await waitFor(() =>
+        expect(document.activeElement?.textContent).toBe("15"),
+      );
+      fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+      await waitFor(() =>
+        expect(document.activeElement?.textContent).toBe("16"),
+      );
+      fireEvent.click(document.activeElement!);
+      expect(
+        (screen.getByLabelText("Order date") as HTMLInputElement).value,
+      ).toBe("2026-10-16");
+      await waitFor(() => expect(screen.queryByRole("grid")).toBeNull());
+    },
+  );
+
+  it("keeps a disabled date field and calendar trigger unavailable", () => {
+    render(
+      <DateInput aria-label="Disabled date" disabled value="2026-10-15" />,
+    );
+    expect(
+      (screen.getByLabelText("Disabled date") as HTMLInputElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "Choose date" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
   it("accepts typed ISO text, flags invalid text and offers a calendar button", () => {
     render(<Harness />);
     const field = screen.getByLabelText("Order date") as HTMLInputElement;

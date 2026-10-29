@@ -9,6 +9,7 @@ import {
   type TrustedAuthorizationContext,
 } from "./authorization-policy.ts";
 import { OneTimeTokenCollisionError } from "./credential-lifecycle-repository.ts";
+import { mayManageMembership } from "./membership-hierarchy.ts";
 import type {
   InvitationCreateInput,
   MembershipReplaceInput,
@@ -389,20 +390,27 @@ async function authorization(
     : { context, membershipId: membership.id, role: membership.role };
 }
 
+// Membership governance (single OWNER, strict hierarchy): the centralized
+// policy gates who may manage members at all (OWNER/ADMIN), and the hierarchy
+// requires the actor to outrank both the current and the assigned role. The
+// OWNER role is therefore never grantable through any membership path.
 function canManageRole(
-  context: TrustedAuthorizationContext,
+  actor: { context: TrustedAuthorizationContext; role: OrganizationRole },
   organizationId: string,
   currentRole: OrganizationRole | null,
   desiredRole: OrganizationRole,
 ): boolean {
-  const permission =
-    currentRole === "OWNER" || desiredRole === "OWNER"
-      ? PERMISSIONS.OWNER_MEMBERSHIP_MANAGE
-      : PERMISSIONS.NON_OWNER_MEMBERSHIP_MANAGE;
-  return can(
-    context,
-    permission,
-    createTrustedOrganizationScope(organizationId),
+  return (
+    can(
+      actor.context,
+      PERMISSIONS.NON_OWNER_MEMBERSHIP_MANAGE,
+      createTrustedOrganizationScope(organizationId),
+    ) &&
+    mayManageMembership({
+      actor: actor.role,
+      desired: desiredRole,
+      target: currentRole,
+    })
   );
 }
 
@@ -572,7 +580,7 @@ export function createPrismaMembershipAccessRepository(
           if (
             actor === null ||
             !canManageRole(
-              actor.context,
+              actor,
               input.organizationId,
               null,
               input.invitation.role,
@@ -620,7 +628,7 @@ export function createPrismaMembershipAccessRepository(
             replaceableInvitations.some(
               ({ intendedRole }) =>
                 !canManageRole(
-                  actor.context,
+                  actor,
                   input.organizationId,
                   intendedRole,
                   input.invitation.role,
@@ -744,7 +752,10 @@ export function createPrismaMembershipAccessRepository(
               } as const);
         }
 
+        // Each organization has exactly one OWNER, so an OWNER invitation (only
+        // possible before single-owner governance) can never create a member.
         if (
+          invitation.intendedRole === "OWNER" ||
           invitation.revokedAt !== null ||
           invitation.replacedAt !== null ||
           input.acceptedAt >= invitation.expiresAt ||
@@ -865,7 +876,7 @@ export function createPrismaMembershipAccessRepository(
         if (
           invitation === null ||
           !canManageRole(
-            actor.context,
+            actor,
             input.organizationId,
             invitation.intendedRole,
             invitation.intendedRole,
@@ -1042,21 +1053,13 @@ async function mutateMembership(
       },
     });
     if (target === null) return { kind: "not_found" };
-    // Only an OWNER may change or leave their own membership (still bound by
-    // the last-owner rule); every other actor, ADMIN included, may not.
-    if (target.userId === input.actorUserId && actor.role !== "OWNER") {
+    // No actor, OWNER included, may change, deactivate or remove themselves.
+    if (target.userId === input.actorUserId) {
       return { kind: "self_modification" };
     }
     const desiredRole =
       input.mode === "deactivate" ? target.role : input.replacement.role;
-    if (
-      !canManageRole(
-        actor.context,
-        input.organizationId,
-        target.role,
-        desiredRole,
-      )
-    ) {
+    if (!canManageRole(actor, input.organizationId, target.role, desiredRole)) {
       return { kind: "forbidden" };
     }
     const expectedUpdatedAt =

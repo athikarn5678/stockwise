@@ -206,7 +206,7 @@ These are semantic fields, not final generated TypeScript types.
 }
 ```
 
-The accepted fixed RBAC roles are `OWNER`, `ADMIN`, `BRANCH_MANAGER`, `INVENTORY_STAFF`, and `CASHIER`. Each user has one organization role. `OWNER`/`ADMIN` have organization-wide branch access; the other roles require explicit branch assignments. Express enforces the capability and governance matrix in `BUILD_SPEC.md` section 8, including deny-by-default and the last-OWNER invariant. Resource status/lifecycle enums remain governed by their relevant open decisions.
+The accepted fixed RBAC roles are `OWNER`, `ADMIN`, `BRANCH_MANAGER`, `INVENTORY_STAFF`, and `CASHIER`. Each user has one organization role. `OWNER`/`ADMIN` have organization-wide branch access; the other roles require explicit branch assignments. Express enforces the capability and governance matrix in `BUILD_SPEC.md` section 8 and `ADR-041`, including deny-by-default, the single-OWNER invariant, and the strict role hierarchy (no self-modification; the actor must outrank the target and the assigned role). Resource status/lifecycle enums remain governed by their relevant open decisions.
 
 ### `Product`
 
@@ -818,10 +818,10 @@ and the password proof.
 | `POST /organizations/{organizationId}/branches` | `OWNER` or `ADMIN` | Code, name; optional phone/address | Created branch | Duplicate code, invalid state | Planned after identity foundation |
 | `GET /organizations/{organizationId}/members` | `OWNER` or `ADMIN` | `includeInactive`, opaque cursor, limit | Safe member/user/role/status/configured branch scope page | Invalid cursor, forbidden | Implemented by P2-M3-T03 |
 | `GET /organizations/{organizationId}/invitations` | `OWNER` or `ADMIN` | Opaque cursor, limit | Open invitation metadata/scope page; no token/hash | Invalid cursor, forbidden | Implemented by P2-M3-T03 |
-| `POST /organizations/{organizationId}/invitations` | `OWNER` for OWNER; `OWNER`/`ADMIN` for non-owner | Exact email, role, full branch IDs | `201` safe invitation state | Existing membership (`409 MEMBERSHIP_ALREADY_EXISTS`; a previously removed member returns `409 MEMBERSHIP_INACTIVE_EXISTS` and must be reactivated, never re-invited), invalid scope, escalation, provider failure | Implemented by P2-M3-T03 |
+| `POST /organizations/{organizationId}/invitations` | `OWNER`/`ADMIN`, only for a role strictly below the actor (OWNER is never invitable; ADMIN invitable by OWNER only); replacing a pending invitation also requires outranking its role | Exact email, role, full branch IDs | `201` safe invitation state | Existing membership (`409 MEMBERSHIP_ALREADY_EXISTS`; a previously removed member returns `409 MEMBERSHIP_INACTIVE_EXISTS` and must be reactivated, never re-invited), invalid scope, escalation, provider failure | Implemented by P2-M3-T03 |
 | `POST /organizations/{organizationId}/invitations/{invitationId}/revoke` | Same delegation as target invitation | No body | Current safe invitation state | Accepted final state, forbidden | Implemented by P2-M3-T03 |
 | `POST /invitations/accept` | Authenticated verified invited email | Exact opaque invitation token | Current membership plus replay flag | Generic invalid invitation, invalid current scope, existing membership | Implemented by P2-M3-T03 |
-| `PATCH /organizations/{organizationId}/members/{membershipId}` | `OWNER` for OWNER changes; `OWNER`/`ADMIN` for non-owner | Exact role, full branch IDs, expected `updatedAt` | Updated safe membership | Self-modification by a non-OWNER (`403 SELF_MODIFICATION_FORBIDDEN`), last owner, escalation, stale/state/scope | Implemented by P2-M3-T03 |
+| `PATCH /organizations/{organizationId}/members/{membershipId}` | `OWNER`/`ADMIN`, only over a member strictly below the actor and only to a role strictly below the actor | Exact role, full branch IDs, expected `updatedAt` | Updated safe membership | Self-modification by anyone (`403 SELF_MODIFICATION_FORBIDDEN`), equal/higher target or escalation (`403 FORBIDDEN`), stale/state/scope | Implemented by P2-M3-T03 |
 | `POST /organizations/{organizationId}/members/{membershipId}/deactivate` | Same delegation as target membership | Expected `updatedAt` | Inactive safe membership | Last owner, stale, forbidden/not found | Implemented by P2-M3-T03 |
 | `POST /organizations/{organizationId}/members/{membershipId}/reactivate` | Same delegation as desired/current role | Exact role, full branch IDs, expected `updatedAt` | Active safe membership | Escalation, stale/state/scope | Implemented by P2-M3-T03 |
 
@@ -916,7 +916,7 @@ MEMBERSHIP_STALE`. Organization-wide results inactivate configured assignments;
 branch roles activate exactly the requested active scope. Deactivation retains
 role, assignments, and sessions but subsequent server access-context and
 authorization evaluation excludes the membership. Organization-row locking
-enforces `409 LAST_ACTIVE_OWNER` under concurrent demotion/deactivation.
+serializes concurrent changes so the hierarchy is evaluated against fresh actor and target state; `409 LAST_ACTIVE_OWNER` remains as unreachable defense in depth (`ADR-041`). An invitation whose role is OWNER (created before `ADR-041`) is rejected on acceptance as a generic invalid invitation.
 
 Member and open-invitation lists use ascending `(createdAt,id)` opaque cursors,
 default limit 25, maximum 100. Member listing defaults to active rows and accepts

@@ -3351,6 +3351,28 @@ Until it is accepted, `app_desired_count` is limited to 0 or 1 in Terraform.
 - D-06 (hostname/DNS record and ACM validation), D-08 (seeding), D-09 (Resend domain, key and recipients), D-11 (operating pattern) and D-13 (Native production-gate disposition).
 - The execution gates: Git publication, image publication to GHCR/ECR, chargeable provisioning, DNS, public deploy and Native cutover, and real email.
 
+## ADR-041 — Single OWNER and strict role hierarchy for membership governance
+
+- **Date:** 2026-10-29
+- **Status:** Accepted by the owner's governance requirement of 2026-10-29. Backend enforcement implemented; reconciliation of existing multi-owner organizations and any database-level uniqueness are separate, owner-approved steps. Not deployed.
+- **Type:** Authorization / membership governance. Partially supersedes the multi-owner and OWNER-self-service clauses of `ADR-016` and `ADR-021`; their tenant, branch, optimistic-version, hash-only invitation, and provenance rules are unchanged.
+
+### Decision
+
+1. Each organization has exactly one active `OWNER`: the creator created by first-organization onboarding. No membership path can create, promote, invite, accept, or reactivate an OWNER.
+2. The hierarchy is `OWNER > ADMIN > BRANCH_MANAGER > INVENTORY_STAFF > CASHIER`. A member change (invite, reissue/replace a pending invitation, revoke an invitation, role/scope replace, deactivate, reactivate) is allowed only when the actor holds `membership.non-owner.manage` (OWNER/ADMIN, organization-wide) and strictly outranks both the target's current role and the role being assigned.
+3. No actor, OWNER included, may change, deactivate, or remove their own membership.
+4. `BRANCH_MANAGER`, `INVENTORY_STAFF`, and `CASHIER` hold no member-management permission (unchanged); `BRANCH_MANAGER` is deliberately not expanded.
+5. Enforcement is server-side in the membership repository inside the existing organization-row-locked transaction, so concurrent changes serialize against fresh actor and target state. The UI mirrors the rule but is never the authority.
+6. A pending OWNER invitation created before this decision can never be accepted (generic invalid invitation) and, being equal-or-higher than every actor, cannot be revoked or replaced through the API; it expires after seven days. Already-accepted history is untouched.
+7. `LAST_ACTIVE_OWNER` stays as defense in depth; with rules 1-3 it is unreachable through the API.
+
+### Consequences and migration
+
+- Organizations that already have several active OWNERs are not modified by deployment. They keep working, but their OWNERs can no longer change each other or themselves, so reduction to one OWNER is an operator reconciliation step requiring explicit owner approval per organization. Only afterwards may a partial unique index (`organization_id WHERE role = 'OWNER' AND status = 'ACTIVE'`) be added by a forward migration.
+- Two ADMINs can no longer manage each other; only the OWNER manages ADMINs.
+- Ownership transfer is not provided; the `ownership.transfer` capability remains defined but has no route.
+
 ## 2. Explicitly superseded planning directions
 
 The current ADRs supersede these earlier, unimplemented ideas:

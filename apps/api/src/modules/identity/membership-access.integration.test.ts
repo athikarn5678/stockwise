@@ -63,6 +63,29 @@ async function membership(
   });
 }
 
+// OWNER invitations can no longer be issued; this inserts one the way it
+// existed in data created before single-owner governance.
+async function legacyOwnerInvitation(
+  organizationId: string,
+  issuedByMembershipId: string,
+  invitedEmail: string,
+  issuedAt = NOW,
+) {
+  const token = secureOneTimeTokenProvider.generate();
+  const row = await prisma.invitation.create({
+    data: {
+      expiresAt: new Date(issuedAt.getTime() + 7 * 24 * 60 * 60 * 1000),
+      intendedRole: "OWNER",
+      invitedEmail,
+      issuedAt,
+      issuedByMembershipId,
+      organizationId,
+      tokenHash: token.tokenHash,
+    },
+  });
+  return { id: row.id, rawToken: token.rawToken };
+}
+
 function service(
   emailProvider: IdentityEmailProvider = createRecordingEmailProvider(),
   now = () => NOW,
@@ -191,7 +214,12 @@ describe("membership invitation and access management with PostgreSQL", () => {
         },
         organizationId: store.id,
       }),
-    ).resolves.toMatchObject({ kind: "success" });
+    ).resolves.toEqual({ kind: "forbidden" });
+    expect(
+      await prisma.invitation.count({
+        where: { invitedEmail: "new-owner@example.com" },
+      }),
+    ).toBe(0);
     await expect(
       value.createInvitation({
         actorUserId: adminUser.id,
@@ -259,7 +287,7 @@ describe("membership invitation and access management with PostgreSQL", () => {
     const store = await organization();
     const ownerUser = await user("owner@example.com");
     const adminUser = await user("admin@example.com");
-    await membership(store.id, ownerUser, "OWNER");
+    const ownerMembership = await membership(store.id, ownerUser, "OWNER");
     await membership(store.id, adminUser, "ADMIN");
     const recording = createRecordingEmailProvider();
     const working = service(recording).value;
@@ -317,27 +345,45 @@ describe("membership invitation and access management with PostgreSQL", () => {
       }),
     ).toMatchObject({ revocationReason: "DELIVERY_FAILED", revokedAt: NOW });
 
-    const ownerInvite = await working.createInvitation({
+    // A pre-governance OWNER invitation is protected: nobody, OWNER included,
+    // can revoke it through the API (it can never be accepted either).
+    const ownerInvite = await legacyOwnerInvitation(
+      store.id,
+      ownerMembership.id,
+      "owner-two@example.com",
+    );
+    for (const actor of [adminUser, ownerUser]) {
+      await expect(
+        working.revokeInvitation({
+          actorUserId: actor.id,
+          invitationId: ownerInvite.id,
+          organizationId: store.id,
+        }),
+      ).resolves.toEqual({ kind: "forbidden" });
+    }
+
+    // An ADMIN invitation is revocable by the OWNER, not by a peer ADMIN.
+    const adminInvite = await working.createInvitation({
       actorUserId: ownerUser.id,
       invitation: {
         branchIds: [],
-        email: "owner-two@example.com",
-        role: "OWNER",
+        email: "admin-two@example.com",
+        role: "ADMIN",
       },
       organizationId: store.id,
     });
-    if (ownerInvite.kind !== "success") throw new Error("Expected invitation.");
+    if (adminInvite.kind !== "success") throw new Error("Expected invitation.");
     await expect(
       working.revokeInvitation({
         actorUserId: adminUser.id,
-        invitationId: ownerInvite.invitationId,
+        invitationId: adminInvite.invitationId,
         organizationId: store.id,
       }),
     ).resolves.toEqual({ kind: "forbidden" });
     await expect(
       working.revokeInvitation({
         actorUserId: ownerUser.id,
-        invitationId: ownerInvite.invitationId,
+        invitationId: adminInvite.invitationId,
         organizationId: store.id,
       }),
     ).resolves.toMatchObject({
@@ -780,7 +826,7 @@ describe("membership invitation and access management with PostgreSQL", () => {
     expect(await prisma.membershipAccessEvent.count()).toBe(1);
   });
 
-  it("serializes concurrent owner reductions and paginates management views without token data", async () => {
+  it("keeps legacy multi-owner organizations intact under concurrent owner reductions and paginates management views without token data", async () => {
     const store = await organization();
     const firstOwner = await user("owner-one@example.com");
     const secondOwner = await user("owner-two@example.com");
@@ -800,16 +846,23 @@ describe("membership invitation and access management with PostgreSQL", () => {
         membershipId: secondMembership.id,
         organizationId: store.id,
       }),
+      access.deactivateMembership({
+        actorUserId: firstOwner.id,
+        expectedUpdatedAt: secondMembership.updatedAt,
+        membershipId: secondMembership.id,
+        organizationId: store.id,
+      }),
     ]);
     expect(outcomes.map(({ kind }) => kind).sort()).toEqual([
-      "last_active_owner",
-      "success",
+      "forbidden",
+      "self_modification",
+      "self_modification",
     ]);
     expect(
       await prisma.organizationMembership.count({
         where: { organizationId: store.id, role: "OWNER", status: "ACTIVE" },
       }),
-    ).toBe(1);
+    ).toBe(2);
     const activeOwner = await prisma.organizationMembership.findFirstOrThrow({
       where: { organizationId: store.id, role: "OWNER", status: "ACTIVE" },
     });
@@ -839,29 +892,24 @@ describe("membership invitation and access management with PostgreSQL", () => {
     });
   });
 
-  it("denies an ADMIN replacing an OWNER invitation over the real HTTP stack without mutating or delivering", async () => {
+  it("denies an ADMIN replacing a legacy OWNER invitation over the real HTTP stack and never lets that invitation create an OWNER", async () => {
     const store = await organization();
     const ownerUser = await user("owner-http@example.com");
     const adminUser = await user("admin-http@example.com");
     const invitedUser = await user("protected-invitee@example.com");
-    await membership(store.id, ownerUser, "OWNER");
+    const ownerMembership = await membership(store.id, ownerUser, "OWNER");
     await membership(store.id, adminUser, "ADMIN");
     const recording = createRecordingEmailProvider();
     const send = vi.spyOn(recording, "send");
     const access = service(recording).value;
-    const issued = await access.createInvitation({
-      actorUserId: ownerUser.id,
-      invitation: {
-        branchIds: [],
-        email: invitedUser.email,
-        role: "OWNER",
-      },
-      organizationId: store.id,
-    });
-    if (issued.kind !== "success") throw new Error("Expected invitation.");
-    const originalToken = invitationToken(recording);
+    const issued = await legacyOwnerInvitation(
+      store.id,
+      ownerMembership.id,
+      invitedUser.email,
+    );
+    const originalToken = issued.rawToken;
     const before = await prisma.invitation.findUniqueOrThrow({
-      where: { id: issued.invitationId },
+      where: { id: issued.id },
       include: { branchScopes: true },
     });
     const sentBefore = recording.messages.length;
@@ -876,7 +924,7 @@ describe("membership invitation and access management with PostgreSQL", () => {
     });
     expect(status).toBe(403);
     const after = await prisma.invitation.findUniqueOrThrow({
-      where: { id: issued.invitationId },
+      where: { id: issued.id },
       include: { branchScopes: true },
     });
     expect(after).toEqual(before);
@@ -896,10 +944,12 @@ describe("membership invitation and access management with PostgreSQL", () => {
         actorUserId: invitedUser.id,
         rawToken: originalToken,
       }),
-    ).resolves.toMatchObject({
-      kind: "success",
-      membership: { role: "OWNER" },
-    });
+    ).resolves.toEqual({ kind: "invalid_invitation" });
+    expect(
+      await prisma.organizationMembership.count({
+        where: { organizationId: store.id, userId: invitedUser.id },
+      }),
+    ).toBe(0);
   });
   it("authorizes every replaceable role, preserves exact replacement semantics, and serializes protected successors", async () => {
     const store = await organization();
@@ -908,7 +958,7 @@ describe("membership invitation and access management with PostgreSQL", () => {
     const ownerUser = await user("owner-role-reissue@example.com");
     const adminUser = await user("admin-role-reissue@example.com");
     const foreignAdmin = await user("foreign-role-reissue@example.com");
-    await membership(store.id, ownerUser, "OWNER");
+    const ownerMembership = await membership(store.id, ownerUser, "OWNER");
     await membership(store.id, adminUser, "ADMIN");
     await membership(otherStore.id, foreignAdmin, "ADMIN");
     const recording = createRecordingEmailProvider();
@@ -942,45 +992,40 @@ describe("membership invitation and access management with PostgreSQL", () => {
         invitation: { branchIds, email, role },
         organizationId: store.id,
       });
+    // Legacy OWNER invitations are protected from replacement by everyone.
     const ownerTarget = "owner-role-target@example.com";
-    const ownerTargetUser = await user(ownerTarget);
-    const firstOwner = await issue(ownerUser.id, ownerTarget, "OWNER");
-    if (firstOwner.kind !== "success") throw new Error("Expected invitation.");
-    const originalOwnerToken = invitationToken(recording);
+    const firstOwner = await legacyOwnerInvitation(
+      store.id,
+      ownerMembership.id,
+      ownerTarget,
+    );
     const originalOwnerRow = await prisma.invitation.findUniqueOrThrow({
-      where: { id: firstOwner.invitationId },
+      where: { id: firstOwner.id },
       include: { branchScopes: true },
     });
     expect(await post(adminUser.id, ownerTarget, "ADMIN")).toBe(403);
     expect(
       await post(adminUser.id, ownerTarget, "BRANCH_MANAGER", [main.id]),
     ).toBe(403);
+    expect(await post(ownerUser.id, ownerTarget, "ADMIN")).toBe(403);
     expect(
       await prisma.invitation.findUniqueOrThrow({
-        where: { id: firstOwner.invitationId },
+        where: { id: firstOwner.id },
         include: { branchScopes: true },
       }),
     ).toEqual(originalOwnerRow);
 
-    expect(await post(ownerUser.id, ownerTarget, "ADMIN")).toBe(201);
-    expect(
-      await prisma.invitation.findUniqueOrThrow({
-        where: { id: firstOwner.invitationId },
-      }),
-    ).toMatchObject({ replacedAt: NOW, revocationReason: "REPLACED" });
-    await expect(
-      access.acceptInvitation({
-        actorEmail: ownerTargetUser.email,
-        actorUserId: ownerTargetUser.id,
-        rawToken: originalOwnerToken,
-      }),
-    ).resolves.toEqual({ kind: "invalid_invitation" });
-
+    // An ADMIN invitation is replaceable by the OWNER only; a peer ADMIN and
+    // anyone targeting OWNER are refused.
     const adminTarget = "admin-non-owner-target@example.com";
     const adminBase = await issue(ownerUser.id, adminTarget, "ADMIN");
     if (adminBase.kind !== "success") throw new Error("Expected invitation.");
     expect(await post(adminUser.id, adminTarget, "OWNER")).toBe(403);
+    expect(await post(ownerUser.id, adminTarget, "OWNER")).toBe(403);
     expect(await post(adminUser.id, adminTarget, "CASHIER", [main.id])).toBe(
+      403,
+    );
+    expect(await post(ownerUser.id, adminTarget, "CASHIER", [main.id])).toBe(
       201,
     );
     expect(
@@ -994,40 +1039,40 @@ describe("membership invitation and access management with PostgreSQL", () => {
       { branchScopes: [{ branchId: main.id }], intendedRole: "CASHIER" },
     ]);
 
+    // An expired legacy OWNER invitation is still not replaceable by an ADMIN.
     const expiredTarget = "expired-owner-target@example.com";
-    const expiredAccess = service(
-      createRecordingEmailProvider(),
-      () => new Date(NOW.getTime() - 8 * 24 * 60 * 60 * 1000),
-    ).value;
-    const expired = await expiredAccess.createInvitation({
-      actorUserId: ownerUser.id,
-      invitation: { branchIds: [], email: expiredTarget, role: "OWNER" },
-      organizationId: store.id,
-    });
-    if (expired.kind !== "success") throw new Error("Expected invitation.");
+    const expired = await legacyOwnerInvitation(
+      store.id,
+      ownerMembership.id,
+      expiredTarget,
+      new Date(NOW.getTime() - 8 * 24 * 60 * 60 * 1000),
+    );
     expect(await post(adminUser.id, expiredTarget, "ADMIN")).toBe(403);
     expect(
-      await prisma.invitation.findUniqueOrThrow({
-        where: { id: expired.invitationId },
-      }),
+      await prisma.invitation.findUniqueOrThrow({ where: { id: expired.id } }),
     ).toMatchObject({ replacedAt: null, revokedAt: null });
-    const foreignTarget = "cross-org-owner-target@example.com";
 
-    const foreignProtected = await issue(ownerUser.id, foreignTarget, "OWNER");
-    if (foreignProtected.kind !== "success")
-      throw new Error("Expected invitation.");
+    // Cross-organization actors are refused.
+    const foreignTarget = "cross-org-owner-target@example.com";
+    const foreignProtected = await legacyOwnerInvitation(
+      store.id,
+      ownerMembership.id,
+      foreignTarget,
+    );
     expect(await post(foreignAdmin.id, foreignTarget, "ADMIN")).toBe(403);
     expect(
       await prisma.invitation.findUniqueOrThrow({
-        where: { id: foreignProtected.invitationId },
+        where: { id: foreignProtected.id },
       }),
     ).toMatchObject({ replacedAt: null, revokedAt: null });
-    const raceTarget = "race-protected-owner@example.com";
 
-    const initial = await issue(ownerUser.id, raceTarget, "OWNER");
+    // Concurrent authorized and unauthorized reissues serialize: whatever the
+    // order, the open ADMIN invitation is only ever replaced by the OWNER.
+    const raceTarget = "race-protected-admin@example.com";
+    const initial = await issue(ownerUser.id, raceTarget, "ADMIN");
     if (initial.kind !== "success") throw new Error("Expected invitation.");
     const [ownerSuccessor, unauthorizedReissue] = await Promise.all([
-      post(ownerUser.id, raceTarget, "OWNER"),
+      post(ownerUser.id, raceTarget, "ADMIN"),
       post(adminUser.id, raceTarget, "ADMIN"),
     ]);
     expect(ownerSuccessor).toBe(201);
@@ -1040,7 +1085,6 @@ describe("membership invitation and access management with PostgreSQL", () => {
           organizationId: store.id,
           replacedAt: null,
           revokedAt: null,
-          intendedRole: "OWNER",
         },
       }),
     ).toBe(1);

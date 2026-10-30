@@ -66,6 +66,10 @@ export function ForecastReorderView({
   organization: AccessibleOrganization;
 }) {
   const { t } = useLanguage();
+  const allowed =
+    organization.role === "OWNER" ||
+    organization.role === "ADMIN" ||
+    organization.role === "BRANCH_MANAGER";
 
   const [branchId, setBranchId] = useState(organization.branches[0]?.id ?? "");
   const [productId, setProductId] = useState("");
@@ -98,7 +102,7 @@ export function ForecastReorderView({
       ),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.meta.nextCursor ?? undefined,
-    enabled: activeBranch !== undefined,
+    enabled: allowed && activeBranch !== undefined,
   });
   const options =
     products.data?.pages.flatMap((page) => page.data.products) ?? [];
@@ -108,7 +112,8 @@ export function ForecastReorderView({
     branchId: activeBranch?.id ?? "",
     productId,
   };
-  const enabled = activeBranch !== undefined && chosenProduct !== undefined;
+  const enabled =
+    allowed && activeBranch !== undefined && chosenProduct !== undefined;
   const forecast = useQuery({
     queryKey: [...scopeKey, productId, "forecast"],
     queryFn: ({ signal }) => getAnalyticsForecast(pair, signal),
@@ -122,6 +127,8 @@ export function ForecastReorderView({
   });
   const forecastResult = forecast.data?.data.forecast;
   const reorderResult = reorder.data?.data.recommendation;
+
+  if (!allowed) return <p role="alert">{t("accessDenied")}</p>;
 
   return (
     <section aria-label={t("uiForecastAndReorder")} className="space-y-5">

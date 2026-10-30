@@ -18,6 +18,32 @@ const verificationKeys = {
 };
 
 describe("API environment boundary", () => {
+  it("refuses accidental Production Demo Insight enablement", () => {
+    const result = apiEnvironmentSchema.safeParse({
+      DATABASE_URL: "postgresql://local:local@127.0.0.1:5432/local",
+      STOCKWISE_API_PORT: "3001",
+      STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: analyticsKey,
+      STOCKWISE_PUBLIC_WEB_ORIGIN: "https://stockwise.example.com",
+      STOCKWISE_RUNTIME_ENV: "production",
+      STOCKWISE_AUTHENTICATION_AUTHORITY: "native",
+      STOCKWISE_EMAIL_PROVIDER: "resend",
+      RESEND_API_KEY: "test-only-key",
+      STOCKWISE_EMAIL_FROM: "StockWise <sender@example.com>",
+      STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID:
+        "00000000-0000-4000-8000-000000000001",
+      ...verificationKeys,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success)
+      expect(result.error.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: ["STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID"],
+            message: "Demo Insight is disabled in production.",
+          }),
+        ]),
+      );
+  });
   it("loads the required local API and database configuration", () => {
     expect(
       loadApiEnvironment({

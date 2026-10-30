@@ -478,7 +478,7 @@ describe("web application shell", () => {
     ["OWNER", true, true, true, true],
     ["ADMIN", true, true, true, true],
     ["BRANCH_MANAGER", false, true, true, true],
-    ["INVENTORY_STAFF", false, false, true, true],
+    ["INVENTORY_STAFF", false, false, true, false],
     ["CASHIER", false, true, false, false],
   ] as const)(
     "preserves %s navigation visibility from server context",
@@ -504,6 +504,9 @@ describe("web application shell", () => {
       );
       expect(!!screen.queryByRole("link", { name: "Purchase orders" })).toBe(
         suppliers,
+      );
+      expect(!!screen.queryByRole("link", { name: "Catalog" })).toBe(
+        role !== "INVENTORY_STAFF",
       );
       expect(
         !!screen.queryByRole("link", { name: "Organization settings" }),
@@ -541,7 +544,7 @@ describe("web application shell", () => {
     ]) {
       expect(screen.queryByRole("link", { name })).toBeNull();
     }
-    expect(screen.getByRole("link", { name: "Catalog" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Catalog" })).toBeNull();
   });
 
   it("keeps logout available for an authenticated user without organization access", () => {

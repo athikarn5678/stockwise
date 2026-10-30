@@ -137,7 +137,7 @@ The accepted authorization model is RBAC plus branch scope. A single user accoun
 | `OWNER` | Organization | Full business visibility and governance |
 | `ADMIN` | Organization | Organization administration delegated by an owner |
 | `BRANCH_MANAGER` | Assigned branches | Branch operations and reporting |
-| `INVENTORY_STAFF` | Assigned branches | Products as permitted, purchasing, receiving, stock operations |
+| `INVENTORY_STAFF` | Assigned branches | Inventory operations and inventory-relevant analytics only (`ADR-042`) |
 | `CASHIER` | Assigned branches | POS checkout and permitted sales-history actions |
 
 These five role names are the accepted MVP RBAC policy and must not be renamed casually. Each user has one organization role per organization; `OWNER` and `ADMIN` have organization-wide branch access, while `BRANCH_MANAGER`, `INVENTORY_STAFF`, and `CASHIER` require explicit branch assignments and may be assigned to multiple branches. A user may hold different organization roles in different organizations. Server-side policy must deny by default and check organization membership, required branch assignment, role, action, and resource ownership; frontend checks are UX only.
@@ -146,8 +146,10 @@ The MVP permission baseline is:
 
 | Capability | Authorized roles and scope |
 | --- | --- |
-| Product/category view; inventory view | All roles, within allowed organization/branch scope |
-| Product/category create or edit; supplier create or edit; stock adjustment; purchase orders/receiving | `OWNER`, `ADMIN`, `BRANCH_MANAGER`, `INVENTORY_STAFF`; branch-only roles are limited to assigned branches |
+| Product/category view | `OWNER`, `ADMIN`, assigned `BRANCH_MANAGER` and `CASHIER`; `INVENTORY_STAFF` none |
+| Inventory view | All roles within allowed branch scope, including the narrow product identity returned by Inventory endpoints |
+| Product/category create or edit; supplier view/create/edit; purchase orders/receiving | `OWNER`, `ADMIN`, assigned `BRANCH_MANAGER`; `INVENTORY_STAFF`/`CASHIER` none |
+| Stock adjustment | `OWNER`, `ADMIN`, assigned `BRANCH_MANAGER` and `INVENTORY_STAFF`; `CASHIER` none |
 | Product deactivate | `OWNER`, `ADMIN`, `BRANCH_MANAGER`; branch managers are limited to assigned branches |
 | POS/checkout | `OWNER`, `ADMIN`, `BRANCH_MANAGER`, `CASHIER`; branch-only roles are limited to assigned branches |
 | Apply a whole-Sale discount | `OWNER`, `ADMIN`, `BRANCH_MANAGER`; branch managers are limited to assigned branches; `CASHIER` cannot discount |
@@ -158,10 +160,12 @@ The MVP permission baseline is:
 | View refund records | Same scope as Sales history; `INVENTORY_STAFF` none |
 | View refund cost/COGS | Same scope as Sales cost/COGS visibility |
 | Analytics | `OWNER`/`ADMIN` organization-wide; `BRANCH_MANAGER` assigned branches; `INVENTORY_STAFF` inventory-relevant analytics only; `CASHIER` none |
-| Forecast/reorder | `OWNER`/`ADMIN` organization-wide; `BRANCH_MANAGER`/`INVENTORY_STAFF` assigned branches; `CASHIER` none |
+| Forecast/reorder | `OWNER`/`ADMIN` organization-wide; `BRANCH_MANAGER` assigned branches; `INVENTORY_STAFF`/`CASHIER` none |
 | AI business summaries | `OWNER`/`ADMIN` organization-wide; `BRANCH_MANAGER` assigned branches; `INVENTORY_STAFF`/`CASHIER` none |
 
 `OWNER` has full organization operational access and performs OWNER-only ownership actions; an organization has exactly one active OWNER (`ADR-041`). `OWNER` and `ADMIN` manage memberships only for roles strictly below their own and may assign only roles strictly below their own, so nobody can create, promote, invite, or reactivate an OWNER, and nobody can change, deactivate, or remove themselves. `ADMIN` manages branches and BRANCH_MANAGER/INVENTORY_STAFF/CASHIER memberships but cannot manage another ADMIN, promote to ADMIN or OWNER, transfer ownership, or perform OWNER-only destructive ownership actions. `BRANCH_MANAGER` cannot manage organization settings, create/delete branches, or administer users/roles. `INVENTORY_STAFF` cannot check out, refund, administer employees, access broad analytics, view cost-derived analytics/inventory value, or view management AI summaries. `CASHIER` cannot edit products, adjust stock, create refunds, manage purchasing/suppliers, access analytics/forecasting/AI insights, or administer employees. Cost-derived analytics require the relevant analytics permission plus existing `SALES_COST_VIEW`; do not duplicate this policy in frontend role checks. The single OWNER cannot be removed, demoted, or leave (`ADR-041`). V1 has no VOID action or approval workflow.
+
+`ADR-042` additionally denies `INVENTORY_STAFF` Catalog, Supplier, purchasing/receiving and Forecast/Reorder pages, navigation and APIs. Inventory's own product projection remains available through `inventory.view`; it grants no Catalog access. Inventory analytics is unchanged. An explicitly allowlisted synthetic organization may display labeled deterministic `Demo Insight` / `ข้อมูลตัวอย่าง` text from real analytics, independently of OpenRouter; ordinary AI summary authorization still applies.
 
 ## 9. Tenant and operational model
 

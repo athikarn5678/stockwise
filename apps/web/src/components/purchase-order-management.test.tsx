@@ -311,6 +311,16 @@ afterEach(() => {
 });
 
 describe("purchase order management UI", () => {
+  it("denies inventory staff direct page access without purchasing or catalog requests", async () => {
+    const access = await fetchAccessContext();
+    access.organizations[0]!.role = "INVENTORY_STAFF";
+    vi.mocked(fetchAccessContext).mockResolvedValue(access);
+    renderManagement();
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(listPurchaseOrders).not.toHaveBeenCalled();
+    expect(listProducts).not.toHaveBeenCalled();
+    expect(listSuppliers).not.toHaveBeenCalled();
+  });
   it.each(["en", "th"] as const)(
     "preserves long order values in wrapping cards and read-only details in %s",
     async (language) => {

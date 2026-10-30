@@ -1266,6 +1266,10 @@ timestamp, and minimal actor ID/display name. It never
 returns idempotency-key hashes, canonical-request hashes, membership IDs, or
 other internal provenance fields.
 
+### Inventory staff access amendment (ADR-042)
+
+`INVENTORY_STAFF` is denied all Catalog Product/Category reads, writes and lifecycle operations, Supplier reads/writes/lifecycle, Purchase Order reads/writes/lifecycle, Receiving commands, Forecast and Reorder requests. Use the existing safe forbidden/error envelope; valid branch context never restores these removed permissions. Other four roles retain existing permissions. Inventory's own product identity projection remains available under `inventory.view`; no general Catalog exception is granted. Its Inventory adjustment and inventory-relevant analytics permissions are unchanged.
+
 ## 10. Supplier and purchasing endpoints
 
 ### Suppliers
@@ -1287,7 +1291,7 @@ other internal provenance fields.
 | `POST /organizations/{organizationId}/branches/{branchId}/purchase-orders` | Branch purchasing write | Supplier, one line per Product, quantities, expected THB costs | Server-referenced `DRAFT` purchase order | Cross-tenant/inactive refs, invalid/duplicate lines/cost | Implemented by P4-M2-T02; `DRAFT` lifecycle follows `ADR-026`, quantity follows `ADR-022` |
 | `GET /organizations/{organizationId}/branches/{branchId}/purchase-orders/{purchaseOrderId}` | Branch purchasing read | None | Order and immutable item snapshots | Safe not-found | Implemented by P4-M2-T02 |
 | `PATCH /organizations/{organizationId}/branches/{branchId}/purchase-orders/{purchaseOrderId}` | Branch purchasing write | DRAFT field replacement or accepted state intent plus exact `expectedUpdatedAt` | Purchase order | Non-editable/stale/terminal-state conflict | Implemented by P4-M2-T02; lifecycle follows `ADR-026` |
-| `POST /organizations/{organizationId}/branches/{branchId}/purchase-orders/{purchaseOrderId}/receipts` | `OWNER`, `ADMIN`, assigned `BRANCH_MANAGER`, or assigned `INVENTORY_STAFF` for the persisted PO branch | Mandatory `Idempotency-Key`; actual THB costs keyed by PO item plus bounded document-level Input VAT snapshot; no received quantities | `201` completed Receipt; identical replay returns the same logical Receipt with `200` | Strict transport; ORDERED/exact frozen quantity/cost/VAT/idempotency/concurrency | Implemented by P4-M3-T02; `ADR-022`, `ADR-024`, and `ADR-026` |
+| `POST /organizations/{organizationId}/branches/{branchId}/purchase-orders/{purchaseOrderId}/receipts` | `OWNER`, `ADMIN`, or assigned `BRANCH_MANAGER` for the persisted PO branch (`ADR-042` denies INVENTORY_STAFF) | Mandatory `Idempotency-Key`; actual THB costs keyed by PO item plus bounded document-level Input VAT snapshot; no received quantities | `201` completed Receipt; identical replay returns the same logical Receipt with `200` | Strict transport; ORDERED/exact frozen quantity/cost/VAT/idempotency/concurrency | Implemented by P4-M3-T02; `ADR-022`, `ADR-024`, and `ADR-026` |
 
 Receipt persistence and the atomic receiving service are implemented by P4-M3-T01;
 P4-M3-T02 exposes only that existing transaction through the command above. The
@@ -1850,6 +1854,38 @@ Every endpoint implemented must cover:
 - No secret/stack/SQL/other-tenant leakage
 
 High-risk commands additionally require database-backed atomicity and idempotency tests.
+
+## Demo Insight presentation (ADR-042)
+
+This route is disabled in Production. Configuring the demo UUID in a Production
+runtime fails environment validation. A development/test reader requires COMPLETE
+server-side `demo30d-v1` provenance whose plan and organization-wide business
+fingerprint still match; missing, incomplete or conflicting provenance returns
+the existing generic not-found response. Reporting dates come from that provenance,
+never the caller or wall clock. Inventory coverage and Reorder use the same
+exclusive period-end instant. The reader checks the fingerprint again after
+calculation to refuse concurrent contamination.
+
+`GET /api/v1/organizations/{organizationId}/ai-insights/demo` accepts exactly
+`scope=organization&language=en|th`, or `scope=branch&branchId=<UUID>&language=en|th`.
+It requires authenticated AI-summary, business-analytics and sales-cost permissions,
+the same trusted Organization/Branch scope as genuine insight reads, and the server-only
+`STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID` UUID plus the exact synthetic organization name
+`UAT Demo Siam Mart`. Unauthorized scope returns `403`; authorized but unconfigured/non-demo
+organization returns `404`; invalid input `400`, anonymous `401`. Responses are not cached.
+
+**Production (ADR-043).** In Production the route is answered only for an organization that has COMPLETE operator-written provenance in `demo_dataset_runs`; no environment variable enables it. It returns the stored immutable baseline for the authorized scope after verifying the digest of all events before the baseline period end, so later live POS activity does not change it and any historical change returns `404`. Authorization, response shape, label and the no-provider guarantee are as below.
+
+`data` contains `mode: "DEMO"`, localized `label` (`Demo Insight` / `ข้อมูลตัวอย่าง`),
+`explanation`, plain `content`, `from` inclusive / `to` exclusive local dates,
+`reportingTimezone`, `provider: null`, `providerCalls: 0`, and `metrics`.
+The completed 30-day window uses real Sales and Inventory analytics; revenue growth
+compares its last 15 days to its first 15 days, null without a positive baseline.
+Product quantity ranks are per base unit. Low-stock warnings use stock-risk-v1;
+replenishment uses real Reorder V1 with an explicit 7-day planning lead time and preserves
+unavailable results. No scheduler, provider request or persisted provider success is
+created. The existing `/ai-insights`, `/latest` and detail routes remain genuine
+persisted OpenRouter workflows; demo text never substitutes for those responses.
 
 ## 17. Decision references by API area
 

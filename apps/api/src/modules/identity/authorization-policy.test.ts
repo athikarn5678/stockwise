@@ -60,12 +60,12 @@ const OWNER_ONLY = ["OWNER"] as const satisfies readonly OrganizationRole[];
 const PERMISSION_MATRIX = [
   {
     permission: PERMISSIONS.CATALOG_VIEW,
-    allowedRoles: ALL_ROLES,
+    allowedRoles: CHECKOUT_AND_SALES_ROLES,
     scope: "organization-or-branch",
   },
   {
     permission: PERMISSIONS.CATALOG_CREATE_EDIT,
-    allowedRoles: OPERATIONAL_MANAGEMENT_ROLES,
+    allowedRoles: MANAGER_ROLES,
     scope: "organization-or-branch",
   },
   {
@@ -75,12 +75,12 @@ const PERMISSION_MATRIX = [
   },
   {
     permission: PERMISSIONS.SUPPLIER_VIEW,
-    allowedRoles: OPERATIONAL_MANAGEMENT_ROLES,
+    allowedRoles: MANAGER_ROLES,
     scope: "organization-or-branch",
   },
   {
     permission: PERMISSIONS.SUPPLIER_CREATE_EDIT,
-    allowedRoles: OPERATIONAL_MANAGEMENT_ROLES,
+    allowedRoles: MANAGER_ROLES,
     scope: "organization-or-branch",
   },
   {
@@ -100,17 +100,17 @@ const PERMISSION_MATRIX = [
   },
   {
     permission: PERMISSIONS.PURCHASE_ORDER_VIEW,
-    allowedRoles: OPERATIONAL_MANAGEMENT_ROLES,
+    allowedRoles: MANAGER_ROLES,
     scope: "branch",
   },
   {
     permission: PERMISSIONS.PURCHASE_ORDER_CREATE_EDIT,
-    allowedRoles: OPERATIONAL_MANAGEMENT_ROLES,
+    allowedRoles: MANAGER_ROLES,
     scope: "branch",
   },
   {
     permission: PERMISSIONS.RECEIVING_PERFORM,
-    allowedRoles: OPERATIONAL_MANAGEMENT_ROLES,
+    allowedRoles: MANAGER_ROLES,
     scope: "branch",
   },
   {
@@ -160,7 +160,7 @@ const PERMISSION_MATRIX = [
   },
   {
     permission: PERMISSIONS.FORECAST_REORDER_VIEW,
-    allowedRoles: OPERATIONAL_MANAGEMENT_ROLES,
+    allowedRoles: MANAGER_ROLES,
     scope: "organization-or-branch",
   },
   {

@@ -508,17 +508,14 @@ describe("Forecasting V1 with normalized PostgreSQL facts", () => {
     });
   });
 
-  it("enforces FORECAST_REORDER_VIEW without SALES_COST_VIEW", async () => {
+  it("denies inventory staff Forecast and preserves manager/owner branch scope", async () => {
     const f = await fixture();
     const base = { organizationId: f.org.id, productId: f.product.id };
     expect((await read({ ...base, actorUserId: f.staff.user.id })).kind).toBe(
-      "success",
+      "forbidden",
     );
     const assigned = await read({ ...base, actorUserId: f.staff.user.id });
-    if (assigned.kind === "success")
-      expect(assigned.forecasts.map((value) => value.branchId)).toEqual([
-        f.branchA.id,
-      ]);
+    expect(assigned.kind).toBe("forbidden");
     expect(
       (
         await read({
@@ -589,7 +586,7 @@ describe("Reorder V1 in one forecast and inventory snapshot", () => {
       productId: f.product.id,
       leadTimeDays: 0,
     };
-    for (const allowed of [f.owner, admin, f.manager, f.staff]) {
+    for (const allowed of [f.owner, admin, f.manager]) {
       expect(
         await reorder({ ...request, actorUserId: allowed.user.id }),
       ).toMatchObject({
@@ -599,6 +596,9 @@ describe("Reorder V1 in one forecast and inventory snapshot", () => {
     }
     expect(
       (await reorder({ ...request, actorUserId: f.cashier.user.id })).kind,
+    ).toBe("forbidden");
+    expect(
+      (await reorder({ ...request, actorUserId: f.staff.user.id })).kind,
     ).toBe("forbidden");
     expect(
       (
@@ -671,8 +671,7 @@ describe("Reorder V1 in one forecast and inventory snapshot", () => {
     expect(
       await reorder({ ...base, actorUserId: f.staff.user.id, leadTimeDays: 3 }),
     ).toMatchObject({
-      kind: "success",
-      recommendation: { status: "AVAILABLE", recommendedQuantity: "0.0000" },
+      kind: "forbidden",
     });
     expect(await reorder(base)).toMatchObject({
       kind: "success",

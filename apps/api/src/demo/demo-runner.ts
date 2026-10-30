@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { verifyDemoDatabase } from "./demo-local-database.ts";
 import { readdirSync } from "node:fs";
 
 import { Prisma, type PrismaClient } from "../generated/prisma/client.ts";
@@ -340,6 +341,7 @@ export async function runDemoFixture(
   prisma: PrismaClient,
   password: string,
 ): Promise<"generated" | "no-op"> {
+  await verifyDemoDatabase(prisma);
   const fixture = await buildDemoFixture(password);
   if (demoLogicalFingerprint(fixture) !== frozenLogicalFingerprint) {
     throw new Error(

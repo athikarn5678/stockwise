@@ -745,7 +745,7 @@ function AnalyticsContent({
       </form>
       <nav aria-label={t("uiAnalyticsViews")} className="flex flex-wrap gap-2">
         {(organization.role === "INVENTORY_STAFF"
-          ? (["inventory", "forecast-reorder"] as const)
+          ? (["inventory"] as const)
           : ([
               "sales",
               "categories",

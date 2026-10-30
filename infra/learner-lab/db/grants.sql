@@ -8,9 +8,10 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO stockwise_app;
 
 -- The Native fence, its enrollment provenance and the migration history are
 -- written only by migrations and the operator native:cutover; the runtime
--- (including the startup preflight) only reads them.
-REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON native_auth_transition, native_auth_enrollments, _prisma_migrations FROM stockwise_app;
-GRANT SELECT ON native_auth_transition, native_auth_enrollments, _prisma_migrations TO stockwise_app;
+-- (including the startup preflight) only reads them. demo_dataset_runs (ADR-043)
+-- is written only by the operator provision-demo action.
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON native_auth_transition, native_auth_enrollments, _prisma_migrations, demo_dataset_runs FROM stockwise_app;
+GRANT SELECT ON native_auth_transition, native_auth_enrollments, _prisma_migrations, demo_dataset_runs TO stockwise_app;
 -- The fence trigger guard_native_auth_dml() reads the fence row FOR SHARE on
 -- every guarded write (e.g. a Native session insert), and PostgreSQL requires
 -- UPDATE on at least one column for row locks. Grant only the "id" column;
@@ -21,7 +22,7 @@ GRANT UPDATE ("id") ON native_auth_transition TO stockwise_app;
 REVOKE TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public FROM stockwise_app;
 REVOKE CREATE ON SCHEMA public FROM stockwise_app;
 
--- Fail the deploy if the runtime role could alter the fence.
+-- Fail the deploy if the runtime role could alter the fence or the demo provenance.
 DO $$
 BEGIN
   IF has_table_privilege('stockwise_app', 'native_auth_transition', 'UPDATE')
@@ -30,6 +31,10 @@ BEGIN
                   AND privilege_type = 'UPDATE' AND column_name <> 'id')
      OR has_table_privilege('stockwise_app', 'native_auth_transition', 'DELETE')
      OR has_table_privilege('stockwise_app', 'native_auth_transition', 'TRUNCATE')
+     OR has_table_privilege('stockwise_app', 'demo_dataset_runs', 'INSERT')
+     OR has_table_privilege('stockwise_app', 'demo_dataset_runs', 'UPDATE')
+     OR has_table_privilege('stockwise_app', 'demo_dataset_runs', 'DELETE')
+     OR has_table_privilege('stockwise_app', 'demo_dataset_runs', 'TRUNCATE')
      OR has_schema_privilege('stockwise_app', 'public', 'CREATE')
      OR EXISTS (SELECT FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
                 WHERE n.nspname = 'public' AND pg_get_userbyid(c.relowner) = 'stockwise_app')

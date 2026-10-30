@@ -1,4 +1,5 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import * as policy from "../identity/authorization-policy.ts";
 import {
   createTestPrismaClient,
   resetTestDatabase,
@@ -62,6 +63,78 @@ describe("supplier repository", () => {
     await resetTestDatabase(environment);
     await prisma.$disconnect();
   });
+  it("uses Supplier VIEW for reads and CREATE_EDIT for writes with fresh branch assignment checks", async () => {
+    const organization = await prisma.organization.create({
+      data: { name: "Read semantics" },
+    });
+    const manager = await assigned(organization.id, "BRANCH_MANAGER");
+    const staff = await assigned(organization.id, "INVENTORY_STAFF");
+    const value = await repository.createSupplier({
+      actorUserId: manager.id,
+      organizationId: organization.id,
+      supplier: supplier(),
+    });
+    if (value.kind !== "success") throw new Error("supplier fixture");
+    const permission = vi.spyOn(policy, "can");
+    try {
+      expect(
+        (
+          await repository.getSupplier({
+            actorUserId: manager.id,
+            organizationId: organization.id,
+            supplierId: value.supplier.id,
+          })
+        ).kind,
+      ).toBe("success");
+      expect(
+        (
+          await repository.listSuppliers({
+            actorUserId: manager.id,
+            organizationId: organization.id,
+            query: supplierListQuerySchema.parse({}),
+          })
+        ).kind,
+      ).toBe("success");
+      expect(permission.mock.calls.map((call) => call[1])).toEqual([
+        policy.PERMISSIONS.SUPPLIER_VIEW,
+        policy.PERMISSIONS.SUPPLIER_VIEW,
+      ]);
+      permission.mockClear();
+      await repository.updateSupplier({
+        actorUserId: manager.id,
+        organizationId: organization.id,
+        supplierId: value.supplier.id,
+        supplier: supplierUpdateRequestSchema.parse({ phone: "03-222" }),
+      });
+      expect(permission.mock.calls[0]?.[1]).toBe(
+        policy.PERMISSIONS.SUPPLIER_CREATE_EDIT,
+      );
+      expect(
+        (
+          await repository.listSuppliers({
+            actorUserId: staff.id,
+            organizationId: organization.id,
+            query: supplierListQuerySchema.parse({}),
+          })
+        ).kind,
+      ).toBe("forbidden");
+      await prisma.branchAssignment.updateMany({
+        where: { userId: manager.id },
+        data: { status: "INACTIVE", deactivatedAt: new Date() },
+      });
+      expect(
+        (
+          await repository.getSupplier({
+            actorUserId: manager.id,
+            organizationId: organization.id,
+            supplierId: value.supplier.id,
+          })
+        ).kind,
+      ).toBe("forbidden");
+    } finally {
+      permission.mockRestore();
+    }
+  });
   it("persists bounded master data, duplicate business fields, lifecycle, and tenant isolation", async () => {
     const organization = await prisma.organization.create({
       data: { name: "One" },
@@ -118,7 +191,7 @@ describe("supplier repository", () => {
       supplier: { status: "INACTIVE" },
     });
   });
-  it("gives authorized branch roles organization-wide Supplier access but denies cashiers and lifecycle", async () => {
+  it("gives managers Supplier access but denies inventory staff, cashiers and manager lifecycle", async () => {
     const organization = await prisma.organization.create({
       data: { name: "One" },
     });
@@ -140,8 +213,7 @@ describe("supplier repository", () => {
         supplier: supplierUpdateRequestSchema.parse({ phone: "03-222" }),
       }),
     ).resolves.toMatchObject({
-      kind: "success",
-      supplier: { phone: "03-222" },
+      kind: "forbidden",
     });
     await expect(
       repository.setSupplierLifecycle({

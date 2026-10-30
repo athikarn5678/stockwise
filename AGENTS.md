@@ -35,6 +35,15 @@ Canonical system/project documentation required to understand, build, maintain, 
 
 ## 2.1 Critical Domain Decision Gate
 
+`ADR-042` (owner decision 2026-10-30) removes INVENTORY_STAFF Catalog, Supplier,
+Purchase Order/Receiving and Forecast/Reorder access. Inventory and non-cost
+Inventory Analytics remain authorized. Inventory's own product projection needs
+no Catalog exception. Other roles and ADR-041 single active OWNER governance/index
+are unchanged. Demo30d seeding is disposable-local-only (a Production demo uses only the separate operator-only `provision-demo` action of `ADR-043`, which creates a new isolated organization and needs per-run owner approval); Demo Insight requires an
+explicit synthetic Organization UUID allowlist, uses real metrics, is labeled
+`Demo Insight` / `ข้อมูลตัวอย่าง`, and makes no provider calls or fake provider rows.
+Independent review remains required before publication/deployment.
+
 Repository/tooling work, application shells, and other unrelated foundation work may proceed when their own blockers are resolved. Significant business-domain implementation must not proceed until the decisions affecting that domain are accepted.
 
 At minimum, enforce these gates:

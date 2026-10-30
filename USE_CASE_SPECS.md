@@ -315,7 +315,7 @@ are referenced, not duplicated, here.
 - **Alternative flows:** Deactivate/reactivate a product; omit optional barcode/category; explicitly reassign to an active category or null. Unit is immutable after creation. Direct detail and authorized `includeInactive=true` lists retain inactive visibility. An unrelated edit may preserve the Product's current inactive Category.
 - **Error cases:** Invalid or excess-scale base price/quantity; fractional integer-only quantity; unsupported unit; duplicate SKU/barcode; inactive/cross-tenant category; stale update (`PRODUCT_STALE`); product referenced by history; database failure.
 - **Business rules:** Product is organization-level with one base price shared by every branch; no branch-price override exists in MVP. Base price accepts at most four decimal places and is rejected rather than rounded. Product has no authoritative cost, average-cost, COGS, or valuation field; implemented cost state is Branch/Product-owned under `ADR-026`. Updating catalog data never rewrites historical sale/receipt snapshots.
-- **Authorization:** Product create/edit is allowed to `OWNER`, `ADMIN`, `BRANCH_MANAGER`, and `INVENTORY_STAFF` in their allowed scope; product lifecycle excludes `INVENTORY_STAFF`. Branch-scoped roles supply an active assigned `branchId` candidate that the API re-resolves; `OWNER`/`ADMIN` may use organization scope.
+- **Authorization:** Product create/edit and lifecycle are allowed to `OWNER`, `ADMIN`, and assigned `BRANCH_MANAGER`. `CASHIER` remains read-only; `INVENTORY_STAFF` has no Catalog access (`ADR-042`). Branch-scoped roles supply an active assigned `branchId` candidate that the API re-resolves; `OWNER`/`ADMIN` may use organization scope.
 - **Expected result:** One valid organization product is stored without cross-tenant references.
 - **Acceptance criteria:** Validation, uniqueness, tenant, immutable-history, and unauthorized-role tests pass.
 
@@ -324,7 +324,7 @@ are referenced, not duplicated, here.
 ### UC-CAT-003 — Manage categories
 
 - **Status:** Implemented by P3-M1-T03
-- **Actor:** `OWNER`, `ADMIN`, `BRANCH_MANAGER`, or `INVENTORY_STAFF` in allowed scope
+- **Actor:** `OWNER`, `ADMIN`, or assigned `BRANCH_MANAGER` in allowed scope
 - **Preconditions:** The actor is authenticated in an active organization and has category-management permission.
 - **Trigger:** The actor creates, updates, or deactivates an organization category.
 - **Main flow:**
@@ -405,7 +405,7 @@ are referenced, not duplicated, here.
 ### UC-SUP-001 — Manage suppliers
 
 - **Status:** Implemented by P4-M1-T02
-- **Actor:** `OWNER`, `ADMIN`, `BRANCH_MANAGER`, or `INVENTORY_STAFF` in allowed scope
+- **Actor:** `OWNER`, `ADMIN`, or assigned `BRANCH_MANAGER` in allowed scope
 - **Preconditions:** The actor is authenticated in an active organization and has supplier-management permission.
 - **Trigger:** The actor creates, updates, or deactivates an organization supplier.
 - **Main flow:**
@@ -417,14 +417,14 @@ are referenced, not duplicated, here.
 - **Alternative flows:** OWNER/ADMIN lifecycle commands reactivate an inactive Supplier; inactive suppliers remain readable in historical Purchase Orders. Merge and replacement are excluded.
 - **Error cases:** Invalid/missing fields; cross-tenant supplier; unauthorized role; attempted unsafe deletion of a referenced supplier; database failure.
 - **Business rules:** Supplier is organization-scoped. A supplier referenced by purchasing history must not be hard-deleted or rewritten to alter historical Purchase Orders/receipts. Supplier CRUD is not part of P3-M1-T01.
-- **Authorization:** Supplier create/edit is allowed to `OWNER`, `ADMIN`, `BRANCH_MANAGER`, and `INVENTORY_STAFF`; the branch-scoped roles need an active assignment but receive organization-wide Supplier access. Only `OWNER`/`ADMIN` may deactivate/reactivate.
+- **Authorization:** Supplier view/create/edit is allowed to `OWNER`, `ADMIN`, and assigned `BRANCH_MANAGER`; `INVENTORY_STAFF` and `CASHIER` are denied (`ADR-042`). An active assigned manager receives organization-wide Supplier access. Only `OWNER`/`ADMIN` may deactivate/reactivate.
 - **Expected result:** One valid organization supplier is created or safely updated/deactivated, or no mutation occurs.
 - **Acceptance criteria:** Tenant, permission, accepted duplicate/normalization, stale-update, deactivation/history, unsafe-delete, and failure tests pass.
 
 ### UC-PUR-001 — Create or edit a purchase order
 
 - **Status:** Planned; lifecycle and costing contract accepted by `ADR-026`; product quantity validation follows `ADR-022`
-- **Actor:** Authorized inventory/purchasing user
+- **Actor:** `OWNER`, `ADMIN`, or assigned `BRANCH_MANAGER`; `INVENTORY_STAFF`/`CASHIER` have no purchasing/receiving access (`ADR-042`)
 - **Preconditions:** Supplier, products, and target branch are active and belong to the same organization. An inactive Supplier blocks a new PO or DRAFT Supplier selection; a later-inactive Supplier does not prevent receipt of its already ORDERED PO.
 - **Trigger:** Actor saves a new purchase order or edits an editable one.
 - **Main flow:** Validate trusted branch/supplier/products, one unique Product line per PO, positive accepted quantities, expected unit costs, and THB-only values; create a server-referenced `DRAFT` with snapshots; allow only `DRAFT` edits; atomically transition `DRAFT` to `ORDERED` or `CANCELLED`; then freeze Supplier, Branch, lines, quantities, expected costs, and commercial snapshots.
@@ -554,7 +554,7 @@ are referenced, not duplicated, here.
   implemented by P6-M4-T04 in `ca8509a1b54af66b3b3bdf3d3af75fdd72ae2448`.
   Analytics time follows `ADR-029`, quantity follows `ADR-022`, and no-negative
   stock follows `ADR-024`.
-- **Actor:** `OWNER`, `ADMIN`, `BRANCH_MANAGER`, or `INVENTORY_STAFF` within the accepted forecast/reorder scope
+- **Actor:** `OWNER`, `ADMIN`, or assigned `BRANCH_MANAGER` within the accepted forecast/reorder scope
 - **Preconditions:** The actor has scope access and supplies a bounded lead-time
   planning input. Internal recommendation logic follows `ADR-032`; user-facing
   access is exposed by the authenticated P6-M4-T04 API/UI.
@@ -566,7 +566,7 @@ are referenced, not duplicated, here.
   `ADR-032`; product/category aggregation remains outside V1.
 - **Error cases:** Missing/incomplete data; invalid horizon; inactive product; unavailable lead time; negative stock; stale forecast; calculation failure.
 - **Business rules:** OpenRouter does not produce values. Recommendation does not automatically create a purchase order. Model/version and uncertainty/data status are visible.
-- **Authorization:** `OWNER`/`ADMIN` may access organization-wide forecast/reorder results; `BRANCH_MANAGER`/`INVENTORY_STAFF` are limited to assigned branches; `CASHIER` has no access. Cost-sensitive inputs are filtered by permission.
+- **Authorization:** `OWNER`/`ADMIN` may access organization-wide forecast/reorder results; `BRANCH_MANAGER` is limited to assigned branches; `INVENTORY_STAFF`/`CASHIER` have no access (`ADR-042`). Cost-sensitive inputs are filtered by permission.
 - **Expected result:** A reproducible system-calculated estimate/recommendation or explicit insufficient-data result.
 - **Acceptance criteria:** Backtest fixture; named baseline comparison; deterministic repeat; no-data/zero-demand cases; formula input traceability; authorization tests.
 

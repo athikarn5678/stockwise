@@ -14,6 +14,13 @@ The repository layout is accepted by `ADR-011`. The exact production hosting top
 
 ## 2. Architecture summary
 
+`ADR-042` narrows INVENTORY_STAFF to Inventory operations and inventory-relevant
+non-cost analytics, removing Catalog/Supplier/Purchasing/Forecast access. Inventory
+already owns its required product projection. A separate allowlisted Demo Insight
+read path composes existing analytics and Reorder calculations with deterministic
+bilingual text; it does not contact OpenRouter, persist provider executions or add
+a scheduler. The genuine scheduled/persisted AI workflow remains unchanged.
+
 StockWise is a TypeScript modular monolith with two primary runtime applications:
 
 - A responsive Next.js web application

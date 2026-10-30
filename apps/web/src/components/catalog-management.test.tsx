@@ -320,13 +320,14 @@ describe("catalog management UI", () => {
     expect(updateProduct).not.toHaveBeenCalled();
   });
 
-  it("gates lifecycle controls in UX while keeping the server API authoritative", async () => {
+  it("denies inventory staff direct Catalog access without fetching products", async () => {
     role = "INVENTORY_STAFF";
     renderCatalog();
 
-    await screen.findByText("Tea");
+    await screen.findByRole("alert");
     expect(screen.queryByRole("button", { name: "Deactivate" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Save changes" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
+    expect(listProducts).not.toHaveBeenCalled();
   });
 
   it("presents a view-only catalog to a cashier without issuing management controls", async () => {

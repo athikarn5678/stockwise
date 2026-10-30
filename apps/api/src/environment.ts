@@ -97,6 +97,7 @@ export const apiEnvironmentSchema = z
     STOCKWISE_VERIFICATION_PREVIOUS_PROOF_KEY_LAST_ISSUED_AT:
       verificationPreviousKeyLastIssuedAtSchema.optional(),
     STOCKWISE_EMAIL_PROVIDER: z.enum(["non_delivery", "resend"]).optional(),
+    STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID: z.string().uuid().optional(),
     STOCKWISE_RUNTIME_ENV: z.enum(["development", "test", "production"]),
     STOCKWISE_API_PORT: z.coerce.number().int().min(1).max(65_535),
     STOCKWISE_EMAIL_FROM: z.string().min(1).max(320).optional(),
@@ -137,6 +138,16 @@ export const apiEnvironmentSchema = z
         : "non_delivery"),
   }))
   .superRefine((environment, context) => {
+    if (
+      environment.STOCKWISE_RUNTIME_ENV === "production" &&
+      environment.STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID !== undefined
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Demo Insight is disabled in production.",
+        path: ["STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID"],
+      });
+    }
     if (
       environment.STOCKWISE_RUNTIME_ENV === "production" &&
       environment.STOCKWISE_AUTHENTICATION_AUTHORITY !== "native"
@@ -376,6 +387,8 @@ export function loadApiEnvironment(
     STOCKWISE_VERIFICATION_PREVIOUS_PROOF_KEY_LAST_ISSUED_AT:
       environment.STOCKWISE_VERIFICATION_PREVIOUS_PROOF_KEY_LAST_ISSUED_AT,
     STOCKWISE_EMAIL_PROVIDER: environment.STOCKWISE_EMAIL_PROVIDER,
+    STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID:
+      environment.STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID,
     STOCKWISE_RUNTIME_ENV: environment.STOCKWISE_RUNTIME_ENV,
     STOCKWISE_API_PORT: environment.STOCKWISE_API_PORT,
     STOCKWISE_EMAIL_FROM: environment.STOCKWISE_EMAIL_FROM,

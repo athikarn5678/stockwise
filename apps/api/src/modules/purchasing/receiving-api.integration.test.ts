@@ -240,13 +240,12 @@ describe("receiving HTTP API with PostgreSQL", () => {
   it("allows every receiving role and derives authority and quantities from each persisted PO", async () => {
     const value = await scope("HTTP receiving roles");
     const actors = await Promise.all(
-      (["OWNER", "ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF"] as const).map(
-        (role) =>
-          actor({
-            branchId: value.branch.id,
-            organizationId: value.organization.id,
-            role,
-          }),
+      (["OWNER", "ADMIN", "BRANCH_MANAGER"] as const).map((role) =>
+        actor({
+          branchId: value.branch.id,
+          organizationId: value.organization.id,
+          role,
+        }),
       ),
     );
     const orders = await Promise.all(
@@ -285,12 +284,12 @@ describe("receiving HTTP API with PostgreSQL", () => {
       expect(responseBody).not.toContain("receivedByMembershipId");
     }
 
-    expect(await prisma.purchaseReceipt.count()).toBe(4);
-    expect(await prisma.purchaseReceiptItem.count()).toBe(8);
-    expect(await prisma.inventoryTransaction.count()).toBe(8);
+    expect(await prisma.purchaseReceipt.count()).toBe(actors.length);
+    expect(await prisma.purchaseReceiptItem.count()).toBe(actors.length * 2);
+    expect(await prisma.inventoryTransaction.count()).toBe(actors.length * 2);
     expect(
       await prisma.purchaseOrder.count({ where: { status: "RECEIVED" } }),
-    ).toBe(4);
+    ).toBe(actors.length);
   });
 
   it("denies unauthenticated, cashier, unassigned, and cross-tenant callers without mutation", async () => {

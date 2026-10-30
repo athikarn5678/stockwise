@@ -361,7 +361,7 @@ export async function validateDemoGoldens(prisma: PrismaClient): Promise<void> {
   if (staffB.kind === "success") assert.equal(staffB.scope.canViewCost, false);
   assert.equal(
     (await scoped(inventoryStaffId, "forecast", "DEMO-B")).kind,
-    "success",
+    "forbidden",
   );
   assert.equal(
     (await scoped(inventoryStaffId, "inventory", "DEMO-A")).kind,

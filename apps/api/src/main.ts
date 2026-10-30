@@ -23,6 +23,11 @@ import { createReorderService } from "./modules/analytics/analytics-reorder-serv
 import { createAnalyticsInventoryService } from "./modules/analytics/analytics-inventory-service.ts";
 import { createAnalyticsRouter } from "./modules/analytics/analytics-router.ts";
 import { createAiInsightRouter } from "./modules/ai-insights/ai-insight-router.ts";
+import { createDemoInsightReader } from "./modules/ai-insights/demo-insight.ts";
+import {
+  composeDemoInsightReaders,
+  createProductionDemoInsightReader,
+} from "./modules/ai-insights/demo-production-insight.ts";
 import { createPrismaAiInsightReader } from "./modules/ai-insights/ai-insight-store.ts";
 import { createPrismaAnalyticsSalesRepository } from "./modules/analytics/analytics-sales-repository.ts";
 import { createAnalyticsSalesService } from "./modules/analytics/analytics-sales-service.ts";
@@ -298,6 +303,15 @@ async function main(): Promise<void> {
     createAiInsightRouter({
       authenticationMiddleware,
       reader: createPrismaAiInsightReader(prisma),
+      demoReader: composeDemoInsightReaders(
+        createDemoInsightReader({
+          prisma,
+          runtimeEnvironment: environment.STOCKWISE_RUNTIME_ENV,
+          cursorCodec: analyticsCursorCodec,
+          organizationId: environment.STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID,
+        }),
+        createProductionDemoInsightReader({ prisma }),
+      ),
     }),
   );
 

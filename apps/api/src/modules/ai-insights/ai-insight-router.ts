@@ -2,6 +2,7 @@ import { Router, type RequestHandler, type Response } from "express";
 import { z } from "zod";
 
 import { getTrustedAuthenticationContext } from "../identity/authentication-context.ts";
+import type { DemoInsightReader } from "./demo-production-insight.ts";
 import {
   publicInsight,
   type createPrismaAiInsightReader,
@@ -68,8 +69,86 @@ function error(
 export function createAiInsightRouter(input: {
   authenticationMiddleware: RequestHandler;
   reader: ReturnType<typeof createPrismaAiInsightReader>;
+  demoReader?: DemoInsightReader;
 }): Router {
   const router = Router();
+
+  router.get(
+    "/organizations/:organizationId/ai-insights/demo",
+    input.authenticationMiddleware,
+    async (request, response, next) => {
+      try {
+        const params = paramsSchema.safeParse(request.params);
+        const query = z
+          .discriminatedUnion("scope", [
+            z
+              .object({
+                scope: z.literal("organization"),
+                language: z.enum(["en", "th"]),
+              })
+              .strict(),
+            z
+              .object({
+                scope: z.literal("branch"),
+                branchId: z.uuid(),
+                language: z.enum(["en", "th"]),
+              })
+              .strict(),
+          ])
+          .safeParse(request.query);
+        if (!params.success || !query.success)
+          return error(
+            response,
+            400,
+            "VALIDATION_ERROR",
+            "The insight request is invalid.",
+          );
+        const actor = getTrustedAuthenticationContext(response);
+        if (!actor)
+          return error(
+            response,
+            401,
+            "AUTHENTICATION_REQUIRED",
+            "Authentication is required.",
+          );
+        const scope: InsightReadScope =
+          query.data.scope === "organization"
+            ? { kind: "organization" }
+            : { kind: "branch", branchId: query.data.branchId };
+        if (!input.demoReader)
+          return error(
+            response,
+            404,
+            "NOT_FOUND",
+            "The resource is unavailable.",
+          );
+        const result = await input.demoReader.read({
+          actorUserId: actor.actor.id,
+          organizationId: params.data.organizationId,
+          scope,
+          language: query.data.language,
+        });
+        if (result.kind === "forbidden")
+          return error(
+            response,
+            403,
+            "FORBIDDEN",
+            "The operation is not permitted.",
+          );
+        if (result.kind === "not_found")
+          return error(
+            response,
+            404,
+            "NOT_FOUND",
+            "The resource is unavailable.",
+          );
+        response.setHeader("Cache-Control", "no-store");
+        response.status(200).json({ data: result.insight });
+      } catch (cause) {
+        next(cause);
+      }
+    },
+  );
 
   router.get(
     "/organizations/:organizationId/ai-insights",

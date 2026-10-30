@@ -3373,6 +3373,52 @@ Until it is accepted, `app_desired_count` is limited to 0 or 1 in Terraform.
 - Two ADMINs can no longer manage each other; only the OWNER manages ADMINs.
 - Ownership transfer is not provided; the `ownership.transfer` capability remains defined but has no route.
 
+## ADR-042 — Narrow inventory staff access and present computed demo insights
+
+- **Date:** 2026-10-30
+- **Status:** Product decision accepted by the owner's DEMO-30D-RBAC-AI-01 request. Implementation requires independent review; no publication or deployment authorization.
+- **Type:** Authorization and bounded demo presentation amendment. Supersedes only the INVENTORY_STAFF Catalog, Supplier, purchasing/receiving and Forecast/Reorder grants in ADR-016, ADR-026, ADR-029, ADR-031 and ADR-032. ADR-021/ADR-041 governance is unchanged.
+
+### Decision
+
+INVENTORY_STAFF keeps assigned-branch Inventory reads/adjustments and inventory-relevant non-cost analytics. Remove its Catalog, Supplier, Purchase Order, Receiving and Forecast/Reorder access, including navigation, direct pages and every corresponding API operation. Other roles retain their existing grants. Inventory endpoints already return their own narrow product identity (ID, name, SKU, unit, status/category ID); they do not need Catalog access or a new exception endpoint. Central policy remains deny-by-default with fresh actor, membership, tenant and branch resolution.
+
+Extend the existing API-owned demo tooling with a deterministic seed/reference-date plan for 30 consecutive completed Organization-local days. An explicit synthetic organization ID and the exact allowlisted name `UAT Demo Siam Mart` are required. The CLI defaults to preview; `--apply` is separate and accepts only guarded disposable loopback `*_demo` databases, never production mode. Existing accounts/memberships/catalog and unrelated organizations are retained. Historical draft PO creation is a demo-only adapter with deterministic provenance; production ordering, receiving, checkout and refund writers preserve their constraints, Decimal arithmetic, idempotency, locks, ledger/balance atomicity and cost snapshots. No existing event timestamp is rewritten. A changed run manifest is refused; use another disposable copy. This decision does not authorize Production seeding.
+
+Add a separate read-only Demo Insight route. The server must explicitly allowlist the synthetic Organization UUID and verify its name; require the ordinary AI summary permissions and trusted scope. Use real Sales/Inventory analytics and actual Reorder V1 results, deterministic EN/TH text, and the visible label `Demo Insight` / `ข้อมูลตัวอย่าง`. Rank product quantities only within their base unit. Disclose the completed reporting range, comparison baseline, unavailable metrics and that text is not from OpenRouter. Make zero provider calls and create no provider executions, reports or scheduler. Keep ADR-033's genuine scheduled OpenRouter workflow and persisted read semantics unchanged.
+
+### Verification and boundaries
+
+Five-role positive/negative API and direct-page tests, tenant/branch isolation, preview/no-op rerun, ledger/payment/refund reconciliation, real analytics/Forecast/Reorder, localized demo text and zero-provider-call assertions are required. Native auth, single active OWNER index, numerical engines and infrastructure are unchanged. A local verification result is not independent acceptance or deployment approval.
+
+The R1 local safety contract additionally requires a setup-issued disposable
+receipt, verified against a local Docker container's ownership label, live port
+binding and PostgreSQL system/database identity before writes. A loopback tunnel
+or copied marker is insufficient. First applies require an organization without
+business history; matching partial runs may resume, and complete runs must retain
+the exact recorded business fingerprint. Demo Insight requires COMPLETE verified
+seed provenance and anchors all calculations to its fixed reporting period.
+Production demo configuration is rejected. These restrictions do not define or
+authorize a Production UAT seeding/backup/restore strategy; that remains separate.
+
+## ADR-043 — Isolated synthetic demo organization in Production (operator-only)
+
+- **Date:** 2026-10-30
+- **Status:** Implementation accepted for independent review; no execution is authorized by this record. Owner approval is required per release and per Production data import.
+- **Type:** Operations and bounded demo-presentation decision. It does not change ADR-040 topology, ADR-041 OWNER governance, or ADR-042 RBAC, and it does not weaken the Docker-attested, disposable-database-only local seeder.
+
+### Decision
+
+A Production demo is one **new** organization (never the existing UAT organization), created only by the operator ECS action `provision-demo` (`apps/api/src/demo-production`). The owner approves a spec (resource IDs, presenter-account email SHA-256 digests, reference date, seed) after a dry-run prints a 16-hex digest that also binds the resolved presenter user IDs. Apply writes only rows carrying the new organization ID, through the same production Ordering, Receiving, Checkout and Refund writers and injected clocks as the accepted seeder; master data predates the window; the single OWNER is the only active member until completion, when the other four existing presenter accounts are activated atomically with the `COMPLETE` state. Every other organization, user, credential and session is only read. The run is idempotent and resumable (advisory lock, state re-read under the lock, recognized-event validation), refuses a database whose name differs from the spec, refuses an organization or name that already exists without matching provenance, and reports a before/after census of unrelated organizations as evidence.
+
+`demo_dataset_runs` (migration `20261030120000_demo_dataset_runs`) is the server-authoritative provenance: plan, signature, state, a per-scope immutable baseline computed from the real Sales, Inventory and Reorder engines at the period-end instant, and a SHA-256 `history_digest` of every business event strictly before that instant. Rows are created only IN_PROGRESS; a COMPLETE row is immutable and undeletable by trigger; the runtime role has SELECT only and the deploy fails closed if it could write.
+
+The Production Demo Insight reader (`/ai-insights/demo`) serves that stored baseline after the ordinary AI-summary authorization and trusted scope. It is enabled by the existence of operator-written provenance, never by an environment variable (`STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID` stays forbidden in production), and it recomputes the history digest on every read so any change to a historical event fails closed (`404`). Live POS sales, refunds, adjustments and price edits are dated at or after the boundary and do not invalidate it; normal Sales History, Analytics and Forecast/Reorder stay live. Text is labeled `Demo Insight` / `ข้อมูลตัวอย่าง`, states the fixed baseline window, makes no provider call and writes no AI report, attempt or snapshot.
+
+### Recovery
+
+Before apply the operator takes and verifies a database export. `retire` (bound to its own digest, independent of presenter accounts) sets only the demo organization INACTIVE and deactivates its non-OWNER memberships; the OWNER stays so the organization keeps its one OWNER, and nothing is deleted. Removal of rows is by restoring the verified export into a scratch database for comparison, never by restoring the shared Production database.
+
 ## 2. Explicitly superseded planning directions
 
 The current ADRs supersede these earlier, unimplemented ideas:

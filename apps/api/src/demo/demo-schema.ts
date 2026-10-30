@@ -58,6 +58,8 @@ export const DEMO_AUTHENTICATION_TABLES = [
   "pending_registrations",
   "pending_registration_quotas",
   "pending_registration_credential_attempts",
+  // ADR-043 Production demo provenance: operator-written, so this fixture must find it empty.
+  "demo_dataset_runs",
 ] as const;
 
 /** Singleton fence row; seeding is allowed only while it is `LEGACY`. */

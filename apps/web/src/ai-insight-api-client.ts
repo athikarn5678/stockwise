@@ -58,3 +58,38 @@ export async function getLatestInsight(
     throw new InsightApiError(0);
   }
 }
+
+const demoInsightSchema = z.object({
+  data: z.object({
+    mode: z.literal("DEMO"),
+    label: z.string(),
+    explanation: z.string(),
+    content: z.string(),
+    from: z.string(),
+    to: z.string(),
+    reportingTimezone: z.string(),
+    provider: z.null(),
+    providerCalls: z.literal(0),
+  }),
+});
+
+export async function getDemoInsight(
+  organizationId: string,
+  scope: InsightScope,
+  language: "en" | "th",
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams({ scope: scope.scope, language });
+  if (scope.scope === "branch") params.set("branchId", scope.branchId);
+  const response = await privateFetch(
+    `/api/v1/organizations/${organizationId}/ai-insights/demo?${params}`,
+    {
+      credentials: "same-origin",
+      headers: { accept: "application/json" },
+      ...(signal ? { signal } : {}),
+    },
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) throw new InsightApiError(response.status);
+  return demoInsightSchema.parse(await readPrivateJson(response)).data;
+}

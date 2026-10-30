@@ -138,7 +138,7 @@ describe("catalog API repository with PostgreSQL", () => {
         category: categoryCreateRequestSchema.parse({ name: "Staff category" }),
         organizationId: organization.id,
       }),
-    ).resolves.toMatchObject({ kind: "success" });
+    ).resolves.toMatchObject({ kind: "forbidden" });
     await expect(
       repository.createCategory({
         actorUserId: cashier.id,

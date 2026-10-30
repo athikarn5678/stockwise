@@ -1,9 +1,11 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { closeSync, existsSync, openSync } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { delimiter, join, resolve } from "node:path";
+import { promisify } from "node:util";
+import { issueDemoDatabaseReceipt } from "../../../apps/api/src/demo/demo-local-database.ts";
 
 import { assertClusterOwned } from "../../../apps/api/src/test/disposable-ownership.ts";
 import { STACK_IMAGE } from "../better-auth-d5/browser-stack-config.mts";
@@ -138,7 +140,28 @@ await withLocalPostgres(
     };
     const base = baseEnvironment();
     const prismaCli = join(apiRoot, "node_modules/prisma/build/index.js");
-    for (const name of ["stockwise_demo", "stockwise_check_demo"]) {
+    const containerId = (
+      await promisify(execFile)(
+        findDocker(),
+        [
+          "ps",
+          "--no-trunc",
+          "-q",
+          "--filter",
+          `label=stockwise.local.owner=${database.receipt.owner}`,
+          "--filter",
+          "label=stockwise.local.role=postgres",
+        ],
+        { windowsHide: true },
+      )
+    ).stdout.trim();
+    if (!/^[a-f0-9]{64}$/.test(containerId))
+      throw new Error("DEMO_CONTAINER_IDENTITY_INVALID");
+    for (const name of [
+      "stockwise_demo",
+      "stockwise_check_demo",
+      "stockwise_test_test",
+    ]) {
       const migrated = await run(
         [prismaCli, "migrate", "deploy", "--config", "prisma.config.ts"],
         { ...base, DATABASE_URL: urlFor(name) },
@@ -147,6 +170,11 @@ await withLocalPostgres(
       );
       record(`MIGRATE_${name}`, migrated.code === 0, String(migrated.code));
       if (migrated.code !== 0) throw new Error("MIGRATION_FAILED");
+      await issueDemoDatabaseReceipt({
+        databaseUrl: urlFor(name),
+        containerId,
+        path: join(evidence, `${name}.receipt.json`),
+      });
     }
 
     // 2. Seeder unit + integration suite against a fresh migrated *_demo DB.
@@ -163,6 +191,14 @@ await withLocalPostgres(
         NO_COLOR: "1",
         DEMO_DATABASE_URL: urlFor("stockwise_check_demo"),
         DEMO_USER_PASSWORD: password,
+        DEMO_DISPOSABLE_RECEIPT: join(
+          evidence,
+          "stockwise_check_demo.receipt.json",
+        ),
+        TEST_DISPOSABLE_RECEIPT: join(
+          evidence,
+          "stockwise_test_test.receipt.json",
+        ),
       },
       repositoryRoot,
       join(evidence, "vitest-demo.log"),
@@ -175,6 +211,7 @@ await withLocalPostgres(
       ...base,
       DEMO_DATABASE_URL: urlFor("stockwise_demo"),
       DEMO_USER_PASSWORD: password,
+      DEMO_DISPOSABLE_RECEIPT: join(evidence, "stockwise_demo.receipt.json"),
     };
     const seed = [join(apiRoot, "src/demo/demo-main.ts")];
     const first = await run(

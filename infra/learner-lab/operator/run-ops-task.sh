@@ -13,6 +13,9 @@
 #                                one-time ADR-041 OWNER reconciliation (apps/api/src/owner-reconciliation):
 #                                verify = read-only census, dry-run = read-only preflight that prints the
 #                                spec digest, apply = writes and requires that digest as confirmation
+#   run-ops-task.sh provision-demo --demo-mode verify|dry-run|apply|retire [--demo-spec-file <json>] [--demo-confirm-digest <16 hex>]
+#                                ADR-043: one new isolated synthetic demo organization; dry-run prints the digest
+#                                that apply and retire require
 #                                (teardown.sh verifies exactly that export)
 # Prints the task's CloudWatch log (credential-free by construction) and exits
 # with the container's exit code. Every invocation first verifies the Learner
@@ -29,11 +32,14 @@ uat_spec_file=""
 reconcile_mode=""
 reconcile_spec_file=""
 reconcile_digest=""
+demo_mode=""
+demo_spec_file=""
+demo_digest=""
 case "$action" in
   bootstrap-roles) role="bootstrap" ;;
   export) role="export" ;;
-  prepare | migrate | grants | fence-state | status | seed | cutover | uat-provision | reconcile-owners) role="ops" ;;
-  *) die "usage: run-ops-task.sh bootstrap-roles|prepare|migrate|grants|fence-state|status|seed|cutover|uat-provision|reconcile-owners|export [--export-id <id>] [--uat-phase <p> --uat-spec-file <f>] [--reconcile-mode <m> --reconcile-spec-file <f> --reconcile-confirm-digest <d>]" ;;
+  prepare | migrate | grants | fence-state | status | seed | cutover | uat-provision | reconcile-owners | provision-demo) role="ops" ;;
+  *) die "usage: run-ops-task.sh bootstrap-roles|prepare|migrate|grants|fence-state|status|seed|cutover|uat-provision|reconcile-owners|provision-demo|export [--export-id <id>] [--uat-phase <p> --uat-spec-file <f>] [--reconcile-mode <m> --reconcile-spec-file <f> --reconcile-confirm-digest <d>] [--demo-mode <m> --demo-spec-file <f> --demo-confirm-digest <d>]" ;;
 esac
 shift
 while [[ $# -gt 0 ]]; do
@@ -44,9 +50,28 @@ while [[ $# -gt 0 ]]; do
     --reconcile-mode) reconcile_mode="${2:-}"; shift 2 ;;
     --reconcile-spec-file) reconcile_spec_file="${2:-}"; shift 2 ;;
     --reconcile-confirm-digest) reconcile_digest="${2:-}"; shift 2 ;;
+    --demo-mode) demo_mode="${2:-}"; shift 2 ;;
+    --demo-spec-file) demo_spec_file="${2:-}"; shift 2 ;;
+    --demo-confirm-digest) demo_digest="${2:-}"; shift 2 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
+if [[ "$action" == "provision-demo" ]]; then
+  [[ "$demo_mode" =~ ^(verify|dry-run|apply|retire)$ ]] || die "--demo-mode must be verify, dry-run, apply or retire"
+  if [[ "$demo_mode" == "verify" ]]; then
+    [[ -z "$demo_spec_file$demo_digest" ]] || die "verify takes no spec file or digest"
+  else
+    [[ -f "$demo_spec_file" ]] || die "--demo-spec-file must name an existing file"
+  fi
+  if [[ "$demo_mode" == "apply" || "$demo_mode" == "retire" ]]; then
+    [[ "$demo_digest" =~ ^[0-9a-f]{16}$ ]] || die "apply and retire require --demo-confirm-digest (the 16 hex digit digest printed by dry-run)"
+  else
+    [[ -z "$demo_digest" ]] || die "--demo-confirm-digest applies to apply and retire only"
+  fi
+elif [[ -n "$demo_mode$demo_spec_file$demo_digest" ]]; then
+  die "--demo-* options apply to provision-demo only"
+fi
+
 if [[ -n "$export_id" ]]; then
   [[ "$action" == export && "$export_id" =~ ^[a-z0-9-]{8,64}$ ]] ||
     die "--export-id applies to export only and must be 8-64 of [a-z0-9-]"
@@ -113,6 +138,19 @@ if [[ "$action" == "reconcile-owners" ]]; then
     environment+=",{\"name\":\"STOCKWISE_RECONCILE_SPEC_B64\",\"value\":\"${spec_b64}\"}"
   fi
   [[ -z "$reconcile_digest" ]] || environment+=",{\"name\":\"STOCKWISE_RECONCILE_CONFIRM_DIGEST\",\"value\":\"${reconcile_digest}\"}"
+  environment+="]"
+fi
+if [[ "$action" == "provision-demo" ]]; then
+  # The spec holds resource IDs and presenter-account email SHA-256 digests
+  # of already verified demo accounts only; base64 keeps it shell- and JSON-safe in the ECS override.
+  environment=",\"environment\":[{\"name\":\"STOCKWISE_DEMO_MODE\",\"value\":\"${demo_mode}\"}"
+  if [[ "$demo_mode" != "verify" ]]; then
+    spec_b64="$(base64 <"$demo_spec_file" | tr -d "
+ ")"
+    [[ ${#spec_b64} -le 7000 ]] || die "the demo spec exceeds the ECS override size budget"
+    environment+=",{\"name\":\"STOCKWISE_DEMO_SPEC_B64\",\"value\":\"${spec_b64}\"}"
+  fi
+  [[ -z "$demo_digest" ]] || environment+=",{\"name\":\"STOCKWISE_DEMO_CONFIRM_DIGEST\",\"value\":\"${demo_digest}\"}"
   environment+="]"
 fi
 step "starting ${family} ${action}"

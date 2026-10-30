@@ -18,6 +18,7 @@ import {
   getAnalyticsReorder,
 } from "@/analytics-api-client";
 import { listProducts, type CatalogProduct } from "@/catalog-api-client";
+import type { AccessibleOrganization } from "@/branch-api-client";
 import { ForecastReorderView } from "./forecast-reorder-view";
 
 vi.mock("@/analytics-api-client", async (load) => {
@@ -102,7 +103,7 @@ const availableReorder: AnalyticsReorder = {
   recommendedQuantity: "0.0000",
 };
 
-function mount(organization = org) {
+function mount(organization: AccessibleOrganization = org) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -137,6 +138,16 @@ afterEach(() => {
 });
 
 describe("Forecast and reorder view", () => {
+  it.each(["INVENTORY_STAFF", "CASHIER"] as const)(
+    "denies direct forecast view for %s without reading products or forecasts",
+    async (role) => {
+      mount({ ...org, role });
+      expect(await screen.findByRole("alert")).toBeTruthy();
+      expect(productMock).not.toHaveBeenCalled();
+      expect(forecastMock).not.toHaveBeenCalled();
+      expect(reorderMock).not.toHaveBeenCalled();
+    },
+  );
   it("requires a Product, shows zero as available, and explains advisory limitations", async () => {
     mount();
     expect(

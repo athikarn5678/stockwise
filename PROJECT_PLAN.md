@@ -459,6 +459,15 @@ original-architecture restoration record.
 | [ ] **P8-M3-T03 — GitHub Actions deployment** | Automate safe build/deploy | Quality gates, image build/scan, approved deploy environments/rollback | CI + cloud | Least-privilege; protected prod approval; traceable artifact | Dry run/staging deploy/rollback validation |
 | [ ] **P8-M3-T04 — SQS need assessment** | Avoid premature queue | Measure scheduled workload/retry/backpressure; propose ADR only if needed | Running scheduled jobs | Either documented no-need or accepted bounded queue design | Load/failure experiment; no default provisioning |
 
+## DEMO-30D-RBAC-AI-01 — Owner-approved local demo readiness
+
+- **Status:** Implemented / local verification passed; independent review and acceptance pending. No publication or deployment.
+- **Authority:** Owner request of 2026-10-30; `ADR-042` amends INVENTORY_STAFF permissions and bounds Demo Insight presentation.
+- **Scope:** Central policy/navigation/direct-page/API restrictions; guarded API-owned 30-day deterministic synthetic seeding on disposable local PostgreSQL; real Analytics/Forecast/Reorder reconciliation; allowlisted bilingual deterministic Demo Insight without OpenRouter calls.
+- **Preserve:** Other roles, Inventory/Inventory Analytics, ADR-041 single active OWNER governance/index, production calculations and genuine scheduled AI workflow.
+- **Gates:** Five-role and tenant/branch negative checks; exact rerun; ledger/money/source integrity; live calculations; Chromium; typecheck/lint/format/build. Evidence belongs in external `Implementation Records/DEMO-30D-RBAC-AI-01 2026-10-30/`.
+- **Not authorized:** Publication, deployment, Production seeding/migrations, cloud/email/credential changes. Release B remains the deployed baseline; this local candidate does not change its acceptance.
+
 ## Phase 9 — Hardening and experiments
 
 ### Milestone 9.1 — Security, privacy, and resilience

@@ -440,8 +440,8 @@ describe("analytics management", () => {
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Sales" })).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Forecast / Reorder" }),
-    ).toBeTruthy();
+      screen.queryByRole("button", { name: "Forecast / Reorder" }),
+    ).toBeNull();
     expect(screen.getByText("Out of stock")).toBeTruthy();
     expect(screen.getAllByText(/LOW STOCK/).length).toBeGreaterThan(0);
     expect(screen.getByText("6.00 days")).toBeTruthy();

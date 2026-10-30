@@ -259,16 +259,12 @@ describe("purchase order repository with PostgreSQL", () => {
     const value = await scope("Authorize Purchase Orders");
     const other = await scope("Other Purchase Orders");
     const roles = await Promise.all(
-      (["OWNER", "ADMIN", "BRANCH_MANAGER", "INVENTORY_STAFF"] as const).map(
-        (role) =>
-          actor({
-            branchIds:
-              role === "BRANCH_MANAGER" || role === "INVENTORY_STAFF"
-                ? [value.branch.id]
-                : [],
-            organizationId: value.organization.id,
-            role,
-          }),
+      (["OWNER", "ADMIN", "BRANCH_MANAGER"] as const).map((role) =>
+        actor({
+          branchIds: role === "BRANCH_MANAGER" ? [value.branch.id] : [],
+          organizationId: value.organization.id,
+          role,
+        }),
       ),
     );
     for (const allowed of roles) {

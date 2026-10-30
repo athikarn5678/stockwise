@@ -6,6 +6,7 @@
   "scripts": {
     "build": "pnpm run prisma:generate && tsc --project tsconfig.build.json",
     "demo:seed": "pnpm run build && node dist/demo/demo-main.js",
+    "demo:seed:30d": "node src/demo/demo-30d-main.ts",
     "dev": "node --env-file-if-exists=../../.env --watch src/main.ts",
     "lint": "eslint .",
     "native:cutover": "pnpm run build && node dist/native-cutover/native-cutover-main.js",

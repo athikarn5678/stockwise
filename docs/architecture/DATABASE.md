@@ -1485,6 +1485,26 @@ uniqueness boundary in addition to row-lock serialization.
 
 ## 6. Transaction contracts
 
+`ADR-042` adds no schema or migration. Demo30d extends the existing API-owned
+disposable demo tooling. Its historical draft PO adapter supplies stable seed
+provenance and exact snapshots; ordering, receiving, checkout and refund use
+the existing transaction writers below with injected event clocks. It never
+rewrites existing transaction timestamps, deletes history, disables constraints,
+changes accounts/memberships/products, or alters the single active OWNER index.
+Per-event transactions can leave a valid partial run on interruption; the same
+manifest resumes through deterministic draft references and existing idempotency.
+Local remediation adds `stockwise_demo.seed_runs` outside the canonical public
+schema. The owned-disposable seeder alone initializes this fixture metadata:
+organization UUID, complete deterministic plan/signature, IN_PROGRESS/COMPLETE
+state and a final organization-wide business/catalog/branch fingerprint. This
+is local tooling, not a Production migration or a production provenance strategy.
+The first apply requires no existing business history anywhere in that organization.
+Partial runs validate all recognized plan events, ledger and cost projections;
+completed runs require an identical fingerprint. The app never writes this metadata.
+
+Changed manifests fail closed. Demo Insight is a read projection and inserts no
+AnalyticsSnapshot, AiInsightReport or AiInsightAttempt rows.
+
 ### 6.1 Checkout
 
 One database transaction must:
@@ -1654,6 +1674,10 @@ The implementation may choose row locking, conditional/versioned updates, atomic
   service-boundary validation in the implemented adjustment path; the T02
   schema does not falsely claim to enforce them.
 - All stored aggregate totals must be reproducible from accepted snapshots and rounding rules. An intermediate calculation may retain precision beyond a persisted/displayed scale; it must use exact Decimal arithmetic and round only at the accepted boundary.
+
+### ADR-043 demo provenance table
+
+`demo_dataset_runs` (one row per synthetic demo organization): `organization_id` PK/FK (restrict), `name`, `signature` (sha256 of the deterministic plan inputs), `plan` jsonb, `state` (`IN_PROGRESS`|`COMPLETE`), `baseline` jsonb, `history_digest`, `completed_at`. A check ties COMPLETE to a non-null baseline/digest/time; a trigger permits INSERT only as IN_PROGRESS, only IN_PROGRESS to COMPLETE without changing identity or plan, and forbids deleting any row. Written only by the operator `provision-demo` action; `stockwise_app` has SELECT only (`infra/learner-lab/db/grants.sql`, fail-closed). Additive and forward-only; the application ignores the table unless a COMPLETE row exists.
 
 ## 9. Index plan by access pattern
 

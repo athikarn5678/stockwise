@@ -13,6 +13,7 @@ import { useLanguage } from "@/providers/language-provider";
 
 import {
   getLatestInsight,
+  getDemoInsight,
   InsightApiError,
   type InsightCadence,
   type InsightScope,
@@ -170,6 +171,10 @@ export function AiInsightView({
         ) : null}
       </div>
 
+      {enabled ? (
+        <DemoInsight organizationId={organization.id} scope={scope} />
+      ) : null}
+
       {!enabled ? (
         <p>{t("aiChooseBranch")}</p>
       ) : insightQuery.isPending ? (
@@ -236,5 +241,48 @@ export function AiInsightView({
         </>
       )}
     </section>
+  );
+}
+
+function DemoInsight({
+  organizationId,
+  scope,
+}: {
+  organizationId: string;
+  scope: InsightScope;
+}) {
+  const { language } = useLanguage();
+  const query = useQuery({
+    queryKey: [
+      "demo-insight",
+      organizationId,
+      scope.scope,
+      scope.scope === "branch" ? scope.branchId : null,
+      language,
+    ],
+    queryFn: ({ signal }) =>
+      getDemoInsight(organizationId, scope, language, signal),
+  });
+  if (query.isError)
+    return (
+      <p role="alert">
+        {language === "th"
+          ? "โหลดข้อมูลตัวอย่างไม่สำเร็จ"
+          : "Demo Insight could not be loaded."}
+      </p>
+    );
+  if (!query.data) return null;
+  return (
+    <article
+      aria-label={query.data.label}
+      className="rounded-lg border bg-card p-4 sm:p-5"
+    >
+      <h3 className="text-lg font-semibold">{query.data.label}</h3>
+      <p className="text-sm text-muted-foreground">{query.data.explanation}</p>
+      <p className="text-sm text-muted-foreground">
+        {query.data.from} – {query.data.to} ({query.data.reportingTimezone})
+      </p>
+      <p className="mt-3 whitespace-pre-line">{query.data.content}</p>
+    </article>
   );
 }

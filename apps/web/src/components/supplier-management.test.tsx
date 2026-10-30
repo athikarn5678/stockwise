@@ -21,12 +21,13 @@ vi.mock("@/branch-api-client", async (importOriginal) => ({
   fetchAccessContext: vi.fn(),
 }));
 
-function setup(failure?: "create" | "list") {
+function setup(
+  failure?: "create" | "list",
+  role: "OWNER" | "INVENTORY_STAFF" = "OWNER",
+) {
   vi.mocked(fetchAccessContext).mockResolvedValue({
     firstOrganizationOnboarding: { eligible: false },
-    organizations: [
-      { branches: [], id: organizationId, name: "Store", role: "OWNER" },
-    ],
+    organizations: [{ branches: [], id: organizationId, name: "Store", role }],
     user: {
       displayName: "Owner",
       email: "owner@example.test",
@@ -94,6 +95,14 @@ afterEach(() => {
 });
 
 describe("Supplier creation through the API client", () => {
+  it("denies direct supplier page access to inventory staff before supplier requests", async () => {
+    const { fetchMock } = setup(undefined, "INVENTORY_STAFF");
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: "Create supplier" }),
+    ).toBeNull();
+  });
   it("creates once, refreshes the record, and resets the form without a false error", async () => {
     const { fetchMock, persisted } = setup();
     const input = await create();

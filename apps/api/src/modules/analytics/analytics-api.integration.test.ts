@@ -938,12 +938,7 @@ describe("analytics HTTP API with PostgreSQL", () => {
     const fixture = await setup();
     await start();
     const pair = `branchId=${fixture.branches[0]!.id}&productId=${fixture.product.id}`;
-    for (const user of [
-      fixture.owner,
-      fixture.admin,
-      fixture.manager,
-      fixture.inventory,
-    ]) {
+    for (const user of [fixture.owner, fixture.admin, fixture.manager]) {
       const result = await get(
         fixture.organization.id,
         `forecast?${pair}`,
@@ -962,7 +957,7 @@ describe("analytics HTTP API with PostgreSQL", () => {
         /cost|supplier|purchaseOrder|unitPrice/i,
       );
     }
-    for (const user of [fixture.cashier, fixture.outsider]) {
+    for (const user of [fixture.inventory, fixture.cashier, fixture.outsider]) {
       expect(
         (await get(fixture.organization.id, `forecast?${pair}`, user.cookie))
           .status,

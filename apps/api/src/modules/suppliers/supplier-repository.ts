@@ -4,6 +4,7 @@ import { type PrismaClient } from "../../generated/prisma/client.ts";
 import {
   can,
   createTrustedAuthorizationContext,
+  createTrustedBranchScope,
   createTrustedOrganizationScope,
   PERMISSIONS,
   type ResolvedAuthorizationState,
@@ -132,7 +133,12 @@ function definedFields(input: SupplierUpdateInput) {
 
 async function authorize(
   prisma: PrismaClient,
-  input: { actorUserId: string; organizationId: string; lifecycle: boolean },
+  input: {
+    actorUserId: string;
+    organizationId: string;
+    permission:
+      "SUPPLIER_VIEW" | "SUPPLIER_CREATE_EDIT" | "SUPPLIER_DEACTIVATE";
+  },
 ): Promise<boolean> {
   const membership = await prisma.organizationMembership.findUnique({
     where: {
@@ -174,13 +180,18 @@ async function authorize(
   const context = createTrustedAuthorizationContext(state);
   const scope = createTrustedOrganizationScope(input.organizationId);
   if (context === null || scope === null) return false;
-  if (input.lifecycle)
-    return can(context, PERMISSIONS.SUPPLIER_DEACTIVATE, scope);
   if (context.role === "OWNER" || context.role === "ADMIN")
-    return can(context, PERMISSIONS.SUPPLIER_CREATE_EDIT, scope);
-  return (
-    (context.role === "BRANCH_MANAGER" || context.role === "INVENTORY_STAFF") &&
-    context.activeAssignedBranchIds.length > 0
+    return can(context, PERMISSIONS[input.permission], scope);
+  return context.activeAssignedBranchIds.some((branchId) =>
+    can(
+      context,
+      PERMISSIONS[input.permission],
+      createTrustedBranchScope({
+        branchId,
+        branchOrganizationId: input.organizationId,
+        organizationId: input.organizationId,
+      }),
+    ),
   );
 }
 
@@ -189,7 +200,12 @@ export function createPrismaSupplierRepository(
 ): SupplierRepository {
   return {
     async createSupplier(input) {
-      if (!(await authorize(prisma, { ...input, lifecycle: false })))
+      if (
+        !(await authorize(prisma, {
+          ...input,
+          permission: "SUPPLIER_CREATE_EDIT",
+        }))
+      )
         return { kind: "forbidden" };
       const supplier = await prisma.supplier.create({
         data: { organizationId: input.organizationId, ...input.supplier },
@@ -198,7 +214,7 @@ export function createPrismaSupplierRepository(
       return { kind: "success", supplier: safeSupplier(supplier) };
     },
     async getSupplier(input) {
-      if (!(await authorize(prisma, { ...input, lifecycle: false })))
+      if (!(await authorize(prisma, { ...input, permission: "SUPPLIER_VIEW" })))
         return { kind: "forbidden" };
       const supplier = await prisma.supplier.findFirst({
         where: { id: input.supplierId, organizationId: input.organizationId },
@@ -209,7 +225,7 @@ export function createPrismaSupplierRepository(
         : { kind: "success", supplier: safeSupplier(supplier) };
     },
     async listSuppliers(input) {
-      if (!(await authorize(prisma, { ...input, lifecycle: false })))
+      if (!(await authorize(prisma, { ...input, permission: "SUPPLIER_VIEW" })))
         return { kind: "forbidden" };
       const hash = filterHash({
         organizationId: input.organizationId,
@@ -278,7 +294,12 @@ export function createPrismaSupplierRepository(
       };
     },
     async updateSupplier(input) {
-      if (!(await authorize(prisma, { ...input, lifecycle: false })))
+      if (
+        !(await authorize(prisma, {
+          ...input,
+          permission: "SUPPLIER_CREATE_EDIT",
+        }))
+      )
         return { kind: "forbidden" };
       const current = await prisma.supplier.findFirst({
         where: { id: input.supplierId, organizationId: input.organizationId },
@@ -293,7 +314,12 @@ export function createPrismaSupplierRepository(
       return { kind: "success", supplier: safeSupplier(supplier) };
     },
     async setSupplierLifecycle(input) {
-      if (!(await authorize(prisma, { ...input, lifecycle: true })))
+      if (
+        !(await authorize(prisma, {
+          ...input,
+          permission: "SUPPLIER_DEACTIVATE",
+        }))
+      )
         return { kind: "forbidden" };
       const current = await prisma.supplier.findFirst({
         where: { id: input.supplierId, organizationId: input.organizationId },

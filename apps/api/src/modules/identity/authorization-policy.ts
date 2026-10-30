@@ -94,7 +94,7 @@ const INVENTORY_ANALYTICS_ROLES = [
   "BRANCH_MANAGER",
   "INVENTORY_STAFF",
 ] as const satisfies readonly OrganizationRole[];
-const FORECAST_REORDER_ROLES = INVENTORY_ANALYTICS_ROLES;
+const FORECAST_REORDER_ROLES = BUSINESS_ANALYTICS_ROLES;
 const AI_BUSINESS_SUMMARY_ROLES = [
   "OWNER",
   "ADMIN",
@@ -110,11 +110,11 @@ const OWNER_ONLY_ROLES = [
 
 const PERMISSION_RULES = {
   [PERMISSIONS.CATALOG_VIEW]: {
-    roles: ALL_ROLES,
+    roles: CHECKOUT_ROLES,
     scope: "organization-or-branch",
   },
   [PERMISSIONS.CATALOG_CREATE_EDIT]: {
-    roles: OPERATIONAL_MANAGEMENT_ROLES,
+    roles: CATALOG_DEACTIVATION_ROLES,
     scope: "organization-or-branch",
   },
   [PERMISSIONS.CATALOG_DEACTIVATE]: {
@@ -122,11 +122,11 @@ const PERMISSION_RULES = {
     scope: "organization-or-branch",
   },
   [PERMISSIONS.SUPPLIER_VIEW]: {
-    roles: OPERATIONAL_MANAGEMENT_ROLES,
+    roles: CATALOG_DEACTIVATION_ROLES,
     scope: "organization-or-branch",
   },
   [PERMISSIONS.SUPPLIER_CREATE_EDIT]: {
-    roles: OPERATIONAL_MANAGEMENT_ROLES,
+    roles: CATALOG_DEACTIVATION_ROLES,
     scope: "organization-or-branch",
   },
   [PERMISSIONS.SUPPLIER_DEACTIVATE]: {
@@ -142,15 +142,15 @@ const PERMISSION_RULES = {
     scope: "branch",
   },
   [PERMISSIONS.PURCHASE_ORDER_VIEW]: {
-    roles: OPERATIONAL_MANAGEMENT_ROLES,
+    roles: CATALOG_DEACTIVATION_ROLES,
     scope: "branch",
   },
   [PERMISSIONS.PURCHASE_ORDER_CREATE_EDIT]: {
-    roles: OPERATIONAL_MANAGEMENT_ROLES,
+    roles: CATALOG_DEACTIVATION_ROLES,
     scope: "branch",
   },
   [PERMISSIONS.RECEIVING_PERFORM]: {
-    roles: OPERATIONAL_MANAGEMENT_ROLES,
+    roles: CATALOG_DEACTIVATION_ROLES,
     scope: "branch",
   },
   [PERMISSIONS.CHECKOUT_PERFORM]: {

@@ -48,10 +48,10 @@ function target(value: string, label: string, demo: boolean): string {
   return `loopback:${url.port || "5432"}/${database}`;
 }
 
-export function loadDemoEnvironment(
+export function loadDemoDatabaseEnvironment(
   environment: Readonly<Record<string, string | undefined>> = process.env,
   runtimeEnvironmentFile = environmentFile,
-): { databaseUrl: string; databaseName: string; password: string } {
+): { databaseUrl: string; databaseName: string } {
   if (environment.STOCKWISE_RUNTIME_ENV === "production") {
     throw new Error("Demo generation is disabled in production mode.");
   }
@@ -60,12 +60,6 @@ export function loadDemoEnvironment(
     throw new Error("DEMO_DATABASE_URL must be supplied by the process.");
   }
   const demoTarget = target(databaseUrl, "DEMO_DATABASE_URL", true);
-  const password = environment.DEMO_USER_PASSWORD;
-  if (!password || [...password].length < 15 || [...password].length > 128) {
-    throw new Error(
-      "DEMO_USER_PASSWORD must contain 15 to 128 Unicode code points.",
-    );
-  }
   const comparisonUrls: Array<[string, string | undefined]> = [
     ["DATABASE_URL", environment.DATABASE_URL],
     ["TEST_DATABASE_URL", environment.TEST_DATABASE_URL],
@@ -86,5 +80,21 @@ export function loadDemoEnvironment(
       throw new Error(`DEMO_DATABASE_URL collides with ${label}.`);
     }
   }
-  return { databaseUrl, databaseName: demoTarget.split("/")[1]!, password };
+  return { databaseUrl, databaseName: demoTarget.split("/")[1]! };
+}
+
+export function loadDemoEnvironment(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+  runtimeEnvironmentFile = environmentFile,
+): { databaseUrl: string; databaseName: string; password: string } {
+  const target = loadDemoDatabaseEnvironment(
+    environment,
+    runtimeEnvironmentFile,
+  );
+  const password = environment.DEMO_USER_PASSWORD;
+  if (!password || [...password].length < 15 || [...password].length > 128)
+    throw new Error(
+      "DEMO_USER_PASSWORD must contain 15 to 128 Unicode code points.",
+    );
+  return { ...target, password };
 }

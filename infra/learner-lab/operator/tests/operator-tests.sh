@@ -495,6 +495,41 @@ expect GOV_RECONCILE_VERIFY_OVERRIDE override_case verify 'STOCKWISE_RECONCILE_M
 expect GOV_RECONCILE_DRYRUN_OVERRIDE override_case dry 'STOCKWISE_RECONCILE_SPEC_B64' --reconcile-mode dry-run --reconcile-spec-file "$spec_arg"
 expect GOV_RECONCILE_APPLY_OVERRIDE override_case apply 'STOCKWISE_RECONCILE_CONFIRM_DIGEST' --reconcile-mode apply --reconcile-spec-file "$spec_arg" --reconcile-confirm-digest 0123456789abcdef
 
+# ---- ADR-043: provision-demo argument handling and ECS override contents ----
+printf '{"version":1}\n' >"${work}/demo-spec.json"
+demo_spec_arg="$(native "${work}/demo-spec.json")"
+demo_refused() {
+  # demo_refused <case> <args...>: refused before any ECS submission
+  new_case "demo-$1"
+  shift
+  operator_run run run-ops-task.sh provision-demo "$@" && rc=0 || rc=$?
+  [[ $rc != 0 ]] && no_run_task
+}
+expect DEMO_NO_MODE_REFUSED demo_refused nomode
+expect DEMO_BAD_MODE_REFUSED demo_refused badmode --demo-mode delete
+expect DEMO_APPLY_WITHOUT_DIGEST_REFUSED demo_refused nodigest --demo-mode apply --demo-spec-file "$demo_spec_arg"
+expect DEMO_APPLY_SHORT_DIGEST_REFUSED demo_refused shortdigest --demo-mode apply --demo-spec-file "$demo_spec_arg" --demo-confirm-digest abc123
+expect DEMO_RETIRE_WITHOUT_DIGEST_REFUSED demo_refused retiredigest --demo-mode retire --demo-spec-file "$demo_spec_arg"
+expect DEMO_DRYRUN_WITH_DIGEST_REFUSED demo_refused drydigest --demo-mode dry-run --demo-spec-file "$demo_spec_arg" --demo-confirm-digest 0123456789abcdef
+expect DEMO_DRYRUN_MISSING_SPEC_REFUSED demo_refused nospec --demo-mode dry-run
+expect DEMO_VERIFY_WITH_SPEC_REFUSED demo_refused verifyspec --demo-mode verify --demo-spec-file "$demo_spec_arg"
+new_case demo-options-on-other-action
+operator_run run run-ops-task.sh status --demo-mode verify && rc=0 || rc=$?
+expect DEMO_OPTIONS_ONLY_FOR_PROVISION_ACTION bash -c "[[ $rc != 0 ]] && ! grep -q '^ecs run-task' '${case_dir}/aws.log'"
+demo_override_case() {
+  # demo_override_case <case> <expected substring> <args...>
+  new_case "demo-$1"
+  local needle="$2"
+  shift 2
+  printf 'STOCKWISE_OPS: provision-demo\n' >"${case_dir}/task-log.txt"
+  operator_run run run-ops-task.sh provision-demo "$@" && rc=0 || rc=$?
+  [[ $rc == 0 ]] && grep '^ecs run-task' "${case_dir}/aws.log" | grep -q -- "$needle" &&
+    ! grep '^ecs run-task' "${case_dir}/aws.log" | grep -q '@'
+}
+expect DEMO_VERIFY_OVERRIDE demo_override_case verify 'STOCKWISE_DEMO_MODE' --demo-mode verify
+expect DEMO_DRYRUN_OVERRIDE demo_override_case dry 'STOCKWISE_DEMO_SPEC_B64' --demo-mode dry-run --demo-spec-file "$demo_spec_arg"
+expect DEMO_APPLY_OVERRIDE demo_override_case apply 'STOCKWISE_DEMO_CONFIRM_DIGEST' --demo-mode apply --demo-spec-file "$demo_spec_arg" --demo-confirm-digest 0123456789abcdef
+
 failed=0
 for result in "${results[@]}"; do [[ "$result" == *":PASS" ]] || failed=1; done
 printf '%s\n' "${results[@]}" >"${work}/summary.txt"

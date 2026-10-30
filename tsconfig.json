@@ -6,6 +6,7 @@
     "playwright.labels.config.ts",
     "playwright.scanner.config.ts",
     "playwright.public.config.ts",
+    "playwright.demo-30d.config.ts",
     "test/smoke.test.ts",
     "vitest.config.mts",
     "vitest.database-environment.config.mts"

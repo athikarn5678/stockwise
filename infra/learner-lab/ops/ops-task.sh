@@ -6,7 +6,7 @@
 # STOCKWISE_OPS_ROLE; an action outside that role is refused:
 #   bootstrap  bootstrap-roles                       (RDS master credentials)
 #   ops        prepare | migrate | grants | fence-state | status | seed | cutover |
-#              uat-provision | reconcile-owners
+#              uat-provision | reconcile-owners | provision-demo
 #   export     export                                (LabRole task role, S3)
 # Credentials travel only in environment variables, never in arguments or
 # output. Machine-readable result lines start with STOCKWISE_.
@@ -40,7 +40,7 @@ require STOCKWISE_OPS_ROLE STOCKWISE_DB_HOST STOCKWISE_DB_PORT STOCKWISE_DB_NAME
 
 case "${STOCKWISE_OPS_ROLE}:${action}" in
   bootstrap:bootstrap-roles | export:export) ;;
-  ops:prepare | ops:migrate | ops:grants | ops:fence-state | ops:status | ops:seed | ops:cutover | ops:uat-provision | ops:reconcile-owners) ;;
+  ops:prepare | ops:migrate | ops:grants | ops:fence-state | ops:status | ops:seed | ops:cutover | ops:uat-provision | ops:reconcile-owners | ops:provision-demo) ;;
   *) die "action '${action}' is not permitted for the '${STOCKWISE_OPS_ROLE}' task definition" ;;
 esac
 
@@ -134,6 +134,24 @@ case "$action" in
     [[ "$(fence_state)" == "NATIVE" ]] || die "owner reconciliation requires the NATIVE state"
     step "reconcile-owners ${STOCKWISE_RECONCILE_MODE} on ${STOCKWISE_DB_NAME}"
     node dist/owner-reconciliation/owner-reconciliation-main.js
+    ;;
+  provision-demo)
+    # ADR-043: one new, isolated synthetic demo organization (apps/api/src/
+    # demo-production). verify and dry-run only read; apply and retire need the
+    # digest printed by dry-run. Never touches an existing organization.
+    as_migrator
+    require STOCKWISE_DEMO_MODE
+    [[ "$STOCKWISE_DEMO_MODE" =~ ^(verify|dry-run|apply|retire)$ ]] || die "STOCKWISE_DEMO_MODE must be verify, dry-run, apply or retire"
+    if [[ "$STOCKWISE_DEMO_MODE" != "verify" ]]; then
+      require STOCKWISE_DEMO_SPEC_B64
+    fi
+    if [[ "$STOCKWISE_DEMO_MODE" == "apply" || "$STOCKWISE_DEMO_MODE" == "retire" ]]; then
+      require STOCKWISE_DEMO_CONFIRM_DIGEST
+      [[ "$STOCKWISE_DEMO_CONFIRM_DIGEST" =~ ^[0-9a-f]{16}$ ]] || die "STOCKWISE_DEMO_CONFIRM_DIGEST must be 16 hex digits"
+    fi
+    [[ "$(fence_state)" == "NATIVE" ]] || die "demo provisioning requires the NATIVE state"
+    step "provision-demo ${STOCKWISE_DEMO_MODE} on ${STOCKWISE_DB_NAME}"
+    node dist/demo-production/demo-production-main.js
     ;;
   cutover)
     as_migrator

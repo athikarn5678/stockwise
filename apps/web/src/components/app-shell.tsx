@@ -333,7 +333,11 @@ function WorkspaceShell({ children }: AppShellProps) {
   ];
   if (organization) {
     destinations.push(
-      { label: t("catalog"), path: "/app/catalog", visible: true },
+      {
+        label: t("catalog"),
+        path: "/app/catalog",
+        visible: organization.role !== "INVENTORY_STAFF",
+      },
       { label: t("inventory"), path: "/app/inventory", visible: !!branch },
       {
         label: t("pos"),
@@ -353,12 +357,17 @@ function WorkspaceShell({ children }: AppShellProps) {
       {
         label: t("suppliers"),
         path: "/app/suppliers",
-        visible: organization.role !== "CASHIER",
+        visible:
+          organization.role !== "CASHIER" &&
+          organization.role !== "INVENTORY_STAFF",
       },
       {
         label: t("purchaseOrders"),
         path: "/app/purchase-orders",
-        visible: !!branch && organization.role !== "CASHIER",
+        visible:
+          !!branch &&
+          organization.role !== "CASHIER" &&
+          organization.role !== "INVENTORY_STAFF",
       },
       { label: t("branches"), path: "/app/branches", visible: canManage },
       { label: t("members"), path: "/app/members", visible: canManage },

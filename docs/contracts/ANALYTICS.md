@@ -928,7 +928,7 @@ Authorization is server-derived from the active membership and assignments:
 | --- | --- |
 | Sales/discount/VAT/refund/count/AOV/category/branch metrics | `BUSINESS_ANALYTICS_VIEW`; `OWNER`/`ADMIN` Organization-wide, assigned `BRANCH_MANAGER` assigned active Branches |
 | Inventory quantity/movement/availability/coverage metrics | `INVENTORY_ANALYTICS_VIEW`; `OWNER`/`ADMIN` Organization-wide, assigned `BRANCH_MANAGER`/`INVENTORY_STAFF` assigned active Branches |
-| Forecasting V1 observed-Sale quantity estimates | Existing `FORECAST_REORDER_VIEW`; `OWNER`/`ADMIN` Organization-wide, assigned `BRANCH_MANAGER`/`INVENTORY_STAFF` assigned active Branches; no `SALES_COST_VIEW` |
+| Forecasting V1 observed-Sale quantity estimates | Existing `FORECAST_REORDER_VIEW`; `OWNER`/`ADMIN` Organization-wide, assigned `BRANCH_MANAGER` assigned active Branches; `INVENTORY_STAFF`/`CASHIER` denied (`ADR-042`); no `SALES_COST_VIEW` |
 | COGS/Gross Profit/Gross Margin/current inventory value or any cost coverage amount | Relevant analytics permission **and** existing `SALES_COST_VIEW`; `OWNER`/`ADMIN` Organization-wide, assigned `BRANCH_MANAGER` assigned active Branches |
 | Any analytics | `CASHIER`: none |
 
@@ -1075,7 +1075,7 @@ or unauthorized resources use existing safe errors, not a forecast reason.
 
 Use the existing `FORECAST_REORDER_VIEW` capability at the server-derived Branch
 scope for this quantity-only result: `OWNER`/`ADMIN` across the Organization and assigned
-`BRANCH_MANAGER`/`INVENTORY_STAFF` on active assigned Branches. `CASHIER` has no
+`BRANCH_MANAGER` on active assigned Branches. `INVENTORY_STAFF`/`CASHIER` have no
 access. `SALES_COST_VIEW` is unnecessary because no prices, money, or cost are
 returned. P6-M4-T02 must apply that existing policy even if it adapts the
 analytics Branch-set resolver, which currently accepts only business/inventory
@@ -1639,8 +1639,8 @@ any origin.
   adjustments, and refund; the CASHIER acts for A checkouts. These accounts
   demonstrate server-enforced scope and cost visibility, not a second tenant:
   validate OWNER access to both Branches, A manager's authorized cost-visible
-  A analytics but not B, B inventory staff's inventory/forecast access without
-  cost or A scope, and A cashier's checkout access without analytics.
+  A analytics but not B, B inventory staff's inventory access without
+  cost or A scope (Forecast/Reorder denied by ADR-042), and A cashier's checkout access without analytics.
 - T02 validation must check schema and lifecycle constraints; same-tenant
   Branch/Product/actor links; every balance against all signed ledger deltas;
   direct receipt/Sale/return source linkage; KNOWN cost projection/value and

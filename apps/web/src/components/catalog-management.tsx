@@ -60,7 +60,6 @@ const MANAGEMENT_ROLES = new Set<CatalogRole>([
   "OWNER",
   "ADMIN",
   "BRANCH_MANAGER",
-  "INVENTORY_STAFF",
 ]);
 const LIFECYCLE_ROLES = new Set<CatalogRole>([
   "OWNER",
@@ -243,6 +242,10 @@ function CatalogContent({
   organization: AccessibleOrganization;
 }) {
   const { t } = useLanguage();
+
+  if (organization.role === "INVENTORY_STAFF") {
+    return <p role="alert">{t("accessDenied")}</p>;
+  }
 
   if (BRANCH_SCOPED_ROLES.has(organization.role) && branch === null) {
     return (

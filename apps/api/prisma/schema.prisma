@@ -370,6 +370,7 @@ model Organization {
   branchStatusEvents    BranchStatusEvent[]
   analyticsSnapshots    AnalyticsSnapshot[]
   aiInsightReports      AiInsightReport[]
+  demoDatasetRun        DemoDatasetRun?
 
   @@map("organizations")
 }
@@ -1203,4 +1204,21 @@ model NativeAuthEnrollment {
   account                   BetterAuthAccount @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@map("native_auth_enrollments")
+}
+
+/// ADR-043: provenance of an isolated synthetic demo organization (operator-written, runtime read-only).
+model DemoDatasetRun {
+  organizationId String    @id(map: "demo_dataset_runs_pkey") @map("organization_id") @db.Uuid
+  name           String    @db.VarChar(200)
+  signature      String    @db.Char(64)
+  plan           Json
+  state          String
+  baseline       Json?
+  historyDigest  String?   @map("history_digest") @db.Char(64)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "demo_dataset_runs_organization_id_fkey")
+
+  @@map("demo_dataset_runs")
 }

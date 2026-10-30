@@ -67,7 +67,6 @@ const MANAGEMENT_ROLES = new Set<PurchaseOrderRole>([
   "OWNER",
   "ADMIN",
   "BRANCH_MANAGER",
-  "INVENTORY_STAFF",
 ]);
 const INTEGER_UNITS = new Set<ProductUnit>(["EA", "PACK", "BOX"]);
 const STATUS_OPTIONS: Array<PurchaseOrderStatus | "all"> = [

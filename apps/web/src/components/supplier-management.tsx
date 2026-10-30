@@ -37,12 +37,7 @@ import {
   updateSupplier,
 } from "@/supplier-api-client";
 
-const MANAGEMENT_ROLES = new Set([
-  "OWNER",
-  "ADMIN",
-  "BRANCH_MANAGER",
-  "INVENTORY_STAFF",
-]);
+const MANAGEMENT_ROLES = new Set(["OWNER", "ADMIN", "BRANCH_MANAGER"]);
 const LIFECYCLE_ROLES = new Set(["OWNER", "ADMIN"]);
 const emptyInput: SupplierInput = {
   name: "",
@@ -87,6 +82,8 @@ export function SupplierManagement() {
         {t("supplierNoOrg")}
       </p>
     );
+  if (resolved.organization.role === "INVENTORY_STAFF")
+    return <p role="alert">{t("accessDenied")}</p>;
   return (
     <SupplierContent
       organization={resolved.organization}

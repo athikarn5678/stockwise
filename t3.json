@@ -3,13 +3,13 @@
   "scripts": [
     {
       "name": "Setup Worktree",
-      "command": "pnpm install --frozen-lockfile",
+      "command": "[ -f .env ] || cp \"$(git rev-parse --git-common-dir)/../.env\" .env; pnpm install --frozen-lockfile",
       "icon": "configure",
       "runOnWorktreeCreate": true
     },
     {
       "name": "Verify",
-      "command": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
+      "command": "export TEST_DATABASE_URL=\"$(grep '^TEST_DATABASE_URL=' .env | cut -d= -f2-)\" && pnpm verify",
       "icon": "build",
       "runOnWorktreeCreate": false
     },

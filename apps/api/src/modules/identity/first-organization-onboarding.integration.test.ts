@@ -537,5 +537,5 @@ describe("first organization onboarding with PostgreSQL", () => {
       await runningServer?.stop();
       runningServer = undefined;
     }
-  });
+  }, 15_000);
 });

@@ -516,3 +516,5 @@ A task is done only when all applicable statements are true:
 - Affected Source of Truth documents and plan status are updated together.
 - The final handoff lists changes, files, checks with results, and unresolved decisions.
 - The work is only reported as ready for commit unless the user separately authorizes the exact Git action.
+
+workflow-spec: 2026-11-15

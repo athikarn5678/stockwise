@@ -19,7 +19,8 @@
     "test:db": "pnpm --filter @stockwise/api test:db",
     "test:e2e": "pnpm --filter @stockwise/api build && playwright test --project=chromium",
     "test:watch": "pnpm --filter @stockwise/api prisma:generate && vitest",
-    "typecheck": "tsc --project tsconfig.json && pnpm --recursive --if-present typecheck"
+    "typecheck": "tsc --project tsconfig.json && pnpm --recursive --if-present typecheck",
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

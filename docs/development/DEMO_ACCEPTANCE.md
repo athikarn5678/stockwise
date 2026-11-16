@@ -1,9 +1,10 @@
 # Demo acceptance suite (STOCKWISE-DEMO-E2E-01)
 
 Automated Playwright journeys for the AWS Academy Learner Lab demonstration on
-Better Auth Native Live (`ADR-039`). This is a **demo gate**, not D5-P5
-production acceptance: it proves only that the essential Register, Login,
-Onboarding and Invitation flows work end to end on the real application.
+Better Auth Native, which per `ADR-045` is becoming the only authentication
+authority (Legacy removal pending M3-T5). This is a **demo gate**, not D5-P5 production acceptance: it proves
+only that the essential Register, Login, Onboarding and Invitation flows work
+end to end on the real application.
 
 ## Run
 
@@ -80,5 +81,6 @@ No real email is sent and no shared database is touched.
 ## Not covered
 
 HTTPS/production cookies, real email delivery, AWS hosting, BFCache, rate-limit
-bursts, password reset, and the D5-P5 production-only checks. Those remain
-separately gated and must not be reported as passed by this suite.
+bursts, password reset, and the production-only checks formerly tracked as
+D5-P5. Those remain separately gated and must not be reported as passed by this
+suite.

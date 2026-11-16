@@ -6,6 +6,7 @@ import {
   provisionTestDatabase,
   resetTestDatabase,
 } from "../../apps/api/src/test/database-harness.ts";
+import { createNativeFixtureUser } from "../../apps/api/src/test/native-user-fixture.ts";
 import {
   E2E_BRANCH_ID,
   E2E_CASHIER_EMAIL,
@@ -46,32 +47,26 @@ export default async function globalSetup(): Promise<void> {
         organizationId: E2E_ORGANIZATION_ID,
       },
     });
-    await prisma.user.create({
-      data: {
-        displayName: "Catalog Owner",
-        email: E2E_OWNER_EMAIL,
-        emailVerifiedAt: new Date("2026-08-26T12:00:00.000Z"),
-        id: E2E_OWNER_ID,
-        passwordHash,
-      },
+    await createNativeFixtureUser(prisma, {
+      displayName: "Catalog Owner",
+      email: E2E_OWNER_EMAIL,
+      id: E2E_OWNER_ID,
+      password: E2E_PASSWORD,
+      passwordHash,
     });
-    await prisma.user.create({
-      data: {
-        displayName: "Catalog Manager",
-        email: E2E_MANAGER_EMAIL,
-        emailVerifiedAt: new Date("2026-08-26T12:00:00.000Z"),
-        id: E2E_MANAGER_ID,
-        passwordHash,
-      },
+    await createNativeFixtureUser(prisma, {
+      displayName: "Catalog Manager",
+      email: E2E_MANAGER_EMAIL,
+      id: E2E_MANAGER_ID,
+      password: E2E_PASSWORD,
+      passwordHash,
     });
-    await prisma.user.create({
-      data: {
-        displayName: "Catalog Cashier",
-        email: E2E_CASHIER_EMAIL,
-        emailVerifiedAt: new Date("2026-08-26T12:00:00.000Z"),
-        id: E2E_CASHIER_ID,
-        passwordHash,
-      },
+    await createNativeFixtureUser(prisma, {
+      displayName: "Catalog Cashier",
+      email: E2E_CASHIER_EMAIL,
+      id: E2E_CASHIER_ID,
+      password: E2E_PASSWORD,
+      passwordHash,
     });
     await prisma.organizationMembership.createMany({
       data: [

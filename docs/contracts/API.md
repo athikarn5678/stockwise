@@ -317,9 +317,11 @@ accounts without memberships. It refreshes shared actor display data after
 save without logging out. Dirty drafts retain their original base version
 during ordinary query refresh; conflicts offer explicit reload. Save/Cancel,
 internal-link and browser-unload warnings use EN/TH and the existing themes.
-Security reconciliation still clears private queries/mutations and fences old
-requests. One route-owned in-memory Profile/Organization Settings draft may
-survive harmless focus/visibility reconciliation only after fresh matching actor
+Security reconciliation still fences old requests and revalidates authority on
+resume (`ADR-044`): private queries/mutations and the mounted private content are
+cleared only when that authority changed or cannot be confirmed. One route-owned
+in-memory Profile/Organization Settings draft may survive a harmless
+focus/visibility reconciliation only after fresh matching actor
 and effective organization/role/branch authority. Logout, session hints, failed
 authentication/authorization, authority changes and route departure discard it.
 An actor change detected by ordinary access-context refetch also hard-invalidates

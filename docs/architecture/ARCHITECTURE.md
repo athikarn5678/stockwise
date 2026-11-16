@@ -100,9 +100,12 @@ the existing selected authentication middleware supplies the trusted actor
 for both Legacy and the non-live Native composition. The module updates only
 the existing User display name/phone with atomic optimistic concurrency.
 Shared access-context actor data refreshes after save. Session reconciliation
-continues to clear private queries, hide private content and revalidate authority.
-One route-owned unsaved Profile/Organization Settings form may survive only a
-soft focus/visibility reconciliation in memory, and only after fresh actor and
+revalidates authority on resume and clears private queries and private content
+only on change (`ADR-044`): returning from a hidden or blurred window keeps the
+mounted screen and silently revalidates authority, while `pagehide`/back-forward
+restore, session-change hints and `401` keep their full teardown. One route-owned
+unsaved Profile/Organization Settings form may survive only a soft
+focus/visibility reconciliation in memory, and only after fresh actor and
 effective organization/role/branch authority match. Logout, session hints, 401,
 failed access checks, authority changes and route departure discard that handoff.
 No browser storage or general private-data cache is used. Browser Back/Forward

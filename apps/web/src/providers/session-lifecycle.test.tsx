@@ -219,12 +219,30 @@ it("ignores a superseded access request when a second tab changes actor during r
   await act(async () => old.resolve(response("Old actor")));
   expect(client.getQueryData(["access-context"])).toEqual(context("Actor B"));
 });
-it("keeps a hidden private document closed until visibility returns", async () => {
+it("keeps a hidden private document mounted and revalidates on return", async () => {
   mount();
-  await screen.findByLabelText("Private draft");
+  fireEvent.change(await screen.findByLabelText("Private draft"), {
+    target: { value: "unsent cart" },
+  });
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
   act(() => document.dispatchEvent(new Event("visibilitychange")));
-  expect(screen.queryByLabelText("Private draft")).toBeNull();
+  expect(
+    (screen.getByLabelText("Private draft") as HTMLInputElement).value,
+  ).toBe("unsent cart");
+  expect(fetch).toHaveBeenCalledTimes(1);
+  // Simulate a later return so the burst coalescing window does not apply.
+  const now = performance.now();
+  vi.spyOn(performance, "now").mockReturnValue(now + 1000);
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  act(() => document.dispatchEvent(new Event("visibilitychange")));
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(
+    (screen.getByLabelText("Private draft") as HTMLInputElement).value,
+  ).toBe("unsent cart");
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+  act(() => document.dispatchEvent(new Event("visibilitychange")));
+  const pending = Promise.withResolvers<Response>();
+  vi.mocked(fetch).mockReturnValueOnce(pending.promise);
   act(() =>
     window.dispatchEvent(
       new StorageEvent("storage", {
@@ -237,11 +255,9 @@ it("keeps a hidden private document closed until visibility returns", async () =
       }),
     ),
   );
-  expect(fetch).toHaveBeenCalledTimes(1);
-  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
-  act(() => document.dispatchEvent(new Event("visibilitychange")));
-  await screen.findByLabelText("Private draft");
-  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(screen.queryByLabelText("Private draft")).toBeNull();
+  expect(fetch).toHaveBeenCalledTimes(3);
+  pending.resolve(response());
   vi.restoreAllMocks();
 });
 it("ignores malformed notifications without resetting an active private draft", async () => {

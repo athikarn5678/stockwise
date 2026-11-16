@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +15,7 @@ import {
 } from "@/organization-api-client";
 import { currentPrivateSessionSignal } from "@/session-lifecycle";
 import { useAccountDraft } from "@/providers/account-draft";
+import { useSessionLifecycle } from "@/providers/session-lifecycle-provider";
 import { useLanguage } from "@/providers/language-provider";
 
 export function OrganizationSettings() {
@@ -112,14 +113,50 @@ function OrganizationEditor({ organizationId }: { organizationId: string }) {
     draft.remember(dirty ? { name, savedName, baseUpdatedAt } : null);
   }, [draft, organization, forbidden, dirty, name, savedName, baseUpdatedAt]);
 
+  const { confirmedAuthority, currentRevalidationSequence } =
+    useSessionLifecycle();
+  // Revalidation sequence at the moment access was denied. Only a check that
+  // started after it may release the denied state (ADR-044).
+  const deniedAtSequence = useRef<number | null>(null);
+
   useEffect(() => {
     if (!forbidden) return;
+    deniedAtSequence.current ??= currentRevalidationSequence();
     setEditorForbidden(true);
     setName(savedName);
     setBaseUpdatedAt(null);
     setLocalValidation(false);
     draft.remember(null);
-  }, [forbidden, savedName, draft]);
+  }, [forbidden, savedName, draft, currentRevalidationSequence]);
+
+  // A resume revalidation that started after the denial and confirmed the same
+  // actor, role, organization and scope releases the denied state (ADR-044); the
+  // rejected edit stays discarded because it was already reset above. A check
+  // that was already in flight when access was denied proves nothing about it.
+  // A changed authority never reaches here: the provider resets the screen.
+  useEffect(() => {
+    const denied =
+      editorForbidden ||
+      message === "forbidden" ||
+      (settingsQuery.error instanceof OrganizationApiError &&
+        settingsQuery.error.kind === "forbidden");
+    if (!denied) {
+      deniedAtSequence.current = null;
+      return;
+    }
+    if (
+      deniedAtSequence.current === null ||
+      confirmedAuthority <= deniedAtSequence.current
+    )
+      return;
+    deniedAtSequence.current = null;
+    setEditorForbidden(false);
+    setMessage((current) => (current === "forbidden" ? null : current));
+    setLocalValidation(false);
+    // A forbidden read is re-asked now that the authority is confirmed.
+    if (settingsQuery.isError) void settingsQuery.refetch();
+  }, [confirmedAuthority, editorForbidden, message, settingsQuery]);
+
   useEffect(() => {
     if (!dirty) return;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -216,6 +253,7 @@ function OrganizationEditor({ organizationId }: { organizationId: string }) {
           error instanceof OrganizationApiError ? error.kind : "error";
         setMessage(kind === "unavailable" ? "error" : kind);
         if (kind === "forbidden") {
+          deniedAtSequence.current = currentRevalidationSequence();
           setEditorForbidden(true);
           setName(savedName);
           setBaseUpdatedAt(null);

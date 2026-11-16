@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -280,6 +281,92 @@ describe("organization settings", () => {
       "disabled",
       true,
     );
+    expect(updateOrganizationSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops the editor when a resumed revalidation reports changed authority", async () => {
+    let downgraded = false;
+    vi.mocked(fetchAccessContext).mockImplementation(async () =>
+      downgraded ? context("CASHIER") : context("OWNER"),
+    );
+    vi.mocked(fetchOrganizationSettings).mockResolvedValue(organization);
+    vi.mocked(updateOrganizationSettings).mockRejectedValue(
+      new OrganizationApiError("forbidden"),
+    );
+    renderSettingsWithLifecycle();
+
+    const input = await screen.findByLabelText("Organization name");
+    fireEvent.change(input, { target: { value: "Forbidden draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "You do not have permission",
+    );
+
+    // The downgraded authority cannot be confirmed: the provider resets the
+    // mounted screen and the freshly loaded role no longer owns this screen.
+    const callsBeforeResume = vi.mocked(fetchAccessContext).mock.calls.length;
+    downgraded = true;
+    fireEvent.blur(window);
+    fireEvent.focus(window);
+
+    await waitFor(() =>
+      expect(vi.mocked(fetchAccessContext).mock.calls.length).toBeGreaterThan(
+        callsBeforeResume,
+      ),
+    );
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("You do not have permission");
+    expect(screen.queryByLabelText("Organization name")).toBeNull();
+    expect(updateOrganizationSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the denied state when the revalidation in flight at the 403 completes, and releases it for a later one", async () => {
+    vi.mocked(fetchAccessContext).mockResolvedValue(context("OWNER"));
+    vi.mocked(fetchOrganizationSettings).mockResolvedValue(organization);
+    vi.mocked(updateOrganizationSettings).mockRejectedValue(
+      new OrganizationApiError("forbidden"),
+    );
+    renderSettingsWithLifecycle();
+    const input = await screen.findByLabelText("Organization name");
+
+    // A resume revalidation starts and stays in flight.
+    const inFlight = deferred<ReturnType<typeof context>>();
+    const callsAtMount = vi.mocked(fetchAccessContext).mock.calls.length;
+    vi.mocked(fetchAccessContext).mockImplementationOnce(
+      () => inFlight.promise,
+    );
+    fireEvent.blur(window);
+    fireEvent.focus(window);
+    await waitFor(() =>
+      expect(vi.mocked(fetchAccessContext).mock.calls.length).toBeGreaterThan(
+        callsAtMount,
+      ),
+    );
+
+    // The save is denied while that older check is still unresolved.
+    fireEvent.change(input, { target: { value: "Forbidden draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Organization name")).toBeNull(),
+    );
+
+    // The older check began before the denial: it must not release it.
+    await act(async () => inFlight.resolve(context("OWNER")));
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "You do not have permission",
+    );
+    expect(screen.queryByLabelText("Organization name")).toBeNull();
+
+    // A check that starts after the denial and confirms the authority does.
+    const callsBefore = vi.mocked(fetchAccessContext).mock.calls.length;
+    fireEvent.blur(window);
+    fireEvent.focus(window);
+    await waitFor(() =>
+      expect(vi.mocked(fetchAccessContext).mock.calls.length).toBeGreaterThan(
+        callsBefore,
+      ),
+    );
+    expect(await screen.findByLabelText("Organization name")).toBeTruthy();
     expect(updateOrganizationSettings).toHaveBeenCalledTimes(1);
   });
 

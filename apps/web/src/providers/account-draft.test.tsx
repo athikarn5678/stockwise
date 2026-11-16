@@ -106,7 +106,9 @@ it("restores a dirty profile and original version only after fresh same-actor fo
     "value",
     "Unsaved private name",
   );
-  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(4));
+  // Mount: access-context + profile. Resume: one silent access-context
+  // revalidation keeps the mounted form, so no profile refetch (ADR-044).
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
   fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
   await waitFor(() =>
     expect(
@@ -121,12 +123,15 @@ it("restores a dirty profile and original version only after fresh same-actor fo
     ).toBe(true),
   );
 });
-it("hides private content while invisible and restores the draft only after visible revalidation", async () => {
+it("keeps private content while invisible and restores the draft only after visible revalidation", async () => {
   await draft();
   const visibility = vi.spyOn(document, "visibilityState", "get");
   visibility.mockReturnValue("hidden");
   act(() => document.dispatchEvent(new Event("visibilitychange")));
-  expect(screen.queryByLabelText("Display name")).toBeNull();
+  expect(screen.getByLabelText("Display name")).toHaveProperty(
+    "value",
+    "Unsaved private name",
+  );
   visibility.mockReturnValue("visible");
   act(() => document.dispatchEvent(new Event("visibilitychange")));
   expect(await screen.findByLabelText("Display name")).toHaveProperty(
@@ -138,9 +143,11 @@ it("discards the old draft when fresh authentication belongs to another actor", 
   await draft();
   actor = actorB;
   resume();
-  expect(await screen.findByLabelText("Display name")).toHaveProperty(
-    "value",
-    "Other account",
+  await waitFor(() =>
+    expect(screen.getByLabelText("Display name")).toHaveProperty(
+      "value",
+      "Other account",
+    ),
   );
 });
 it.each(["stockwise:session-change", "stockwise:session-unauthorized"])(

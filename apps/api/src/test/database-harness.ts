@@ -84,9 +84,24 @@ export async function applyTestDatabaseMigrations(
 }
 
 /**
+ * Reset policy for the durable authentication fence singleton. An absent fence
+ * (pre-migration target), `LEGACY` and `NATIVE` are resettable; a quiesced or
+ * unrecognised state is a target in an undefined transition, so it is refused.
+ */
+export function assertFenceAllowsReset(state: string | null): void {
+  if (state === null || state === "LEGACY" || state === "NATIVE") return;
+  if (state === "QUIESCED")
+    throw new Error(
+      "test reset refused while the authentication transition is quiesced",
+    );
+  throw new Error("test reset refused for an unknown authentication fence");
+}
+
+/**
  * Clears only the disposable test database's public tables and removes the
  * harness-owned scratch schema. The URL guard runs before any destructive
- * statement is issued, while future Prisma migration metadata stays intact.
+ * statement is issued, while the durable fence singleton and future Prisma
+ * migration metadata stay intact.
  */
 export async function resetTestDatabase(
   environment: TestDatabaseEnvironment,
@@ -102,20 +117,17 @@ export async function resetTestDatabase(
   try {
     await testClient.connect();
     await testClient.query("BEGIN");
-    // Retain the durable fence across ordinary test resets. A transitioned
-    // target is never reset back into Legacy authority, even when disposable.
-    await testClient.query(`
-      DO $$
-      BEGIN
-        IF to_regclass('public.native_auth_transition') IS NOT NULL THEN
-          PERFORM 1 FROM public.native_auth_transition
-          WHERE id = true AND state = 'LEGACY' FOR SHARE;
-          IF NOT FOUND THEN
-            RAISE EXCEPTION 'test reset refused after authentication transition';
-          END IF;
-        END IF;
-      END $$;
-    `);
+    // Retain the durable fence across ordinary test resets: Legacy and Native
+    // targets are both resettable, an undefined transition state is not.
+    const fenceTable = await testClient.query<{ exists: boolean }>(
+      "SELECT to_regclass('public.native_auth_transition') IS NOT NULL AS exists",
+    );
+    if (fenceTable.rows[0]?.exists === true) {
+      const fence = await testClient.query<{ state: string }>(
+        "SELECT state FROM public.native_auth_transition WHERE id = true FOR SHARE",
+      );
+      assertFenceAllowsReset(fence.rows[0]?.state ?? null);
+    }
     await testClient.query(
       "DROP SCHEMA IF EXISTS stockwise_test_harness CASCADE",
     );

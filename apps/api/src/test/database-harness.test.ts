@@ -5,6 +5,7 @@ import {
   loadTestDatabaseEnvironment,
 } from "./database-environment.ts";
 import {
+  assertFenceAllowsReset,
   createTestPrismaClient,
   resetTestDatabase,
   withRollbackTransaction,
@@ -110,5 +111,22 @@ describe("database test harness", () => {
     `;
 
     expect(result[0]?.relation).toBeNull();
+  });
+});
+
+describe("fence reset policy", () => {
+  it("allows resets for an absent, legacy or native fence", () => {
+    expect(() => assertFenceAllowsReset(null)).not.toThrow();
+    expect(() => assertFenceAllowsReset("LEGACY")).not.toThrow();
+    expect(() => assertFenceAllowsReset("NATIVE")).not.toThrow();
+  });
+
+  it("refuses a quiesced fence", () => {
+    expect(() => assertFenceAllowsReset("QUIESCED")).toThrow("quiesced");
+  });
+
+  it("refuses unknown or empty fence states", () => {
+    expect(() => assertFenceAllowsReset("SEALED")).toThrow("unknown");
+    expect(() => assertFenceAllowsReset("")).toThrow("unknown");
   });
 });

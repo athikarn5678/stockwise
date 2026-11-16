@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseEnv } from "node:util";
@@ -102,6 +103,12 @@ if (runtimeDatabaseUrl !== undefined) {
   }
 }
 
+// One throwaway secret per run unless the operator supplied one. It stays in
+// process memory only: never printed, logged or written to disk.
+const betterAuthSecret =
+  process.env.STOCKWISE_BETTER_AUTH_SECRET ??
+  randomBytes(32).toString("base64url");
+
 export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   globalSetup: "./tests/e2e/catalog-global-setup.mts",
@@ -123,6 +130,8 @@ export default defineConfig({
         ...process.env,
         DATABASE_URL: testDatabaseUrl,
         STOCKWISE_API_PORT: "3001",
+        STOCKWISE_AUTHENTICATION_AUTHORITY: "native",
+        STOCKWISE_BETTER_AUTH_SECRET: betterAuthSecret,
         STOCKWISE_PUBLIC_WEB_ORIGIN: "http://localhost:3000",
         STOCKWISE_RUNTIME_ENV: "test",
       },

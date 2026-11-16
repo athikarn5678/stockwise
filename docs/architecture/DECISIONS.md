@@ -3419,6 +3419,12 @@ The Production Demo Insight reader (`/ai-insights/demo`) serves that stored base
 
 Before apply the operator takes and verifies a database export. `retire` (bound to its own digest, independent of presenter accounts) sets only the demo organization INACTIVE and deactivates its non-OWNER memberships; the OWNER stays so the organization keeps its one OWNER, and nothing is deleted. Removal of rows is by restoring the verified export into a scratch database for comparison, never by restoring the shared Production database.
 
+## ADR-044 — Revalidate on resume, reset only on change
+
+- **Date:** 2026-11-16
+- **Status:** Accepted by the owner. Full record: `docs/decisions/0044-revalidate-on-resume-reset-only-on-change.md`.
+- **Type:** Frontend session-lifecycle amendment. Supersedes only the hide/blur/focus reset of the private screen; `ADR-013` and `ADR-034` are unchanged.
+
 ## 2. Explicitly superseded planning directions
 
 The current ADRs supersede these earlier, unimplemented ideas:

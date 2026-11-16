@@ -16,11 +16,31 @@ Retail platform for SMEs: organization-level catalog and suppliers, branch inven
 ## Milestones (in delivery order)
 
 ### M1 — Dependency security updates
-`pnpm audit --prod` (2026-11-15): 26 advisories — 2 critical (next), 8 high (next, vite, zod, body-parser, undici). Upgrade within compatible ranges first; a major upgrade is its own task (AGENTS.md §12).
-- [ ] M1-T1 Triage advisories (runtime-reachable vs dev-only) and pick target versions
-- [ ] M1-T2 Upgrade next (+ `@next/eslint-plugin-next`); verify, build, e2e
-- [ ] M1-T3 Upgrade remaining (vite, zod, body-parser via express, undici); verify, build, e2e
-- [ ] M1-T4 Re-run audit; record accepted residual advisories
+`pnpm audit --prod` re-run 2026-11-15: 26 advisories (2 critical, 8 high, 13 moderate, 3 low), all in 7 packages. Compatible (minor/patch) upgrades only; no major bump is planned (AGENTS.md §12). Versions are pinned exactly (`saveExact`). The lockfile changes only through pnpm commands; transitive pins use the existing `overrides` block in `pnpm-workspace.yaml` (config edit, not a lockfile edit). No test/timeout changes.
+
+Triage (T1). Reach: **R** = runtime-reachable in a deployed process; **D** = dev/build/test-only (appears in `--prod` only through better-auth peer deps or Prisma CLI).
+| Package (adv. count, worst) | Current → target | Reach | Notes |
+| --- | --- | --- | --- |
+| next (3: 2 critical, 1 high) | 16.3.8 → 16.4.6 (web dep) and `@next/eslint-plugin-next` 16.3.8 → 16.4.6 (root dev) | R (web) | RCE in Image Optimization API and in `use cache`; DoS in Server Actions. Repo has no `use cache`/server actions; `next/image` appears in `brand-logo.tsx` (image optimizer exposure to be confirmed). Fix is `>=16.4.1`; 16.4.6 is the latest 16.x. `better-auth>next` is a peer and resolves to the same copy. Minor bump → needs `next build` + e2e. |
+| zod (1 high) | direct 4.4.3 → 4.6.7 in api+web; better-auth's 4.6.5 → 4.6.7 via override | R (api+web) | Memory exhaustion on oversized constrained collections. Fix `>=4.6.6`. Same minor line as the current 4.6.5 already installed under better-auth. |
+| body-parser (1 high) | 2.3.0 → 2.4.0 via override | R (api, via express 5.2.1) | DoS on trailing bytes. Express 5.2.1 allows `^2`; no express bump. |
+| qs (1 moderate) | 6.16.0 → 6.16.1 (override value change `qs@6.15.3: 6.16.0` → new pin; express's range may need `qs@6.16.0: 6.16.1`) | R (api) | `qs.stringify` comma-array DoS; app only parses. |
+| undici (8: 4 high, 4 moderate) | 8.10.2 → 8.12.4 via override (`undici@8.10.2: 8.12.4`) | D | Only path is `jsdom>undici` (web test env). |
+| vite (6: 1 high, 4 moderate, 1 low) | 8.2.2 → 8.2.6 (patched ≥8.2.4, same 8.2 line) via override | D | Dev-server/launch-editor advisories; vite is only used by vitest. |
+| @vitest/mocker (2 moderate) | 4.1.11 → 4.1.12 with `vitest` 4.1.11 → 4.1.12 (root dev) | D | Test-only. |
+| fast-uri (4: 1+1 moderate, 2 low) | 3.1.8 → 3.1.9 via override (`fast-uri@3.1.5: 3.1.8` → 3.1.9) | D | Path: Prisma CLI `@prisma/dev>…>ajv`. Not in a runtime path. |
+
+Open point for owner: better-auth 1.7.7 → 1.7.25 is NOT planned (auth is a risky area; overrides cover its zod/next/vite peers). Say so if you want it considered.
+
+- E2E baseline (2026-11-16, found in M1-T2): unfiltered `pnpm test:e2e` fails on unmodified `main` (Playwright picks up vitest/node:test files and demo specs needing `DEMO30D_BROWSER_STATE`). Gate for M1 = `pnpm test:e2e "tests/e2e/[^/]+\.spec\.(ts|mts)$"` compared against `main`: main 34 failed / 130 passed of 169 (pos-scanner, form-layout, preferences, sale-receipt, etc.). A change passes if it adds no failing spec versus that set. M1-T2: 33 failed / 130 passed; M1-T3: 33 failed / 131 passed (branch 33 on both runs; flaky: `suppliers.spec.ts:23` failed on main only). No new failure on the branch. Fixing the e2e script/baseline is outside M1.
+- [x] M1-T1 Triage advisories (runtime-reachable vs dev-only) and pick target versions — this table. Files: `docs/PLAN.md`. Acceptance: owner approves the table.
+- [x] M1-T2 Upgrade next. Files: `apps/web/package.json` (next), `package.json` (`@next/eslint-plugin-next`), `pnpm-lock.yaml`; command `pnpm --filter @stockwise/web add --save-exact next@16.4.6` and `pnpm add -wD --save-exact @next/eslint-plugin-next@16.4.6`. Acceptance: Verify script, `pnpm build`, `pnpm test:e2e` pass; `pnpm audit --prod` shows no `next` advisory; `apps/web/next-env.d.ts` change not committed.
+- [x] M1-T3 Upgrade remaining. Files: `apps/api/package.json` + `apps/web/package.json` (zod 4.6.7), `package.json` (vitest 4.1.12), `pnpm-workspace.yaml` (overrides: zod, body-parser, qs, undici, vite, fast-uri), `pnpm-lock.yaml`. Acceptance: Verify, `pnpm build`, `pnpm test:e2e` pass; audit shows none of zod/body-parser/qs/undici/vite/@vitest/mocker/fast-uri; no source or test edits.
+- [x] M1-T4 Re-run `pnpm audit --prod` (and `--dev` for information); record any residual advisory and why accepted in this section. Files: `docs/PLAN.md`. Acceptance: 0 residual, or each residual listed with reach and reason.
+  - Result (2026-11-16): `pnpm audit --prod` = **no known vulnerabilities** (was 26). M1-T2/T3 evidence: Verify 193 files / 2168 tests pass (one run hit a 5 s timeout in `database-harness.test.ts` under load; it passed 3/3 alone and in a full rerun; no test or timeout changed), `pnpm build` passes, filtered e2e adds no failure versus `main` (33 failed vs 34 on main, 169 specs).
+  - Side effect of the vite override: transitive rolldown 1.2.5 → 1.2.19 and `@oxc-project/types` 0.146.0 → 0.156.0 (same minor); plus new transitive optional wasm packages `@emnapi/core@2.0.0-beta.2`, `@emnapi/runtime@2.0.0-beta.2`, `@emnapi/wasi-threads@2.2.0`, `@napi-rs/wasm-runtime@1.2.6`, `@tybys/wasm-util@0.10.4`. All dev/build-only.
+  - Accepted residual (`pnpm audit`, incl. dev; 20 = 2 low, 12 moderate, 6 high): all dev/build-only, none shipped at runtime. 19 come from the `shadcn` 4.21.1 CLI (devDependency of `apps/web`, component scaffolding only): hono / @hono/node-server (MCP server code), undici 7.30.0, zod 3.25.76, systeminformation, ip-address, deepmerge. 1 is minimatch via `@eslint/js` / `@next/eslint-plugin-next` (lint-time). Fix path: upgrade `shadcn` when it ships patched transitive pins, or override later; not done here to avoid unrelated churn. Revisit at the next dependency review.
+- Follow-up (separate task, not M1): fix `pnpm test:e2e` (it picks up vitest/node:test files and demo specs) and the 33 e2e failures present on both `main` and this branch (16 pos-scanner, plus form-layout, preferences, sale-receipt, application-shell, auth-verification, credential-link-entry and others).
 
 ### M2 — Keep the screen when the browser window loses focus
 Problem (verified): `apps/web/src/providers/session-lifecycle-provider.tsx` calls `reset()` on `visibilitychange → hidden`, `pagehide` and `blur → focus`, which discards private TanStack Query data and bumps `generation`; the authenticated view remounts, shows the loading screen and loses unsaved form state. Deliberate safeguard (ADR-013/ADR-034); `refetchOnWindowFocus` is already `false`.

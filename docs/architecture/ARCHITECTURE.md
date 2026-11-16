@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Architecture Freeze v1; application functionality implemented through Phase 7; final acceptance with explicit MT-L04 verification limitation; PRE-CLOUD READY YES; Phase 8 STARTED for the Learner Lab demo only (`ADR-040`, superseding `ADR-039`; infrastructure source implemented and verified locally, nothing provisioned) |
+| Status | Architecture Freeze v1; application functionality implemented through Phase 7; final acceptance with explicit MT-L04 verification limitation; PRE-CLOUD READY YES; Phase 8 STARTED for the Learner Lab demo only (`ADR-040`, superseding `ADR-039`; infrastructure source implemented and verified locally). ADR-040 Learner Lab deployment: implemented in source, never provisioned; container images built to GHCR (2026-10-29/30); deployment planned as M9. |
 | Baseline | Architecture Freeze v1 |
 | Last updated | 2026-10-08 |
 
@@ -496,10 +496,11 @@ retry a conflict. No runtime startup or HTTP route invokes the writer; only the
 receipt-bound disposable rehearsal tool and the explicitly confirmed operator
 command (`native:cutover`) construct it.
 
-D5-P5 (in progress; Codex acceptance pending) selects the authority at runtime
-with `STOCKWISE_AUTHENTICATION_AUTHORITY`: production is Native-only (`ADR-039`
-D-03R), and local development/test default to Legacy. Native requires the D5-P4
-sealed-NATIVE preflight; Legacy refuses any database whose fence has left LEGACY.
+Under `ADR-045` (accepted 2026-11-17) Better Auth Native is the only
+authentication authority in every runtime: development, test and production.
+Legacy and the cutover fence are being removed by milestone M3; until M3-T5/T6
+land the code still contains Legacy, `STOCKWISE_AUTHENTICATION_AUTHORITY` and the
+operator `native:cutover` command. Milestone M3 is replacing the cutover with "migrations create a Native database; no cutover step" (M3-T7).
 Each process constructs exactly one authority and never falls back.
 The D5-P4 source startup gate reads shipped migration checksums and one consistent
 read-only database snapshot before a future Native listener can open. It requires
@@ -951,7 +952,7 @@ The final design must decide public/private subnets, ingress, Next.js hosting mo
 
 ### Learner Lab demo topology (`ADR-040`)
 
-The source lives in `infra/learner-lab`. Its diagram and service-by-service explanation are in `infra/learner-lab/ARCHITECTURE.md`. It is not provisioned.
+The source lives in `infra/learner-lab`. Its diagram and service-by-service explanation are in `infra/learner-lab/ARCHITECTURE.md`. ADR-040 Learner Lab deployment: implemented in source, never provisioned; container images built to GHCR (2026-10-29/30); deployment planned as M9.
 
 ```mermaid
 flowchart LR
@@ -972,7 +973,7 @@ flowchart LR
 
 - **Same trust boundaries as the local design.** The web container is the only target, the API stays loopback-only inside the task's network namespace, and the database is reachable only from task security groups.
 - **Exactly one application task.** The login/password-proof limiter is process-local. The Auto Scaling Group scales EC2 capacity, not application replicas, so the demo is not fully highly available.
-- **Database operations run as one-off ECS tasks** from the `ops` image, in the ADR-040 order: migrate → grants → optional seed while LEGACY → Native cutover → application.
+- **Database operations run as one-off ECS tasks** from the `ops` image, in the ADR-040 order: migrate → grants → optional seed while LEGACY → Native cutover → application. `ADR-045` and milestone M3-T7 are replacing that order with `migrations create a Native database; no cutover step`.
 
 ## 12. Security architecture
 

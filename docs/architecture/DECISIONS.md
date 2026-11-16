@@ -466,6 +466,8 @@ StockWise core and business REST APIs remain in the Express backend under `/api/
 
 ## ADR-013 — Use opaque PostgreSQL-backed browser sessions
 
+Superseded in part by ADR-045 (Native-only authentication; see `docs/decisions/0045-native-only-authentication.md`)
+
 - **Date:** 2026-08-22
 - **Status:** Accepted
 - **Type:** Security and application architecture
@@ -2302,6 +2304,8 @@ deferred/unassigned, and P0-M2-T05 remains unchecked.
 
 ## ADR-034 — Require version-bound password and mailbox proof for OTP-first verification
 
+Superseded in part by ADR-045 (Native-only authentication; see `docs/decisions/0045-native-only-authentication.md`)
+
 - **Date:** 2026-10-08
 - **Status:** Accepted; backend/schema, frontend and integration harness ACCEPTED / COMMITTED. Scoped local frontend/backend/PostgreSQL integration final review ACCEPTED on 2026-10-10 (22/22 real tests operator-reported PASS, 258/258 independent database-free PASS). Real external email delivery and production HTTPS NOT VERIFIED; Phase 8 NOT STARTED.
 - **Authority:** Accepted `T02A-AUTH-VERIFICATION-ARCHITECTURE-03`
@@ -2634,6 +2638,8 @@ and dedicated keys. Scoped local real integration received separate acceptance o
 
 ## ADR-035 — Adopt self-hosted Better Auth native sessions with StockWise-owned identity and authorization
 
+Superseded in part by ADR-045 (Native-only authentication; see `docs/decisions/0045-native-only-authentication.md`)
+
 - **Date:** 2026-10-12
 - **Status:** Accepted decision; migration and runtime cutover NOT IMPLEMENTED / NOT VERIFIED by this ADR
 - **Authority:** Explicit owner approval on 2026-10-12 for Better Auth native sessions and the bounded ADR/migration-plan task
@@ -2939,6 +2945,8 @@ Independent acceptance and separate publication authorization remain required.
 
 ## ADR-039 — Host the time-limited demo on AWS Academy Learner Lab (Topology A)
 
+Superseded in part by ADR-045 (Native-only authentication; see `docs/decisions/0045-native-only-authentication.md`)
+
 - **Date:** 2026-10-27; amended 2026-10-27 (D-03 superseded by D-03R)
 - **Status:** Superseded by ADR-040 (2026-10-28) for the hosting topology: compute, ingress/TLS, database availability, secrets store, registry. Previously Accepted for the Learner Lab demo only (2026-10-27); its Topology A infrastructure was never reviewed or provisioned. The body below is the historical decision, unchanged. Its D-03R, database-initialization, D-13 and pending-decision content continues through ADR-040.
 - **Authority:** Explicit owner decisions D-01, D-04 and D-07, and the superseding owner decision D-03R, on 2026-10-27 (P8-M1-T01-LL decision package)
@@ -3061,6 +3069,8 @@ email) require separate explicit owner approval.
   exception above.
 
 ## ADR-040 — Restore the original AWS topology for the Learner Lab demo (ALB, ECS on EC2, RDS Multi-AZ)
+
+Superseded in part by ADR-045 (Native-cutover steps superseded; topology unchanged; see `docs/decisions/0045-native-only-authentication.md`)
 
 - **Date:** 2026-10-28
 - **Status:** Accepted for the Learner Lab demo only (2026-10-28). Supersedes the hosting topology of `ADR-039`. Infrastructure source is implemented and verified only locally (mocked Terraform tests and a local container rehearsal): NOT PROVISIONED, NOT VERIFIED IN AWS, NOT INDEPENDENTLY REVIEWED.
@@ -3424,6 +3434,12 @@ Before apply the operator takes and verifies a database export. `retire` (bound 
 - **Date:** 2026-11-16
 - **Status:** Accepted by the owner. Full record: `docs/decisions/0044-revalidate-on-resume-reset-only-on-change.md`.
 - **Type:** Frontend session-lifecycle amendment. Supersedes only the hide/blur/focus reset of the private screen; `ADR-013` and `ADR-034` are unchanged.
+
+## ADR-045 — Better Auth Native is the only authentication authority
+
+- **Date:** 2026-11-17
+- **Status:** Accepted by the owner on 2026-11-17 (Option 3). Full record: `docs/decisions/0045-native-only-authentication.md`.
+- **Type:** Authentication and schema amendment. Supersedes in part `ADR-013` (Legacy session store), `ADR-034` (Legacy runtime; the pending-registration contract stays), `ADR-035` (cutover gate; the Native decision stays) and the `ADR-039`/`ADR-040` Native-cutover steps. The `ADR-040` topology is unchanged and remains the Learner Lab deployment target (deployment planned as M9).
 
 ## 2. Explicitly superseded planning directions
 

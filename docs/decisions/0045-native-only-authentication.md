@@ -1,0 +1,68 @@
+---
+status: accepted
+date: 2026-11-17
+---
+
+# ADR-045 — Better Auth Native is the only authentication authority; Legacy and the cutover fence are removed
+
+Numbering continues the global sequence (`ADR-001`…`ADR-044`; earlier decisions live in `../architecture/DECISIONS.md`). Plan: `docs/PLAN.md` M3. Owner decision 2026-11-15: every runtime uses Better Auth Native; Legacy is removed; a fresh database starts NATIVE from migrations with no cutover step. **Accepted by the owner on 2026-11-17** (Option 3, with the conditions in §4 and the Learner Lab target in §6; AGENTS.md §16: accepted architecture, auth/session and schema change). Amended the same day: the AWS Learner Lab topology (`ADR-040`) is again the deployment target (milestone M9), see §6.
+
+## Context and Problem Statement
+
+Two authentication authorities coexist in `apps/api`, selected per process by `STOCKWISE_AUTHENTICATION_AUTHORITY` (`apps/api/src/environment.ts`, `main.ts`, `authentication-authority-selection.ts`):
+
+| | Legacy | Native (Better Auth 1.7.7) |
+| --- | --- | --- |
+| Default | development and test (`STOCKWISE_RUNTIME_ENV` ≠ `production`) | production only (production rejects `legacy`) |
+| Session store | `sessions` (hash-only, ADR-013) | `better_auth_sessions` + `better_auth_accounts` (credential PHC) |
+| Registration/verification | `registration-*`, `verification-*`, `email_verification_challenges` | `pending_registrations`, `pending_registration_quotas` |
+| Startup guard | `assertLegacyAuthorityAllowed` (fence must be `LEGACY`) | `assertNativeCutoverReady` (fence sealed `NATIVE`, migrations checksum, triggers, enrollments) |
+
+Consequences today: (1) the code owners run and test locally is **not** the code that production runs, so Native-specific defects surface only in the isolated D5 disposable runner or after deployment; (2) every change to sessions, onboarding or login must be written and tested twice; (3) a database becomes Native only through the one-way operator command `native:cutover` (`LEGACY → QUIESCED → NATIVE` singleton `native_auth_transition`, ACCESS EXCLUSIVE locks, enrollment provenance), and the test harness refuses to reset a transitioned database (`apps/api/src/test/database-harness.ts`), so Native cannot be the state of the shared test database; (4) the fence triggers (`guard_native_auth_dml` on eight tables) carry a Legacy branch, a QUIESCED branch and a NATIVE branch, though only the NATIVE branch is relevant once Legacy is gone.
+
+Verified local state on 2026-11-16 (read-only): `stockwise_local` and `stockwise_local_test` are at fence `LEGACY`, 25 migrations applied, 0 users, 0 organizations, 0 Better Auth accounts, 0 Legacy sessions. There is no populated Legacy database to convert anywhere in this workspace, and nothing is provisioned on AWS: the `ADR-040` Learner Lab deployment is implemented in source only (`infra/learner-lab`), never provisioned, with container images built to GHCR on 2026-10-29/30.
+
+## Considered Options
+
+1. **Keep both authorities** (status quo). Rejected: owner decision; keeps the dev/prod divergence and double maintenance.
+2. **Native only, keep the transition state machine and `native:cutover`** as the way a database becomes NATIVE. Rejected: contradicts "fresh database starts NATIVE from migrations, no cutover step"; every new local/CI/test database would need an extra operator command; the harness reset refusal stays; the fence keeps Legacy/QUIESCED branches nobody can reach.
+3. **Native only; retire the state machine in one forward migration; keep the Native database invariants as unconditional triggers, minus the Legacy-user rules** (this ADR). A fresh database after `prisma migrate deploy` is Native-only.
+4. **Same as 3, but make the full current NATIVE-state `users` guard unconditional** (insert requires `native_registration_completed_at`; `email_verified_at`/`password_hash` immutable). Rejected for now: 53 test/fixture files insert `users` rows directly without Native provenance (`prisma.user.create`), so this needs a mass fixture rewrite and buys no real protection: the session, account, reset and verification triggers (kept in option 3) still refuse authority for any user without provenance. Can be tightened later in its own task.
+
+## Decision Outcome
+
+Choose **Option 3**.
+
+### 1. Authority
+- Native is the only authority in development, test and production. The `legacy` value, the variable `STOCKWISE_AUTHENTICATION_AUTHORITY`, `selectAuthenticationAuthority`, `createAuthenticationRuntime` and its Legacy routers/services/repositories, the Legacy login/session/limiter code, `assertLegacyAuthorityAllowed` and all Legacy-only tests are removed (M3-T5; exact list in `docs/PLAN.md`).
+- Startup is a single path: construct the Native runtime. There is no fallback in any direction and no per-process choice.
+- `STOCKWISE_BETTER_AUTH_SECRET` becomes required in every runtime (canonical unpadded base64url, ≥ 32 random bytes, distinct from every other key; the existing `requireBetterAuthSecret` validation stays). `STOCKWISE_INVITATION_CONTINUATION_KEY` is already required. Local development: the owner generates and stores the secret in the gitignored `.env`; `.env.example` carries the name and generation command only. E2E runs get a throwaway in-memory secret per run; unit tests pass explicit synthetic values. No secret value is ever committed.
+- Unchanged: StockWise owns RBAC, `User` identity, ACTIVE/verified checks, tenancy and last-owner rules; Better Auth identity alone never builds a `TrustedAuthenticationContext`; cookie `stockwise_session`-compatible policy (HttpOnly, host-only, `SameSite=Lax`, `Secure` in production), Origin/CSRF checks, Argon2id parameters, 15–128 code-point password rule, OTP/link/proof rules of ADR-034/ADR-036, five-failure login window, three-request delivery/reset budgets, generic duplicate responses, no JWT/refresh/web-storage credentials. No dependency change (`better-auth` stays 1.7.7).
+
+### 2. Fresh database and the fence
+- One forward migration (M3-T6) retires the transition state machine: drops `native_auth_transition`, `native_auth_enrollments`, their guard functions/triggers, and replaces `guard_native_auth_dml` with an unconditional version. A fresh `prisma migrate deploy` therefore yields a Native-only database; there is no cutover step and no sealed/unsealed state.
+- Existing databases at migration time: `NATIVE` sealed → fence dropped, data untouched; `LEGACY` with **zero** users → fence dropped; `LEGACY` with users, or `QUIESCED` → the migration **aborts** with a fixed message (no conversion path exists any more; restore a pre-migration backup or recreate the database). The migration is never edited after it is applied; recovery is forward-only plus a pre-apply `pg_dump` for any non-disposable database.
+- The test harness no longer special-cases the fence (reset truncates every table except `_prisma_migrations`).
+
+### 3. What the unconditional guard keeps and drops (table by table)
+Kept (these are the former NATIVE-branch rules that protect Native data): `better_auth_sessions` insert/finalization requires an ACTIVE, verified user with `native_registration_completed_at` and a matching credential version; `better_auth_accounts` cannot be deleted, mutated without provenance, or re-pointed; `password_reset_tokens` insert requires Native delivery confirmation and an enrolled user, terminal fields are immutable; `pending_registrations` consumed/revoked rows cannot be reopened; `users` cannot be deleted and `credential_version` cannot decrease or become non-positive.
+Dropped: Legacy/QUIESCED branches; "new users require Native registration provenance"; `email_verified_at`, `password_hash` and `native_registration_completed_at` immutability checks that existed only to freeze Legacy identity; Legacy `sessions`/`email_verification_challenges` rules (tables removed).
+The exact SQL is written and shown for approval before any apply (M3-T6).
+
+### 4. Schema removals (M3-T6, after confirming no remaining reader)
+Drop: tables `sessions`, `email_verification_challenges`, `native_auth_transition`, `native_auth_enrollments`; enums `verification_consumption_method`, `verification_revocation_reason`; the matching Prisma models/enums. Keep (for now): `users.password_hash` (public dummy default; referenced by 78 files incl. fixtures). Owner conditions: **(a)** after M3-T5 no runtime code reads or writes `users.password_hash` — only test fixtures, demo/uat seeders and the schema may reference it, and the M3-T5 report lists every remaining reference; **(b)** a follow-up task (`M3-F1` in `docs/PLAN.md`) drops the column once fixtures no longer need it. Also keep: `password_reset_tokens`, `better_auth_*`, `pending_registration*`, `native_password_reset_quotas`, `users.credential_version`, `password_changed_at`, `native_registration_completed_at`, `better_auth_email_verified`.
+
+### 5. `native:cutover` and cutover tooling
+The operator CLI (`apps/api/src/native-cutover/`, `native:cutover` script), the transition writer (`native-auth-transition.ts`, `better-auth-transition-*`), the readiness preflight (`better-auth-cutover-preflight.ts`) and their suites (`better-auth-transition`/`-cutover` integration tests, D5-P3/P4 vitest configs) are removed **only if nothing, including `infra/learner-lab`, still needs `native:cutover`** after M3-T7 has moved the Learner Lab scripts and task definitions to "migrations only, database is Native from the migration". Order in Phase B: T5 (Legacy code, tooling kept) → T7 (infra repo files; then remove the cutover tooling) → T6 (migration, which drops the fence tables the tooling depends on). Phase A uses the cutover once, on the disposable e2e database `stockwise_local_e2e_test` only; the dev database `stockwise_local` is never sealed with it (it is dropped and recreated from migrations at the end of Phase B). Disposable-runner and browser-stack tooling under `tests/e2e/better-auth-d5/` that only exists to rehearse the transition is removed with it; generic runner/browser tooling that still works on a Native-only database is kept and re-pointed.
+
+### 6. Documentation status and deployment target (M3-T1, M3-T7, M9)
+`AGENTS.md`, `docs/development/BETTER_AUTH_MIGRATION.md`, `docs/architecture/ARCHITECTURE.md`, `PROJECT_PLAN.md` and `docs/development/DEMO_ACCEPTANCE.md` describe D5-P5 Native Live as "in progress, not accepted". They are reconciled (M3-T1) to: Native-only is the owner decision (this ADR); **ADR-040 Learner Lab deployment: implemented in source, never provisioned; container images built to GHCR (2026-10-29/30); deployment planned as M9.** D5-P1…P4 acceptance records stay as history. The Learner Lab topology is **not** retired and `infra/learner-lab` is kept working: M3-T7 updates its task definitions, `put-secrets.sh` (`STOCKWISE_BETTER_AUTH_SECRET`) and operator scripts so that a fresh RDS database is Native from migrations, with no cutover step (repo files only, nothing provisioned). Production-readiness gates previously attached to the cutover (encrypted backup/restore proof, secret provisioning, HTTPS/Secure cookie, real email delivery, least-privilege roles) are not dropped; they are carried by M9 (`M9-T1` re-verification incl. the independent review of R3 still pending per `AGENTS.md`). Every provisioning or cloud command needs owner approval per run.
+
+### Supersedes / amends
+Supersedes the Legacy session store and the Legacy/Native dual-authority and cutover-fence mechanics of `ADR-013` (store only), `ADR-034` (Legacy runtime only; the pending-registration contract stays), `ADR-035` (cutover gate only; the Native decision stays) and `ADR-039` D-03R/`ADR-040` Native-cutover steps (the `ADR-040` topology itself is unchanged and is the deployment target). `ADR-013`'s cookie/opaque-token/revocation requirements and `ADR-016` RBAC are unchanged.
+
+### Consequences
+- Good: the local, test and production auth code is the same; one code path to maintain and test; fresh databases need no operator step; the harness and fixtures stop special-casing a fence; the Legacy source/test files and two tables disappear (exact list produced and shown in M3-T5 step 0).
+- Bad / risk: 22 router/integration test files authenticate through the Legacy middleware and `sessions` rows; their authentication bootstrap (not their assertions) must be replaced in M3-T5 by a shared Native test helper (list in `docs/PLAN.md` M3-T5 step 5b). A large refactor in a risky area (Legacy and Native share files: `login-router` exports the request schema Native uses, `credential-lifecycle-{router,service,repository}` hold both variants, `authentication-context` holds both middlewares, `verification-delivery`/`-security` are shared); mitigated by splitting before deleting, running typecheck/lint/tests after each step, and reviewing each phase in a fresh thread. Native is exercised by the e2e suite for the first time on every run, which may expose Native defects that were never visible locally.
+- No rollback to Legacy exists or is wanted. Recovery after a bad migration is forward-only: restore the pre-migration backup (non-disposable) or recreate (disposable) and re-apply a corrected forward migration.
+- Follow-ups: `M3-F1` drop `users.password_hash`; `M3-T7` aligns `infra/learner-lab` with Native-only; `M9` deploys.

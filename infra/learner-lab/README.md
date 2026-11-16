@@ -11,11 +11,9 @@ The topology, its constraints and the owner decisions are in
 [`docs/architecture/DECISIONS.md`](../../docs/architecture/DECISIONS.md) (`ADR-040`). The diagram and a
 service-by-service explanation are in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-**Status:** source implemented and verified locally only (mocked Terraform
-tests, image builds, a local rehearsal of the ECS task definitions). Nothing is
-published or provisioned. No Learner Lab create permission has been
-exercised. **Planning deadline: 2026-10-31 23:59 Asia/Bangkok =
-`2026-10-31T16:59:00Z`.** Teardown must finish before it.
+**Status:** ADR-040 Learner Lab deployment: implemented in source, never provisioned; container images built to GHCR (2026-10-29/30); deployment planned as M9. The source is verified locally (mocked Terraform tests, image builds, local ECS rehearsal). The earlier planning deadline `2026-10-31T16:59:00Z` (23:59
+Asia/Bangkok) is historical and no longer applies; new dates are decided in M9.
+No Learner Lab create permission has been exercised.
 
 | Path | Purpose |
 | --- | --- |

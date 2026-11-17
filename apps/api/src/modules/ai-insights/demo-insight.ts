@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "../../generated/prisma/client.ts";
 import { DEMO_30D_ORGANIZATION } from "../../demo/demo-30d-plan.ts";
+import { demoId } from "../../demo/demo-values.ts";
 import {
   readDemoProvenance,
   demoBusinessFingerprint,
@@ -18,6 +19,12 @@ import {
   createPrismaAiInsightReader,
   type InsightReadScope,
 } from "./ai-insight-store.ts";
+
+/** The only organization Demo Insight may serve in the production runtime (the `demo:seed:90d` organization). */
+export const DEMO_INSIGHT_PRODUCTION_ORGANIZATION_ID = demoId(
+  "organization",
+  DEMO_30D_ORGANIZATION,
+);
 
 const Decimal = Prisma.Decimal.clone({ precision: 80 });
 
@@ -48,9 +55,11 @@ export function createDemoInsightReader(input: {
       scope: InsightReadScope;
       language: "en" | "th";
     }) {
+      // Production serves Demo Insight only for the deterministic synthetic
+      // demo organization (ADR-048); a mis-set variable can never expose another tenant.
       if (
-        input.runtimeEnvironment !== "development" &&
-        input.runtimeEnvironment !== "test"
+        input.runtimeEnvironment === "production" &&
+        input.organizationId !== DEMO_INSIGHT_PRODUCTION_ORGANIZATION_ID
       )
         return { kind: "not_found" } as const;
       if (!(await createPrismaAiInsightReader(input.prisma).authorize(request)))

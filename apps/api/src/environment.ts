@@ -152,16 +152,6 @@ export const apiEnvironmentSchema = z
   }))
   .superRefine((environment, context) => {
     if (
-      environment.STOCKWISE_RUNTIME_ENV === "production" &&
-      environment.STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID !== undefined
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Demo Insight is disabled in production.",
-        path: ["STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID"],
-      });
-    }
-    if (
       (environment.STOCKWISE_RUNTIME_ENV === "production" &&
         environment.STOCKWISE_EMAIL_PROVIDER !== "resend") ||
       (environment.STOCKWISE_RUNTIME_ENV === "test" &&

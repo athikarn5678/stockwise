@@ -54,7 +54,7 @@ Credentials and hashes are never printed.
 | CASHIER | `demo-cashier@example.invalid` | MAIN | POS checkout (CASH/TRANSFER) and sales history; can view but not create refunds |
 
 Demo Insight (`STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID` = the printed
-organization id, development/test runtime only) renders deterministic text from
+organization id; development/test, and production only for this deterministic demo organization per ADR-048) renders deterministic text from
 the real metrics with five fixed headings, labelled `ข้อมูลตัวอย่าง` / `Demo
 Insight`, and makes no provider call: `ภาพรวม / Overview`, `ยอดขาย / Sales`,
 `สินค้าขายดีและขายช้า / Products`, `ข้อสังเกต / Notes & risks`,

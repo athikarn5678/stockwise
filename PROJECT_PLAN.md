@@ -384,7 +384,7 @@ Phase 8. Implementation and verification status are separate from commit status.
 **Status update 2026-11-17 (ADR-045 / M3, supersedes the D5-P5 present-tense status below and in Phase 8):**
 `ADR-045` (owner decision, accepted 2026-11-17) makes Better Auth Native the only
 authentication authority in development, test and production; Legacy and the
-cutover fence were removed by milestone M3-T5/T6 (`infra/learner-lab` is aligned
+cutover fence were removed by milestone M3-T5/T6 (`infra/learner-lab` was aligned
 by M3-T7).
 D5-P5 is no longer a live status. ADR-040 Learner Lab deployment: implemented in
 source, never provisioned; container images built to GHCR (2026-10-29/30);

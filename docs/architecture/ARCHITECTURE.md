@@ -503,8 +503,8 @@ command (`native:cutover`) construct it.
 Under `ADR-045` (accepted 2026-11-17) Better Auth Native is the only
 authentication authority in every runtime: development, test and production.
 Legacy and the cutover fence were removed by milestone M3-T5/T6: a database is
-Native directly from its migrations and there is no cutover step; M3-T7 aligns
-`infra/learner-lab` with that.
+Native directly from its migrations and there is no cutover step; M3-T7 aligned
+`infra/learner-lab` with that (source only).
 Each process constructs exactly one authority and never falls back.
 (Historical) The D5-P4 source startup gate reads shipped migration checksums and one consistent
 read-only database snapshot before a future Native listener can open. It requires
@@ -977,7 +977,7 @@ flowchart LR
 
 - **Same trust boundaries as the local design.** The web container is the only target, the API stays loopback-only inside the task's network namespace, and the database is reachable only from task security groups.
 - **Exactly one application task.** The login/password-proof limiter is process-local. The Auto Scaling Group scales EC2 capacity, not application replicas, so the demo is not fully highly available.
-- **Database operations run as one-off ECS tasks** from the `ops` image, in the ADR-040 order: migrate → grants → optional seed while LEGACY → Native cutover → application. `ADR-045` and milestone M3-T7 are replacing that order with `migrations create a Native database; no cutover step`.
+- **Database operations run as one-off ECS tasks** from the `ops` image, in this order: migrate → grants → optional seed → application. Under `ADR-045` (milestone M3-T7) a database is Native directly from its migrations and there is no cutover step.
 
 ## 12. Security architecture
 

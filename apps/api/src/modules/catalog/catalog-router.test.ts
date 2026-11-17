@@ -3,10 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../app.ts";
 import type { ApiLogger } from "../../logger.ts";
 import { startApiServer, type RunningApiServer } from "../../server.ts";
-import type { AuthenticationSessionRepository } from "../identity/authentication-repository.ts";
-import { createAuthenticationMiddleware } from "../identity/authentication-context.ts";
-import type { SessionConfiguration } from "../identity/session-configuration.ts";
-import { SESSION_COOKIE_NAME } from "../identity/session-cookie.ts";
+import { createSessionAuthenticationMiddleware } from "../identity/authentication-context.ts";
 import type {
   CatalogRepository,
   SafeCategory,
@@ -20,6 +17,7 @@ const CATEGORY_ID = "20000000-0000-4000-8000-000000000001";
 const PRODUCT_ID = "30000000-0000-4000-8000-000000000001";
 const BRANCH_ID = "40000000-0000-4000-8000-000000000001";
 const TOKEN = "A".repeat(43);
+const TEST_COOKIE_NAME = "stockwise_test_session";
 const UPDATED_AT = "2026-08-25T12:00:00.000Z";
 const category: SafeCategory = {
   createdAt: UPDATED_AT,
@@ -45,12 +43,6 @@ const product: SafeProduct = {
   updatedAt: UPDATED_AT,
 };
 const logger: ApiLogger = { error() {}, info() {} };
-const configuration: SessionConfiguration = {
-  absoluteTimeoutMilliseconds: 604_800_000,
-  idleTimeoutMilliseconds: 86_400_000,
-  secureCookie: false,
-  touchIntervalMilliseconds: 900_000,
-};
 
 describe("catalog router", () => {
   let server: RunningApiServer | undefined;
@@ -67,9 +59,10 @@ describe("catalog router", () => {
     authenticated?: boolean;
     overrides?: Partial<CatalogRepository>;
   } = {}) {
-    const authenticationRepository: AuthenticationSessionRepository = {
-      resolveSession: vi.fn().mockResolvedValue(
-        authenticated
+    const authenticationMiddleware = createSessionAuthenticationMiddleware(
+      async (request) =>
+        authenticated &&
+        request.headers.cookie === `${TEST_COOKIE_NAME}=${TOKEN}`
           ? {
               actor: {
                 displayName: "Owner",
@@ -79,8 +72,7 @@ describe("catalog router", () => {
               sessionId: "session-id",
             }
           : null,
-      ),
-    };
+    );
     const repository: CatalogRepository = {
       createCategory: vi.fn().mockResolvedValue({ category, kind: "success" }),
       createProduct: vi.fn().mockResolvedValue({ kind: "success", product }),
@@ -107,10 +99,7 @@ describe("catalog router", () => {
       ...overrides,
     };
     const router = createCatalogRouter({
-      authenticationMiddleware: createAuthenticationMiddleware({
-        configuration,
-        repository: authenticationRepository,
-      }),
+      authenticationMiddleware,
       catalogService: createCatalogService({ repository }),
       publicWebOrigin: "http://localhost:3000",
     });
@@ -128,7 +117,7 @@ describe("catalog router", () => {
     return fetch(url, {
       ...init,
       headers: {
-        cookie: `${SESSION_COOKIE_NAME}=${TOKEN}`,
+        cookie: `${TEST_COOKIE_NAME}=${TOKEN}`,
         ...(init.body === undefined
           ? {}
           : { "content-type": "application/json" }),

@@ -17,6 +17,9 @@ import {
 } from "./verification-security.ts";
 import { hashPassword, verifyPassword } from "./password-hasher.ts";
 import { createPendingRegistrationRepository } from "./pending-registration-repository.ts";
+import { createPendingRegistrationRouter } from "./pending-registration-router.ts";
+import { createPendingRegistrationService } from "./pending-registration-service.ts";
+import { createVerificationDelivery } from "./verification-delivery.ts";
 
 const db = loadTestDatabaseEnvironment();
 const prisma = new PrismaClient({
@@ -332,6 +335,101 @@ describe("Native application runtime verification-password-proof HTTP regression
     });
     expect(sessions).toBe(1);
     expect(mail.messages).toHaveLength(beforeMessages);
+  });
+
+  it("compensates a Native registration when the response closes before the staged hash and commit finish", async () => {
+    const abortedEmail = `${randomUUID()}@example.test`;
+    const hashStarted = Promise.withResolvers<void>();
+    const hashReleased = Promise.withResolvers<void>();
+    const responseClosed = Promise.withResolvers<void>();
+    const provider = createRecordingEmailProvider();
+    const delivery = createVerificationDelivery({
+      emailProvider: provider,
+      publicWebOrigin: origin,
+      repository: pendingRepository,
+    });
+    const service = createPendingRegistrationService({
+      delivery,
+      passwordHasher: {
+        async hash(candidate) {
+          hashStarted.resolve();
+          await hashReleased.promise;
+          return hashPassword(candidate);
+        },
+      },
+      passwordVerifier: {
+        async verify() {
+          return false;
+        },
+      },
+      repository: pendingRepository,
+      security: verificationSecurity,
+    });
+    const listener = createServer(
+      createApp({
+        apiRouter: createPendingRegistrationRouter({
+          pendingRegistrationService: service,
+          publicWebOrigin: origin,
+        }),
+        logger: { error() {}, info() {} },
+      }),
+    );
+    listener.on("request", (_request, response) =>
+      response.once("close", () => responseClosed.resolve()),
+    );
+    await new Promise<void>((resolve) =>
+      listener.listen(0, "127.0.0.1", resolve),
+    );
+    const address = listener.address();
+    if (!address || typeof address === "string")
+      throw new Error("HTTP test server unavailable");
+    const controller = new AbortController();
+    try {
+      const request = fetch(
+        `http://127.0.0.1:${address.port}/api/v1/auth/register`,
+        {
+          method: "POST",
+          headers: { origin, "content-type": "application/json" },
+          body: JSON.stringify({ email: abortedEmail, password }),
+          signal: controller.signal,
+        },
+      );
+      await hashStarted.promise;
+      controller.abort();
+      await expect(request).rejects.toMatchObject({ name: "AbortError" });
+      await responseClosed.promise;
+      hashReleased.resolve();
+      await waitForRevocation(abortedEmail);
+      const pending = await prisma.pendingRegistration.findUniqueOrThrow({
+        where: { email: abortedEmail },
+      });
+      expect(pending.revokedAt).not.toBeNull();
+      expect(pending.consumedAt).toBeNull();
+      expect(pending.credentialVersion).toBe(1n);
+      expect(await verifyPassword(pending.passwordHash!, password)).toBe(true);
+      expect(provider.messages).toHaveLength(0);
+      expect(await pendingRepository.canDeliver(pending.challengeId!)).toBe(
+        false,
+      );
+      expect(
+        await prisma.user.findUnique({ where: { email: abortedEmail } }),
+      ).toBeNull();
+      expect(
+        await prisma.betterAuthAccount.count({
+          where: { accountId: pending.id },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.betterAuthSession.count({
+          where: { user: { email: abortedEmail } },
+        }),
+      ).toBe(0);
+    } finally {
+      hashReleased.resolve();
+      await new Promise<void>((resolve, reject) => {
+        listener.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
   });
 
   it("keeps a failed-delivery pending password usable from another browser and recovers only by resend", async () => {

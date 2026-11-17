@@ -3,10 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../app.ts";
 import type { ApiLogger } from "../../logger.ts";
 import { startApiServer, type RunningApiServer } from "../../server.ts";
-import type { AuthenticationSessionRepository } from "../identity/authentication-repository.ts";
-import { createAuthenticationMiddleware } from "../identity/authentication-context.ts";
-import type { SessionConfiguration } from "../identity/session-configuration.ts";
-import { SESSION_COOKIE_NAME } from "../identity/session-cookie.ts";
+import { createSessionAuthenticationMiddleware } from "../identity/authentication-context.ts";
 import type {
   ReceivingRepository,
   SafePurchaseReceipt,
@@ -20,13 +17,8 @@ const RECEIPT_BRANCH_ID = "20000000-0000-4000-8000-000000000002";
 const PURCHASE_ORDER_ID = "30000000-0000-4000-8000-000000000001";
 const PURCHASE_ORDER_ITEM_ID = "40000000-0000-4000-8000-000000000001";
 const TOKEN = "A".repeat(43);
+const TEST_COOKIE_NAME = "stockwise_test_session";
 const logger: ApiLogger = { error() {}, info() {} };
-const configuration: SessionConfiguration = {
-  absoluteTimeoutMilliseconds: 604_800_000,
-  idleTimeoutMilliseconds: 86_400_000,
-  secureCookie: false,
-  touchIntervalMilliseconds: 900_000,
-};
 const receipt: SafePurchaseReceipt = {
   branchId: RECEIPT_BRANCH_ID,
   createdAt: "2026-09-02T10:00:00.000Z",
@@ -73,9 +65,10 @@ describe("receiving router", () => {
     authenticated?: boolean;
     receivePurchaseOrder?: ReceivingRepository["receivePurchaseOrder"];
   } = {}) {
-    const authenticationRepository: AuthenticationSessionRepository = {
-      resolveSession: vi.fn().mockResolvedValue(
-        authenticated
+    const authenticationMiddleware = createSessionAuthenticationMiddleware(
+      async (request) =>
+        authenticated &&
+        request.headers.cookie === `${TEST_COOKIE_NAME}=${TOKEN}`
           ? {
               actor: {
                 displayName: "Owner",
@@ -85,14 +78,10 @@ describe("receiving router", () => {
               sessionId: "session-id",
             }
           : null,
-      ),
-    };
+    );
     const repository: ReceivingRepository = { receivePurchaseOrder };
     const router = createReceivingRouter({
-      authenticationMiddleware: createAuthenticationMiddleware({
-        configuration,
-        repository: authenticationRepository,
-      }),
+      authenticationMiddleware,
       publicWebOrigin: "http://localhost:3000",
       receivingService: createReceivingService({ repository }),
     });
@@ -130,7 +119,7 @@ describe("receiving router", () => {
       ),
       headers: {
         "content-type": "application/json",
-        cookie: `${SESSION_COOKIE_NAME}=${TOKEN}`,
+        cookie: `${TEST_COOKIE_NAME}=${TOKEN}`,
         "idempotency-key": "receive-key",
         ...input.headers,
       },
@@ -224,7 +213,7 @@ describe("receiving router", () => {
       body: JSON.stringify({ actualCosts: [], vat: {} }),
       headers: {
         "content-type": "application/json",
-        cookie: `${SESSION_COOKIE_NAME}=${TOKEN}`,
+        cookie: `${TEST_COOKIE_NAME}=${TOKEN}`,
       },
       method: "POST",
     });

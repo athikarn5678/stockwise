@@ -3,10 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../app.ts";
 import type { ApiLogger } from "../../logger.ts";
 import { startApiServer, type RunningApiServer } from "../../server.ts";
-import type { AuthenticationSessionRepository } from "../identity/authentication-repository.ts";
-import { createAuthenticationMiddleware } from "../identity/authentication-context.ts";
-import type { SessionConfiguration } from "../identity/session-configuration.ts";
-import { SESSION_COOKIE_NAME } from "../identity/session-cookie.ts";
+import { createSessionAuthenticationMiddleware } from "../identity/authentication-context.ts";
 import type {
   PurchaseOrderRepository,
   SafePurchaseOrder,
@@ -20,13 +17,8 @@ const PRODUCT_ID = "30000000-0000-4000-8000-000000000001";
 const PURCHASE_ORDER_ID = "40000000-0000-4000-8000-000000000001";
 const SUPPLIER_ID = "50000000-0000-4000-8000-000000000001";
 const TOKEN = "A".repeat(43);
+const TEST_COOKIE_NAME = "stockwise_test_session";
 const logger: ApiLogger = { error() {}, info() {} };
-const configuration: SessionConfiguration = {
-  absoluteTimeoutMilliseconds: 604_800_000,
-  idleTimeoutMilliseconds: 86_400_000,
-  secureCookie: false,
-  touchIntervalMilliseconds: 900_000,
-};
 const purchaseOrder: SafePurchaseOrder = {
   branchId: BRANCH_ID,
   cancelledAt: null,
@@ -70,9 +62,10 @@ describe("purchase-order router", () => {
     authenticated?: boolean;
     overrides?: Partial<PurchaseOrderRepository>;
   } = {}) {
-    const authenticationRepository: AuthenticationSessionRepository = {
-      resolveSession: vi.fn().mockResolvedValue(
-        authenticated
+    const authenticationMiddleware = createSessionAuthenticationMiddleware(
+      async (request) =>
+        authenticated &&
+        request.headers.cookie === `${TEST_COOKIE_NAME}=${TOKEN}`
           ? {
               actor: {
                 displayName: "Owner",
@@ -82,8 +75,7 @@ describe("purchase-order router", () => {
               sessionId: "session-id",
             }
           : null,
-      ),
-    };
+    );
     const repository: PurchaseOrderRepository = {
       createPurchaseOrder: vi
         .fn()
@@ -102,10 +94,7 @@ describe("purchase-order router", () => {
       ...overrides,
     };
     const router = createPurchaseOrderRouter({
-      authenticationMiddleware: createAuthenticationMiddleware({
-        configuration,
-        repository: authenticationRepository,
-      }),
+      authenticationMiddleware,
       publicWebOrigin: "http://localhost:3000",
       purchaseOrderService: createPurchaseOrderService({ repository }),
     });
@@ -129,7 +118,7 @@ describe("purchase-order router", () => {
       body: JSON.stringify(body),
       headers: {
         "content-type": "application/json",
-        cookie: `${SESSION_COOKIE_NAME}=${TOKEN}`,
+        cookie: `${TEST_COOKIE_NAME}=${TOKEN}`,
         ...headers,
       },
       method,
@@ -202,7 +191,7 @@ describe("purchase-order router", () => {
     const list = await fetch(
       `${url}?status=DRAFT&orderDateFrom=2026-09-01&supplierId=${SUPPLIER_ID}`,
       {
-        headers: { cookie: `${SESSION_COOKIE_NAME}=${TOKEN}` },
+        headers: { cookie: `${TEST_COOKIE_NAME}=${TOKEN}` },
       },
     );
     expect(list.status).toBe(200);

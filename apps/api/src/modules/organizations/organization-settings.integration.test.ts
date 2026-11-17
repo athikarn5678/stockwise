@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../app.ts";
@@ -9,17 +11,17 @@ import {
 } from "../../test/database-harness.ts";
 import { createPrismaOrganizationSettingsRepository } from "./organization-settings-repository.ts";
 import { organizationNameUpdateSchema } from "./organization-settings-schema.ts";
-import { hashSessionToken } from "../identity/session-token.ts";
-import { createAuthenticationMiddleware } from "../identity/authentication-context.ts";
-import { createPrismaAuthenticationSessionRepository } from "../identity/authentication-repository.ts";
-import { SESSION_COOKIE_NAME } from "../identity/session-cookie.ts";
+import {
+  NATIVE_TEST_SESSION_COOKIE,
+  createNativeTestAuthenticationMiddleware,
+  createNativeTestSession,
+} from "../../test/native-session-fixture.ts";
 import { createOrganizationSettingsRouter } from "./organization-settings-router.ts";
 import { createOrganizationSettingsService } from "./organization-settings-service.ts";
 
 const environment = loadTestDatabaseEnvironment();
 const prisma = createTestPrismaClient(environment);
 const now = new Date("2026-10-25T12:00:00.000Z");
-const token = "A".repeat(43);
 
 async function user(email: string, verified = true) {
   return prisma.user.create({
@@ -54,16 +56,18 @@ describe("organization settings with PostgreSQL", () => {
   let server: RunningApiServer | undefined;
   async function start(clock = now) {
     const router = createOrganizationSettingsRouter({
-      authenticationMiddleware: createAuthenticationMiddleware({
-        configuration: {
-          absoluteTimeoutMilliseconds: 86_400_000,
-          idleTimeoutMilliseconds: 3_600_000,
-          secureCookie: false,
-          touchIntervalMilliseconds: 900_000,
+      authenticationMiddleware: createNativeTestAuthenticationMiddleware(
+        prisma,
+        {
+          configuration: {
+            absoluteTimeoutMilliseconds: 86_400_000,
+            idleTimeoutMilliseconds: 3_600_000,
+            secureCookie: false,
+            touchIntervalMilliseconds: 900_000,
+          },
+          now: () => clock,
         },
-        now: () => clock,
-        repository: createPrismaAuthenticationSessionRepository(prisma),
-      }),
+      ),
       organizationSettingsService: createOrganizationSettingsService({
         repository,
       }),
@@ -96,18 +100,11 @@ describe("organization settings with PostgreSQL", () => {
       const branch = await prisma.branch.create({
         data: { code: "MAIN", name: "Main", organizationId: target.id },
       });
-      const session = await prisma.session.create({
-        data: {
-          // Own every session timestamp; database now() outlives this frozen clock.
-          createdAt: now,
-          updatedAt: now,
-          issuedAt: now,
-          lastUsedAt: now,
-          absoluteExpiresAt: new Date(now.getTime() + 86_400_000),
-          idleExpiresAt: new Date(now.getTime() + 3_600_000),
-          tokenHash: hashSessionToken(token),
-          userId: actor.id,
-        },
+      const session = await createNativeTestSession(prisma, actor.id, {
+        // Own every session timestamp; database now() outlives this frozen clock.
+        createdAt: now,
+        updatedAt: now,
+        expiresAt: new Date(now.getTime() + 86_400_000),
       });
       const before = await prisma.organization.findUniqueOrThrow({
         where: { id: target.id },
@@ -115,7 +112,7 @@ describe("organization settings with PostgreSQL", () => {
       const userBefore = await prisma.user.findUniqueOrThrow({
         where: { id: actor.id },
       });
-      const sessionBefore = await prisma.session.findUniqueOrThrow({
+      const sessionBefore = await prisma.betterAuthSession.findUniqueOrThrow({
         where: { id: session.id },
       });
       const branchBefore = await prisma.branch.findUniqueOrThrow({
@@ -132,7 +129,7 @@ describe("organization settings with PostgreSQL", () => {
         });
       const base = await start();
       const response = await fetch(`${base}/organizations/${target.id}`, {
-        headers: { cookie: `${SESSION_COOKIE_NAME}=${token}` },
+        headers: { cookie: session.cookie },
       });
       expect(response.status).toBe(200);
       expect(await response.json()).toMatchObject({
@@ -172,7 +169,7 @@ describe("organization settings with PostgreSQL", () => {
       const userAfter = await prisma.user.findUniqueOrThrow({
         where: { id: actor.id },
       });
-      const sessionAfter = await prisma.session.findUniqueOrThrow({
+      const sessionAfter = await prisma.betterAuthSession.findUniqueOrThrow({
         where: { id: session.id },
       });
       const branchAfter = await prisma.branch.findUniqueOrThrow({
@@ -201,29 +198,31 @@ describe("organization settings with PostgreSQL", () => {
       const target = await organization();
       const actor = await user("expired-settings@example.com");
       await membership(target.id, actor.id, "OWNER");
-      const expiresAt = new Date(now.getTime() + 3_600_000);
-      await prisma.session.create({
-        data: {
-          createdAt: now,
-          updatedAt: now,
-          issuedAt: now,
-          lastUsedAt: now,
-          idleExpiresAt: expiresAt,
-          absoluteExpiresAt:
-            state === "absolute"
-              ? expiresAt
-              : new Date(now.getTime() + 86_400_000),
-          revokedAt: state === "revoked" ? now : null,
-          tokenHash: hashSessionToken(token),
-          userId: actor.id,
-        },
+      // Native session rules: idle = updatedAt + 1h, absolute = createdAt + 24h,
+      // revoked = the row is deleted, unknown = no matching row.
+      const session = await createNativeTestSession(prisma, actor.id, {
+        createdAt: now,
+        // The absolute case keeps idle activity fresh so only the fixed
+        // absolute boundary can reject it.
+        updatedAt:
+          state === "absolute" ? new Date(now.getTime() + 86_399_000) : now,
+        expiresAt: new Date(now.getTime() + 2 * 86_400_000),
       });
-      const base = await start(
-        state === "idle" || state === "absolute" ? expiresAt : now,
-      );
+      if (state === "revoked")
+        await prisma.betterAuthSession.delete({ where: { id: session.id } });
+      const clock =
+        state === "idle"
+          ? new Date(now.getTime() + 3_600_000)
+          : state === "absolute"
+            ? new Date(now.getTime() + 86_400_000)
+            : now;
+      const base = await start(clock);
       const response = await fetch(`${base}/organizations/${target.id}`, {
         headers: {
-          cookie: `${SESSION_COOKIE_NAME}=${state === "unknown" ? "B".repeat(43) : token}`,
+          cookie:
+            state === "unknown"
+              ? `${NATIVE_TEST_SESSION_COOKIE}=${randomUUID()}.${"B".repeat(32)}`
+              : session.cookie,
         },
       });
       expect(response.status).toBe(401);

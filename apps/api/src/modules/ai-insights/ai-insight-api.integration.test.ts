@@ -11,10 +11,11 @@ import {
   resetTestDatabase,
 } from "../../test/database-harness.ts";
 import { loadTestDatabaseEnvironment } from "../../test/database-environment.ts";
+import {
+  createNativeTestAuthenticationMiddleware,
+  createNativeTestSession,
+} from "../../test/native-session-fixture.ts";
 import { createAnalyticsSnapshotService } from "../analytics/analytics-snapshot-service.ts";
-import { createPrismaAuthenticationSessionRepository } from "../identity/authentication-repository.ts";
-import { createAuthenticationMiddleware } from "../identity/authentication-context.ts";
-import { generateSessionToken } from "../identity/session-token.ts";
 import { createAiInsightRouter } from "./ai-insight-router.ts";
 import { createPrismaAiInsightReader } from "./ai-insight-store.ts";
 
@@ -52,18 +53,12 @@ async function actor(organizationId: string, role: Role, branchId?: string) {
     await prisma.branchAssignment.create({
       data: { organizationId, branchId, userId: user.id },
     });
-  const token = generateSessionToken();
-  await prisma.session.create({
-    data: {
-      userId: user.id,
-      tokenHash: token.tokenHash,
-      issuedAt: now,
-      lastUsedAt: now,
-      idleExpiresAt: new Date("2026-10-11T12:00:00.000Z"),
-      absoluteExpiresAt: new Date("2026-10-11T12:00:00.000Z"),
-    },
+  const session = await createNativeTestSession(prisma, user.id, {
+    createdAt: now,
+    updatedAt: now,
+    expiresAt: new Date("2026-10-11T12:00:00.000Z"),
   });
-  return `stockwise_session=${token.rawToken}`;
+  return session.cookie;
 }
 
 async function fixture() {
@@ -194,16 +189,18 @@ async function start() {
   const router = Router();
   router.use(
     createAiInsightRouter({
-      authenticationMiddleware: createAuthenticationMiddleware({
-        configuration: {
-          absoluteTimeoutMilliseconds: 86_400_000,
-          idleTimeoutMilliseconds: 86_400_000,
-          secureCookie: false,
-          touchIntervalMilliseconds: 900_000,
+      authenticationMiddleware: createNativeTestAuthenticationMiddleware(
+        prisma,
+        {
+          configuration: {
+            absoluteTimeoutMilliseconds: 86_400_000,
+            idleTimeoutMilliseconds: 86_400_000,
+            secureCookie: false,
+            touchIntervalMilliseconds: 900_000,
+          },
+          now: () => now,
         },
-        now: () => now,
-        repository: createPrismaAuthenticationSessionRepository(prisma),
-      }),
+      ),
       reader: createPrismaAiInsightReader(prisma),
     }),
   );

@@ -3,22 +3,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../app.ts";
 import type { ApiLogger } from "../../logger.ts";
 import { startApiServer, type RunningApiServer } from "../../server.ts";
-import type { AuthenticationSessionRepository } from "./authentication-repository.ts";
-import { createAuthenticationMiddleware } from "./authentication-context.ts";
+import { createSessionAuthenticationMiddleware } from "./authentication-context.ts";
 import type { FirstOrganizationOnboardingOutcome } from "./first-organization-onboarding-repository.ts";
 import { createFirstOrganizationOnboardingRouter } from "./first-organization-onboarding-router.ts";
 import type { FirstOrganizationOnboardingService } from "./first-organization-onboarding-service.ts";
-import type { SessionConfiguration } from "./session-configuration.ts";
-import { SESSION_COOKIE_NAME } from "./session-cookie.ts";
 
-const configuration: SessionConfiguration = {
-  absoluteTimeoutMilliseconds: 7 * 24 * 60 * 60 * 1000,
-  idleTimeoutMilliseconds: 24 * 60 * 60 * 1000,
-  secureCookie: false,
-  touchIntervalMilliseconds: 15 * 60 * 1000,
-};
 const logger: ApiLogger = { error() {}, info() {} };
 const VALID_SESSION_TOKEN = "A".repeat(43);
+const TEST_COOKIE_NAME = "stockwise_test_session";
 const result = {
   branch: {
     address: null,
@@ -49,20 +41,19 @@ describe("first organization onboarding router", () => {
     },
   ) {
     const complete = vi.fn().mockResolvedValue(outcome);
-    const repository: AuthenticationSessionRepository = {
-      resolveSession: vi.fn().mockResolvedValue({
-        actor: {
-          displayName: null,
-          email: "owner@example.com",
-          id: "trusted-user-id",
-        },
-        sessionId: "session-id",
-      }),
-    };
-    const authenticationMiddleware = createAuthenticationMiddleware({
-      configuration,
-      repository,
-    });
+    const authenticationMiddleware = createSessionAuthenticationMiddleware(
+      async (request) =>
+        request.headers.cookie === `${TEST_COOKIE_NAME}=${VALID_SESSION_TOKEN}`
+          ? {
+              actor: {
+                displayName: null,
+                email: "owner@example.com",
+                id: "trusted-user-id",
+              },
+              sessionId: "session-id",
+            }
+          : null,
+    );
     const onboardingService: FirstOrganizationOnboardingService = { complete };
     const apiRouter = createFirstOrganizationOnboardingRouter({
       authenticationMiddleware,
@@ -91,7 +82,7 @@ describe("first organization onboarding router", () => {
       headers: {
         "content-type": "application/json",
         ...(authenticated
-          ? { cookie: `${SESSION_COOKIE_NAME}=${VALID_SESSION_TOKEN}` }
+          ? { cookie: `${TEST_COOKIE_NAME}=${VALID_SESSION_TOKEN}` }
           : {}),
         ...extraHeaders,
       },

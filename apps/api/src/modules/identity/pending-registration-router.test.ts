@@ -286,6 +286,91 @@ describe("pending registration HTTP router", () => {
     expect(limitedResponse.headers.get("retry-after")).toBe("24");
   });
 
+  it("canonicalizes the email and rejects malformed, missing, or unknown registration fields", async () => {
+    const register = vi.fn<PendingRegistrationService["register"]>(async () =>
+      acceptedRegistration(),
+    );
+    const service = stubService({ register });
+    const { url } = await serve(service);
+    const accepted = await post(url, "/auth/register", {
+      email: "  User@Example.COM  ",
+      password: "password-long-enough",
+    });
+    expect(accepted.status).toBe(202);
+    expect(register).toHaveBeenCalledTimes(1);
+    expect(register.mock.calls[0]?.[0]).toEqual({
+      email: "user@example.com",
+      password: "password-long-enough",
+    });
+    for (const body of [
+      { email: "not-an-email", password: "x".repeat(15) },
+      { password: "x".repeat(15) },
+      { email: "user@example.com" },
+      {
+        displayName: "Not accepted during registration",
+        email: "user@example.com",
+        password: "x".repeat(15),
+      },
+    ]) {
+      const rejected = await post(url, "/auth/register", body);
+      expect(rejected.status).toBe(400);
+      expect(await rejected.json()).toMatchObject({
+        error: { code: "VALIDATION_ERROR" },
+      });
+    }
+    expect(register).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [14, false],
+    [15, true],
+    [128, true],
+    [129, false],
+  ])(
+    "validates a %i-code-point registration password without counting UTF-16 code units",
+    async (length, accepted) => {
+      const register = vi.fn<PendingRegistrationService["register"]>(async () =>
+        acceptedRegistration(),
+      );
+      const service = stubService({ register });
+      const { url } = await serve(service);
+      const password = "🔒".repeat(length);
+      const response = await post(url, "/auth/register", {
+        email: "user@example.com",
+        password,
+      });
+
+      expect(response.status).toBe(accepted ? 202 : 400);
+      expect(register).toHaveBeenCalledTimes(accepted ? 1 : 0);
+      if (accepted)
+        expect(register.mock.calls[0]?.[0]?.password).toBe(password);
+    },
+  );
+
+  it("allows whitespace and passes the exact code points, including decomposed Unicode, to the service", async () => {
+    const register = vi.fn<PendingRegistrationService["register"]>(async () =>
+      acceptedRegistration(),
+    );
+    const service = stubService({ register });
+    const { url } = await serve(service);
+    const password = `  ${"e\u0301".repeat(6)}  `;
+    const response = await post(url, "/auth/register", {
+      email: "user@example.com",
+      password,
+    });
+
+    expect(response.status).toBe(202);
+    const submitted = register.mock.calls[0]?.[0]?.password;
+    expect(submitted).toBe(password);
+    expect(submitted).not.toBe(password.normalize("NFC"));
+    const whitespaceOnly = await post(url, "/auth/register", {
+      email: "user@example.com",
+      password: " ".repeat(15),
+    });
+    expect(whitespaceOnly.status).toBe(202);
+    expect(register.mock.calls[1]?.[0]?.password).toBe(" ".repeat(15));
+  });
+
   it("preserves safe error envelopes when provider/persistence work fails", async () => {
     const secret = "provider response with sensitive details";
     const service = stubService({

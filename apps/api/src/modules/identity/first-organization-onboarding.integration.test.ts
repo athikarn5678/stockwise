@@ -8,8 +8,10 @@ import {
   createTestPrismaClient,
   resetTestDatabase,
 } from "../../test/database-harness.ts";
-import { createPrismaAuthenticationSessionRepository } from "./authentication-repository.ts";
-import { createAuthenticationMiddleware } from "./authentication-context.ts";
+import {
+  createNativeTestAuthenticationMiddleware,
+  createNativeTestSession,
+} from "../../test/native-session-fixture.ts";
 import {
   createPrismaFirstOrganizationOnboardingRepository,
   type FirstOrganizationOnboardingTransactionStage,
@@ -21,8 +23,6 @@ import {
 } from "./first-organization-onboarding-schema.ts";
 import { createFirstOrganizationOnboardingService } from "./first-organization-onboarding-service.ts";
 import type { SessionConfiguration } from "./session-configuration.ts";
-import { SESSION_COOKIE_NAME } from "./session-cookie.ts";
-import { hashSessionToken } from "./session-token.ts";
 
 const environment = loadTestDatabaseEnvironment();
 const prisma = createTestPrismaClient(environment);
@@ -44,10 +44,6 @@ const canonicalInput = firstOrganizationOnboardingRequestSchema.parse({
   organizationName: "  Example  Store  ",
   phone: "   ",
 });
-
-function sessionToken(character: string): string {
-  return character.repeat(43);
-}
 
 describe("first organization onboarding with PostgreSQL", () => {
   let runningServer: RunningApiServer | undefined;
@@ -88,17 +84,13 @@ describe("first organization onboarding with PostgreSQL", () => {
     });
   }
 
-  async function seedSession(userId: string, rawToken: string) {
-    await prisma.session.create({
-      data: {
-        absoluteExpiresAt: new Date(NOW.getTime() + 7 * DAY_MILLISECONDS),
-        idleExpiresAt: new Date(NOW.getTime() + DAY_MILLISECONDS),
-        issuedAt: NOW,
-        lastUsedAt: NOW,
-        tokenHash: hashSessionToken(rawToken),
-        userId,
-      },
+  async function seedSession(userId: string) {
+    const session = await createNativeTestSession(prisma, userId, {
+      createdAt: NOW,
+      updatedAt: NOW,
+      expiresAt: new Date(NOW.getTime() + 7 * DAY_MILLISECONDS),
     });
+    return session.cookie;
   }
 
   async function startApplication(
@@ -107,11 +99,10 @@ describe("first organization onboarding with PostgreSQL", () => {
     ) => Promise<void> | void,
   ) {
     const logger: ApiLogger = { error() {}, info() {} };
-    const authenticationMiddleware = createAuthenticationMiddleware({
-      configuration,
-      now: () => NOW,
-      repository: createPrismaAuthenticationSessionRepository(prisma),
-    });
+    const authenticationMiddleware = createNativeTestAuthenticationMiddleware(
+      prisma,
+      { configuration, now: () => NOW },
+    );
     const onboardingService = createFirstOrganizationOnboardingService({
       repository: createPrismaFirstOrganizationOnboardingRepository(
         prisma,
@@ -136,9 +127,7 @@ describe("first organization onboarding with PostgreSQL", () => {
       body: JSON.stringify(body),
       headers: {
         "content-type": "application/json",
-        ...(rawToken === undefined
-          ? {}
-          : { cookie: `${SESSION_COOKIE_NAME}=${rawToken}` }),
+        ...(rawToken === undefined ? {} : { cookie: rawToken }),
       },
       method: "POST",
     });
@@ -150,8 +139,7 @@ describe("first organization onboarding with PostgreSQL", () => {
       email: "success@example.com",
       phone: "old-phone",
     });
-    const rawToken = sessionToken("A");
-    await seedSession(user.id, rawToken);
+    const rawToken = await seedSession(user.id);
     const url = await startApplication();
 
     const response = await post(
@@ -239,8 +227,7 @@ describe("first organization onboarding with PostgreSQL", () => {
 
   it("replays an identical request without reapplying profile values or creating rows", async () => {
     const user = await seedUser({ email: "replay@example.com" });
-    const rawToken = sessionToken("B");
-    await seedSession(user.id, rawToken);
+    const rawToken = await seedSession(user.id);
     const url = await startApplication();
     const request = {
       branchName: "Main",
@@ -285,8 +272,7 @@ describe("first organization onboarding with PostgreSQL", () => {
 
   it("returns ALREADY_ONBOARDED for a different payload without mutation", async () => {
     const user = await seedUser({ email: "different-replay@example.com" });
-    const rawToken = sessionToken("C");
-    await seedSession(user.id, rawToken);
+    const rawToken = await seedSession(user.id);
     const url = await startApplication();
     await post(
       url,
@@ -399,8 +385,7 @@ describe("first organization onboarding with PostgreSQL", () => {
       email: "unverified-onboarding@example.com",
       verified: false,
     });
-    const rawToken = sessionToken("D");
-    await seedSession(unverified.id, rawToken);
+    const rawToken = await seedSession(unverified.id);
     const url = await startApplication();
     const body = {
       branchName: "Main",
@@ -419,10 +404,8 @@ describe("first organization onboarding with PostgreSQL", () => {
     const differentUser = await seedUser({
       email: "different-concurrent@example.com",
     });
-    const sameToken = sessionToken("E");
-    const differentToken = sessionToken("F");
-    await seedSession(sameUser.id, sameToken);
-    await seedSession(differentUser.id, differentToken);
+    const sameToken = await seedSession(sameUser.id);
+    const differentToken = await seedSession(differentUser.id);
     const url = await startApplication();
     const sameRequest = {
       branchName: "Main",
@@ -500,8 +483,7 @@ describe("first organization onboarding with PostgreSQL", () => {
         email: `${stageToFail}@example.com`,
         phone: "before-phone",
       });
-      const rawToken = sessionToken("G");
-      await seedSession(user.id, rawToken);
+      const rawToken = await seedSession(user.id);
       const url = await startApplication((stage) => {
         if (stage === stageToFail) {
           throw new Error(`induced-${stage}`);

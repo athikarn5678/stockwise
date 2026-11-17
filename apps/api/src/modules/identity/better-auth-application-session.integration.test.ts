@@ -12,10 +12,6 @@ import { createBetterAuthSessionResolver } from "./better-auth-bridge.ts";
 import { createPrismaBetterAuthSessionRepository } from "./better-auth-session-repository.ts";
 import { createLoginLimiter } from "./login-limiter.ts";
 import { hashPassword } from "./password-hasher.ts";
-import { createAuthenticationMiddleware } from "./authentication-context.ts";
-import { createPrismaAuthenticationSessionRepository } from "./authentication-repository.ts";
-import { createApp } from "../../app.ts";
-import { startApiServer } from "../../server.ts";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({
@@ -150,42 +146,6 @@ describe("native APPLICATION lifecycle on guarded PostgreSQL", () => {
       await prisma.betterAuthSession.findUnique({ where: { id: stored.id } }),
     ).toBeNull();
   });
-  it("rejects a real Native session on a separately composed Legacy server", async () => {
-    const user = await account();
-    const { cookie } = await establish(user.email);
-    expect(await resolver(request(cookie))).not.toBeNull();
-    const router = express.Router();
-    router.get(
-      "/protected",
-      createAuthenticationMiddleware({
-        configuration,
-        repository: createPrismaAuthenticationSessionRepository(prisma),
-      }),
-      (_request, response) => response.json({ authorized: true }),
-    );
-    const server = await startApiServer(
-      createApp({
-        apiRouter: router,
-        logger: { info() {}, error() {} },
-      }),
-      { host: "127.0.0.1", port: 0 },
-    );
-    try {
-      const response = await fetch(
-        `http://127.0.0.1:${server.address.port}/api/v1/protected`,
-        {
-          headers: { cookie },
-        },
-      );
-      expect(response.status).toBe(401);
-      expect(await response.json()).toMatchObject({
-        error: { code: "AUTHENTICATION_REQUIRED" },
-      });
-      expect(response.headers.has("set-cookie")).toBe(false);
-    } finally {
-      await server.stop();
-    }
-  });
   it("logout-all rejects unauthenticated/cross-origin requests and revokes every authenticated session", async () => {
     const user = await account();
     const first = await establish(user.email);
@@ -216,6 +176,45 @@ describe("native APPLICATION lifecycle on guarded PostgreSQL", () => {
     expect(
       await prisma.betterAuthSession.count({ where: { userId: user.id } }),
     ).toBe(0);
+  });
+  it("revokes the current and every session of one user without affecting another user", async () => {
+    const user = await account();
+    const other = await account();
+    const current = await establish(user.email);
+    const second = await establish(user.email);
+    const unrelated = await establish(other.email);
+
+    expect(
+      (await service.logout(new Headers({ origin, cookie: current.cookie })))
+        .outcome,
+    ).toBe("logged_out");
+    expect(await resolver(request(current.cookie))).toBeNull();
+    expect(await resolver(request(second.cookie))).not.toBeNull();
+    expect(await resolver(request(unrelated.cookie))).not.toBeNull();
+    expect(
+      await prisma.betterAuthSession.count({ where: { userId: user.id } }),
+    ).toBe(1);
+    expect(
+      await prisma.betterAuthSession.count({ where: { userId: other.id } }),
+    ).toBe(1);
+
+    expect(
+      (await service.logoutAll(new Headers({ origin, cookie: second.cookie })))
+        .outcome,
+    ).toBe("logged_out");
+    expect(await resolver(request(second.cookie))).toBeNull();
+    expect(await resolver(request(unrelated.cookie))).not.toBeNull();
+    expect(
+      await prisma.betterAuthSession.count({ where: { userId: user.id } }),
+    ).toBe(0);
+    expect(
+      await prisma.betterAuthSession.count({ where: { userId: other.id } }),
+    ).toBe(1);
+    expect(
+      await prisma.betterAuthSession.findUnique({
+        where: { id: unrelated.session.session.id },
+      }),
+    ).not.toBeNull();
   });
   it("does not revoke sessions for a native cookie invalidated by credential-version change", async () => {
     const user = await account();

@@ -5,7 +5,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadTestDatabaseEnvironment } from "../../test/database-environment.ts";
 import { PrismaClient } from "../../generated/prisma/client.ts";
 import { createBetterAuthNative } from "./better-auth-native.ts";
-import { defaultAuthenticationAuthority } from "../../environment.ts";
 import { hashPassword, verifyPassword } from "./password-hasher.ts";
 import { createPendingRegistrationRepository } from "./pending-registration-repository.ts";
 import { createPendingRegistrationService } from "./pending-registration-service.ts";
@@ -144,7 +143,6 @@ describe("isolated D3 PostgreSQL pending registration", () => {
         password: "different password",
       }),
     ).toBe(false);
-    expect(defaultAuthenticationAuthority("test")).toBe("legacy");
   });
   it("requires exact initiating proof; mailbox-only and another attempt cannot activate the password", async () => {
     const row = await stage();
@@ -247,6 +245,48 @@ describe("isolated D3 PostgreSQL pending registration", () => {
         security,
       }),
     ).toBe("proof_required");
+  });
+  it("advances the pending credential generation when a replacement repeats the same plaintext", async () => {
+    const row = await stage();
+    const before = await prisma.pendingRegistration.findUniqueOrThrow({
+      where: { email: row.email },
+    });
+    const replacement = await repository.register({
+      email: row.email,
+      passwordHash: hash,
+      security,
+    });
+    expect(replacement).not.toBeNull();
+    const after = await prisma.pendingRegistration.findUniqueOrThrow({
+      where: { email: row.email },
+    });
+    expect(after.id).toBe(before.id);
+    expect(after.credentialVersion).toBe(before.credentialVersion + 1n);
+    expect(after.passwordHash).toBe(before.passwordHash);
+    expect(await verifyPassword(after.passwordHash!, PASSWORD)).toBe(true);
+    expect(after.challengeId).toBe(replacement!.challenge.id);
+    expect(after.challengeId).not.toBe(before.challengeId);
+    expect(after.consumedAt).toBeNull();
+    expect(after.revokedAt).toBeNull();
+    expect(await complete(row)).toBe("invalid");
+    expect(
+      await repository.completeCode({
+        email: row.email,
+        challengeId: replacement!.challenge.id,
+        code: replacement!.code,
+        cookieHeader: cookie(row.material),
+        security,
+      }),
+    ).toBe("proof_required");
+    expect(
+      await repository.completeCode({
+        email: row.email,
+        challengeId: replacement!.challenge.id,
+        code: replacement!.code,
+        cookieHeader: cookie(replacement!),
+        security,
+      }),
+    ).toBe("verified");
   });
   it("counts five wrong OTPs without proof, preserves link and never consumes valid material without proof", async () => {
     const row = await stage();

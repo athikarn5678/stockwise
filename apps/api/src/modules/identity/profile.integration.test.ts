@@ -5,17 +5,19 @@ import type { ApiLogger } from "../../logger.ts";
 import { startApiServer, type RunningApiServer } from "../../server.ts";
 import { loadTestDatabaseEnvironment } from "../../test/database-environment.ts";
 import {
+  NATIVE_TEST_SESSION_COOKIE,
+  createNativeTestAuthenticationMiddleware,
+  createNativeTestSession,
+  type NativeTestSession,
+} from "../../test/native-session-fixture.ts";
+import {
   createTestPrismaClient,
   resetTestDatabase,
 } from "../../test/database-harness.ts";
-import { createAuthenticationMiddleware } from "./authentication-context.ts";
-import { createPrismaAuthenticationSessionRepository } from "./authentication-repository.ts";
 import { createPrismaSelfProfileRepository } from "./profile-repository.ts";
 import { createSelfProfileRouter } from "./profile-router.ts";
 import { createSelfProfileService } from "./profile-service.ts";
 import type { SessionConfiguration } from "./session-configuration.ts";
-import { SESSION_COOKIE_NAME } from "./session-cookie.ts";
-import { hashSessionToken } from "./session-token.ts";
 
 const environment = loadTestDatabaseEnvironment();
 const prisma = createTestPrismaClient(environment);
@@ -30,7 +32,11 @@ const configuration: SessionConfiguration = {
 const logger: ApiLogger = { error() {}, info() {} };
 describe("self-profile PostgreSQL integration", () => {
   let server: RunningApiServer | undefined;
-  beforeEach(async () => resetTestDatabase(environment));
+  const nativeSessions = new Map<string, NativeTestSession>();
+  beforeEach(async () => {
+    nativeSessions.clear();
+    await resetTestDatabase(environment);
+  });
   afterEach(async () => {
     await server?.stop();
     server = undefined;
@@ -42,11 +48,10 @@ describe("self-profile PostgreSQL integration", () => {
 
   async function start() {
     const router = createSelfProfileRouter({
-      authenticationMiddleware: createAuthenticationMiddleware({
-        configuration,
-        now: () => NOW,
-        repository: createPrismaAuthenticationSessionRepository(prisma),
-      }),
+      authenticationMiddleware: createNativeTestAuthenticationMiddleware(
+        prisma,
+        { configuration, now: () => NOW },
+      ),
       profileService: createSelfProfileService({
         repository: createPrismaSelfProfileRepository(prisma, () => NOW),
       }),
@@ -73,27 +78,28 @@ describe("self-profile PostgreSQL integration", () => {
         phone,
       },
     });
-    await prisma.session.create({
-      data: {
-        absoluteExpiresAt: new Date(NOW.getTime() + 24 * 60 * 60 * 1000),
-        idleExpiresAt: new Date(NOW.getTime() + 24 * 60 * 60 * 1000),
-        issuedAt: NOW,
-        lastUsedAt: NOW,
-        tokenHash: hashSessionToken(token),
-        userId: user.id,
-      },
-    });
-    return user;
+    nativeSessions.set(
+      token,
+      await createNativeTestSession(prisma, user.id, {
+        createdAt: NOW,
+        updatedAt: NOW,
+        expiresAt: new Date(NOW.getTime() + 24 * 60 * 60 * 1000),
+      }),
+    );
+    // The Native double promotes the user; return the persisted state.
+    return prisma.user.findUniqueOrThrow({ where: { id: user.id } });
   }
 
   const authenticatedCookie = (token: string) => ({
-    cookie: `${SESSION_COOKIE_NAME}=${token}`,
+    cookie:
+      nativeSessions.get(token)?.cookie ??
+      `${NATIVE_TEST_SESSION_COOKIE}=unknown`,
   });
 
   it("allows a membership-less actor to read and atomically win only one update per version", async () => {
     const user = await createActor({ phone: "+66 1 234 5678" });
-    const sessionBefore = await prisma.session.findUniqueOrThrow({
-      where: { tokenHash: hashSessionToken(TOKEN) },
+    const sessionBefore = await prisma.betterAuthSession.findUniqueOrThrow({
+      where: { id: nativeSessions.get(TOKEN)!.id },
     });
     const base = await start();
     const get = await fetch(`${base}/me`, {
@@ -183,15 +189,16 @@ describe("self-profile PostgreSQL integration", () => {
     expect(
       (await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).phone,
     ).toBeNull();
-    const sessionAfter = await prisma.session.findUniqueOrThrow({
-      where: { tokenHash: hashSessionToken(TOKEN) },
+    // Native revocation deletes the row, so findUniqueOrThrow also proves the
+    // session was not revoked; updatedAt is the Native activity timestamp.
+    const sessionAfter = await prisma.betterAuthSession.findUniqueOrThrow({
+      where: { id: sessionBefore.id },
     });
     expect(sessionAfter).toMatchObject({
       id: sessionBefore.id,
-      revokedAt: sessionBefore.revokedAt,
-      tokenHash: sessionBefore.tokenHash,
+      token: sessionBefore.token,
       userId: user.id,
-      lastUsedAt: sessionBefore.lastUsedAt,
+      updatedAt: sessionBefore.updatedAt,
     });
   });
 

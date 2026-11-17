@@ -10,11 +10,11 @@ import {
   resetTestDatabase,
 } from "../../test/database-harness.ts";
 import { loadTestDatabaseEnvironment } from "../../test/database-environment.ts";
-import { createPrismaAuthenticationSessionRepository } from "../identity/authentication-repository.ts";
-import { createAuthenticationMiddleware } from "../identity/authentication-context.ts";
+import {
+  createNativeTestAuthenticationMiddleware,
+  createNativeTestSession,
+} from "../../test/native-session-fixture.ts";
 import type { SessionConfiguration } from "../identity/session-configuration.ts";
-import { SESSION_COOKIE_NAME } from "../identity/session-cookie.ts";
-import { generateSessionToken } from "../identity/session-token.ts";
 import { createPrismaReceivingRepository } from "./receiving-repository.ts";
 import { createReceivingRouter } from "./receiving-router.ts";
 import { createReceivingService } from "./receiving-service.ts";
@@ -163,26 +163,19 @@ describe("receiving HTTP API with PostgreSQL", () => {
   }
 
   async function session(userId: string) {
-    const token = generateSessionToken();
-    await prisma.session.create({
-      data: {
-        absoluteExpiresAt: new Date(NOW.getTime() + 7 * DAY),
-        idleExpiresAt: new Date(NOW.getTime() + DAY),
-        issuedAt: NOW,
-        lastUsedAt: NOW,
-        tokenHash: token.tokenHash,
-        userId,
-      },
+    const session = await createNativeTestSession(prisma, userId, {
+      createdAt: NOW,
+      updatedAt: NOW,
+      expiresAt: new Date(NOW.getTime() + 7 * DAY),
     });
-    return token.rawToken;
+    return session.cookie;
   }
 
   async function start() {
-    const authenticationMiddleware = createAuthenticationMiddleware({
-      configuration,
-      now: () => NOW,
-      repository: createPrismaAuthenticationSessionRepository(prisma),
-    });
+    const authenticationMiddleware = createNativeTestAuthenticationMiddleware(
+      prisma,
+      { configuration, now: () => NOW },
+    );
     const receivingService = createReceivingService({
       repository: createPrismaReceivingRepository(prisma, { now: () => NOW }),
     });
@@ -224,9 +217,7 @@ describe("receiving HTTP API with PostgreSQL", () => {
         body: JSON.stringify(input.body),
         headers: {
           "content-type": "application/json",
-          ...(input.token === undefined
-            ? {}
-            : { cookie: `${SESSION_COOKIE_NAME}=${input.token}` }),
+          ...(input.token === undefined ? {} : { cookie: input.token }),
           ...(input.idempotencyKey === undefined
             ? {}
             : { "idempotency-key": input.idempotencyKey }),

@@ -3441,6 +3441,18 @@ Before apply the operator takes and verifies a database export. `retire` (bound 
 - **Status:** Accepted by the owner on 2026-11-17 (Option 3). Full record: `docs/decisions/0045-native-only-authentication.md`.
 - **Type:** Authentication and schema amendment. Supersedes in part `ADR-013` (Legacy session store), `ADR-034` (Legacy runtime; the pending-registration contract stays), `ADR-035` (cutover gate; the Native decision stays) and the `ADR-039`/`ADR-040` Native-cutover steps. The `ADR-040` topology is unchanged and remains the Learner Lab deployment target (deployment planned as M9).
 
+## ADR-046 — On-demand AI business analysis v1
+
+- **Date:** 2026-11-17
+- **Status:** Accepted by the owner on 2026-11-17. Full record: `docs/decisions/0046-on-demand-ai-analysis-v1.md`.
+- **Type:** AI amendment. Adds a non-persisted on-demand analysis via OpenCode Go; amends `ADR-033` (provider and cadence scope for this use case only). The scheduled OpenRouter pipeline is unchanged.
+
+## ADR-047 — Stripe subscription billing v1
+
+- **Date:** 2026-11-17
+- **Status:** Accepted by the owner on 2026-11-17. Full record: `docs/decisions/0047-stripe-subscription-billing-v1.md`.
+- **Type:** Billing, permission and schema addition. Test-mode hosted Checkout, OWNER-only `billing.manage`, `organization_subscriptions` table; no webhook, limits or portal yet.
+
 ## 2. Explicitly superseded planning directions
 
 The current ADRs supersede these earlier, unimplemented ideas:

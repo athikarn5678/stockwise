@@ -74,6 +74,13 @@ and a database that is **empty** or holds only the deterministic demo organizati
 Any other organization/user/product/sale makes it refuse. The password is the
 generated `demo_user_password` in the `<name_prefix>/database` Secrets Manager
 secret (the ops task receives it as `DEMO_USER_PASSWORD`). A rerun is a no-op.
+The migrator role holds no database-level `CREATE`, so `roles.sql` pre-creates
+the `stockwise_demo` provenance schema (owned by the migrator, no access for the
+runtime role): run `run-ops-task.sh bootstrap-roles` (idempotent) once before the
+first seed, also on an already bootstrapped database. The same flag also lets the
+legacy `demo:seed:30d` skip the Docker receipt under the same conditions (ops
+role, `*_demo` loopback target, empty or demo-organization-only database); the
+database-content check is what protects real tenants.
 The seed may take several minutes over the RDS hop; if the ECS wait times out,
 rerun `run-ops-task.sh seed`, which resumes the same manifest.
 

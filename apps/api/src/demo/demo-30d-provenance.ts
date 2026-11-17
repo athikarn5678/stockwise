@@ -25,7 +25,14 @@ const sha256 = (value: string) =>
 export async function initializeDemoProvenance(
   prisma: Prisma.TransactionClient,
 ) {
-  await prisma.$executeRawUnsafe("CREATE SCHEMA IF NOT EXISTS stockwise_demo");
+  // PostgreSQL checks CREATE on the database before honouring IF NOT EXISTS, and
+  // the Learner Lab migrator role has no database-level CREATE (roles.sql
+  // pre-creates the schema for it), so only create the schema when it is absent.
+  const schema = await prisma.$queryRaw<
+    Array<{ exists: boolean }>
+  >`SELECT to_regnamespace('stockwise_demo') IS NOT NULL AS exists`;
+  if (!schema[0]?.exists)
+    await prisma.$executeRawUnsafe("CREATE SCHEMA stockwise_demo");
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS stockwise_demo.seed_runs (
     organization_id uuid PRIMARY KEY, plan jsonb NOT NULL, signature text NOT NULL,
     state text NOT NULL CHECK (state IN ('IN_PROGRESS','COMPLETE')), fingerprint text)`);

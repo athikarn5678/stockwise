@@ -20,7 +20,7 @@ import {
 
 const Decimal = Prisma.Decimal.clone({ precision: 80 });
 
-/** Exact headings of the Demo Insight text; the AI analysis uses the same five, in this order. */
+/** Exact headings of the Demo Insight text. The on-demand AI analysis is specified to use the same five, in this order. */
 export const DEMO_INSIGHT_HEADINGS = {
   overview: "ภาพรวม / Overview",
   sales: "ยอดขาย / Sales",

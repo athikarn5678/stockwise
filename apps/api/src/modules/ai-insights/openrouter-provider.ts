@@ -5,6 +5,7 @@ import type {
   AiProviderAttempt,
   AiProviderAttemptObserver,
   AiProviderFailureCategory,
+  AiProviderName,
   AiProviderResult,
   AiProviderUsage,
 } from "./ai-provider.ts";
@@ -15,6 +16,8 @@ const TIMEOUT_MILLISECONDS = 15_000;
 const REQUEST_LIMIT_BYTES = 16 * 1024;
 const RESPONSE_TEXT_LIMIT_BYTES = 4 * 1024;
 const RESPONSE_BODY_LIMIT_BYTES = 32 * 1024;
+const MAX_TOKENS = 512;
+const RESPONSE_BODY_BYTES_PER_TEXT_BYTE = 8;
 
 const tokenCount = z
   .number()
@@ -55,12 +58,21 @@ const completionSchema = z.object({
   usage: usageSchema.optional(),
 });
 
-function bodyFor(text: string) {
+function bodyFor(
+  text: string,
+  options: Readonly<{
+    includeUsage: boolean;
+    maxTokens: number;
+    model: string;
+  }>,
+) {
   return JSON.stringify({
-    model: MODEL,
+    model: options.model,
     messages: [{ role: "user", content: text }],
-    max_tokens: 512,
-    usage: { include: true },
+    max_tokens: options.maxTokens,
+    // `usage.include` is an OpenRouter extension; OpenAI-compatible endpoints
+    // receive the plain request body.
+    ...(options.includeUsage ? { usage: { include: true } } : {}),
   });
 }
 
@@ -84,7 +96,10 @@ function retryable(category: AiProviderFailureCategory, status?: number) {
   );
 }
 
-async function readBounded(response: Response): Promise<string | null> {
+async function readBounded(
+  response: Response,
+  limitBytes: number,
+): Promise<string | null> {
   if (response.body === null) return null;
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -93,7 +108,7 @@ async function readBounded(response: Response): Promise<string | null> {
     const { done, value } = await reader.read();
     if (done) break;
     length += value.byteLength;
-    if (length > RESPONSE_BODY_LIMIT_BYTES) {
+    if (length > limitBytes) {
       await reader.cancel().catch(() => undefined);
       return null;
     }
@@ -124,13 +139,36 @@ function normalizeUsage(
   };
 }
 
+export type ChatCompletionProviderOptions = Readonly<{
+  apiKey?: string | undefined;
+  endpoint?: string;
+  fetchImplementation?: typeof fetch;
+  maxAttempts?: number;
+  maxTokens?: number;
+  requestHeaders?: () => Record<string, string>;
+  model?: string;
+  providerName?: AiProviderName;
+  responseTextLimitBytes?: number;
+  timeoutMilliseconds?: number;
+}>;
+
 export function createOpenRouterProvider({
   apiKey,
+  endpoint = ENDPOINT,
   fetchImplementation = fetch,
-}: {
-  apiKey?: string | undefined;
-  fetchImplementation?: typeof fetch;
-}): AiProvider {
+  maxAttempts = 3,
+  maxTokens = MAX_TOKENS,
+  model = MODEL,
+  requestHeaders,
+  providerName = "openrouter",
+  responseTextLimitBytes = RESPONSE_TEXT_LIMIT_BYTES,
+  timeoutMilliseconds = TIMEOUT_MILLISECONDS,
+}: ChatCompletionProviderOptions): AiProvider {
+  const includeUsage = providerName === "openrouter";
+  const responseBodyLimitBytes = Math.max(
+    RESPONSE_BODY_LIMIT_BYTES,
+    responseTextLimitBytes * RESPONSE_BODY_BYTES_PER_TEXT_BYTE,
+  );
   return {
     async generate(
       input,
@@ -143,7 +181,7 @@ export function createOpenRouterProvider({
       if (typeof input.text !== "string" || input.text.trim().length === 0) {
         return { ok: false, failureCategory: "INVALID_REQUEST", attempts };
       }
-      const body = bodyFor(input.text);
+      const body = bodyFor(input.text, { includeUsage, maxTokens, model });
       if (Buffer.byteLength(body, "utf8") > REQUEST_LIMIT_BYTES) {
         return { ok: false, failureCategory: "INVALID_REQUEST", attempts };
       }
@@ -151,20 +189,21 @@ export function createOpenRouterProvider({
       async function call(): Promise<AiProviderResult> {
         const attemptNumber = attempts.length + 1;
         await observer?.beforeAttempt({
-          provider: "openrouter",
-          requestedModel: MODEL,
+          provider: providerName,
+          requestedModel: model,
           attemptNumber,
         });
         const started = performance.now();
-        const signal = AbortSignal.timeout(TIMEOUT_MILLISECONDS);
+        const signal = AbortSignal.timeout(timeoutMilliseconds);
         let status: number | undefined;
         let failureCategory: AiProviderFailureCategory | undefined;
         let completion: z.infer<typeof completionSchema> | undefined;
 
         try {
-          const response = await fetchImplementation(ENDPOINT, {
+          const response = await fetchImplementation(endpoint, {
             method: "POST",
             headers: {
+              ...requestHeaders?.(),
               Authorization: `Bearer ${apiKey}`,
               "Content-Type": "application/json",
             },
@@ -177,7 +216,7 @@ export function createOpenRouterProvider({
             // A generic 404 is not a transient failure; do not retry it.
             failureCategory = classifyStatus(status);
           } else {
-            const raw = await readBounded(response);
+            const raw = await readBounded(response, responseBodyLimitBytes);
             if (raw === null) {
               failureCategory = "INVALID_RESPONSE";
             } else {
@@ -195,7 +234,7 @@ export function createOpenRouterProvider({
                   Buffer.byteLength(
                     checked.data.choices[0]!.message.content,
                     "utf8",
-                  ) > RESPONSE_TEXT_LIMIT_BYTES
+                  ) > responseTextLimitBytes
                 ) {
                   failureCategory = "INVALID_RESPONSE";
                 } else {
@@ -210,8 +249,8 @@ export function createOpenRouterProvider({
 
         const usage = normalizeUsage(completion?.usage);
         attempts.push({
-          provider: "openrouter",
-          requestedModel: MODEL,
+          provider: providerName,
+          requestedModel: model,
           attemptNumber,
           durationMilliseconds: performance.now() - started,
           ...(status === undefined ? {} : { httpStatus: status }),
@@ -229,7 +268,7 @@ export function createOpenRouterProvider({
           return {
             ok: true,
             text: completion.choices[0]!.message.content,
-            requestedModel: MODEL,
+            requestedModel: model,
             actualModel: completion.model,
             ...(usage === undefined ? {} : { usage }),
             attempts,
@@ -245,6 +284,7 @@ export function createOpenRouterProvider({
       const first = await call();
       if (
         first.ok ||
+        maxAttempts < 2 ||
         !retryable(first.failureCategory, first.attempts.at(-1)?.httpStatus)
       )
         return first;
@@ -252,6 +292,7 @@ export function createOpenRouterProvider({
       const second = await call();
       if (
         second.ok ||
+        maxAttempts < 3 ||
         !retryable(second.failureCategory, second.attempts.at(-1)?.httpStatus)
       )
         return second;

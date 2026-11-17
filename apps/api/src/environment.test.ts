@@ -338,6 +338,41 @@ describe("API environment boundary", () => {
     expect(String(error)).not.toContain("secret\nvalue");
   });
 
+  it("keeps the optional OpenCode Go key and model server-only", () => {
+    const base = {
+      DATABASE_URL:
+        "postgresql://local-user:local-password@127.0.0.1:5432/local-database",
+      STOCKWISE_API_PORT: "3001",
+      STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: analyticsKey,
+      STOCKWISE_PUBLIC_WEB_ORIGIN: "http://localhost:3000",
+      STOCKWISE_RUNTIME_ENV: "development",
+      ...verificationKeys,
+    };
+    const parsed = loadApiEnvironment(base);
+    expect(parsed.OPENCODE_GO_API_KEY).toBeUndefined();
+    expect(parsed.OPENCODE_GO_MODEL).toBeUndefined();
+    expect(
+      loadApiEnvironment({
+        ...base,
+        OPENCODE_GO_API_KEY: "server-only-key",
+        OPENCODE_GO_MODEL: "deepseek-v4.1-flash",
+      }),
+    ).toMatchObject({
+      OPENCODE_GO_API_KEY: "server-only-key",
+      OPENCODE_GO_MODEL: "deepseek-v4.1-flash",
+    });
+    for (const key of ["", " ", "key\nsecret"]) {
+      expect(() =>
+        loadApiEnvironment({ ...base, OPENCODE_GO_API_KEY: key }),
+      ).toThrow();
+    }
+    for (const model of ["", "bad model", "a".repeat(129)]) {
+      expect(() =>
+        loadApiEnvironment({ ...base, OPENCODE_GO_MODEL: model }),
+      ).toThrow();
+    }
+  });
+
   it("requires distinct dedicated canonical verification keys", () => {
     const base = {
       DATABASE_URL:
@@ -481,6 +516,12 @@ describe("API environment boundary", () => {
       loadApiEnvironment({
         ...base,
         OPENROUTER_API_KEY: verificationProofKey,
+      }),
+    ).toThrow();
+    expect(() =>
+      loadApiEnvironment({
+        ...base,
+        OPENCODE_GO_API_KEY: verificationProofKey,
       }),
     ).toThrow();
     expect(() =>

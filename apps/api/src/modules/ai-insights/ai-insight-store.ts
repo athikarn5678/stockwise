@@ -550,3 +550,9 @@ export function createPrismaAiInsightStore(prisma: PrismaClient) {
     },
   };
 }
+
+export type AiInsightReader = ReturnType<typeof createPrismaAiInsightReader>;
+export type AiInsightReadReader = Pick<
+  AiInsightReader,
+  "authorize" | "detail" | "latest" | "list"
+>;

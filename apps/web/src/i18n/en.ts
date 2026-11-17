@@ -552,6 +552,19 @@ export const en = {
   aiErrAccess: "AI insights are not available for your current access.",
   aiErrInvalid: "This insight selection is invalid.",
   aiErrLoad: "AI insights could not be loaded. Try again later.",
+  aiAnalyze: "Analyze",
+  aiAnalyzeTitle: "On-demand analysis (last 7 days)",
+  aiAnalyzeLoading: "Analyzing…",
+  aiAnalyzeMockBadge: "Sample (Mock)",
+  aiAnalyzeMockNote:
+    "No AI key is configured, so this is a deterministic sample built from the calculated data.",
+  aiAnalyzePeriod: "Period: {period}",
+  aiAnalyzeErrRate:
+    "Please wait a moment and try again (one request per minute).",
+  aiAnalyzeErrAccess: "AI analysis is not available for your current access.",
+  aiAnalyzeErrProvider:
+    "The AI system is unavailable or its output failed validation. Try again.",
+  aiAnalyzeErrLoad: "The analysis could not be completed. Try again later.",
   aiTitle: "AI insights",
   aiIntroBefore:
     "AI generated summaries of persisted data. Check the deterministic",

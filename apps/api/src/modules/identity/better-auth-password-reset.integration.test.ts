@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { Client } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -7,6 +7,7 @@ import { createServer } from "node:http";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { PrismaClient } from "../../generated/prisma/client.ts";
 import { loadTestDatabaseEnvironment } from "../../test/database-environment.ts";
+import { createNativeFixtureUser } from "../../test/native-user-fixture.ts";
 import {
   createPasswordResetService,
   type PasswordResetService,
@@ -38,12 +39,6 @@ import {
   secureOneTimeTokenProvider,
   type OneTimeTokenProvider,
 } from "./one-time-token.ts";
-import {
-  hashSessionToken,
-  secureSessionTokenProvider,
-} from "./session-token.ts";
-import { createLoginService } from "./login-service.ts";
-import { createPrismaAuthenticationRepository } from "./authentication-repository.ts";
 import type { SessionConfiguration } from "./session-configuration.ts";
 
 const environment = loadTestDatabaseEnvironment();
@@ -114,21 +109,6 @@ function makeLifecycle({
   });
 }
 
-async function seedLegacySession(userId: string) {
-  const token = randomBytes(32).toString("base64url");
-  const issuedAt = new Date();
-  return prisma.session.create({
-    data: {
-      absoluteExpiresAt: new Date(issuedAt.getTime() + 604800000),
-      idleExpiresAt: new Date(issuedAt.getTime() + 86400000),
-      issuedAt,
-      lastUsedAt: issuedAt,
-      tokenHash: hashSessionToken(token),
-      userId,
-    },
-  });
-}
-
 async function seedMembership(userId: string) {
   const organization = await prisma.organization.create({
     data: { name: `Reset test ${randomBytes(8).toString("hex")}` },
@@ -141,29 +121,14 @@ async function seedMembership(userId: string) {
 async function seedUser(
   email = `${randomBytes(12).toString("hex")}@example.test`,
 ) {
-  const legacyHash = await hashPassword("legacy-only password");
   const credentialHash = await hashPassword(initialPassword);
-  const user = await prisma.user.create({
-    data: {
-      email,
-      emailVerified: true,
-      emailVerifiedAt: new Date(),
-      nativeRegistrationCompletedAt: new Date(),
-      passwordHash: legacyHash,
-      betterAuthAccounts: {
-        create: {
-          accountId: "placeholder",
-          providerId: "credential",
-          password: credentialHash,
-        },
-      },
-    },
+  const user = await createNativeFixtureUser(prisma, {
+    id: randomUUID(),
+    email,
+    password: initialPassword,
+    passwordHash: credentialHash,
   });
-  await prisma.betterAuthAccount.updateMany({
-    where: { userId: user.id },
-    data: { accountId: user.id },
-  });
-  return { user, legacyHash, credentialHash };
+  return { user, credentialHash };
 }
 
 async function establish(email: string, password = initialPassword) {
@@ -395,8 +360,7 @@ describe("native credential reset with guarded PostgreSQL", () => {
     }
   });
   it("replaces only Better Auth PHC, atomically revokes native authority, preserves legacy state, and denies old Bridge cookies", async () => {
-    const { user, legacyHash, credentialHash } = await seedUser();
-    const legacySession = await seedLegacySession(user.id);
+    const { user, credentialHash } = await seedUser();
     const membership = await seedMembership(user.id);
     const first = await establish(user.email);
     const second = await establish(user.email);
@@ -439,13 +403,9 @@ describe("native credential reset with guarded PostgreSQL", () => {
     expect(after.passwordChangedAt.getTime()).toBeGreaterThanOrEqual(
       oldChangedAt.getTime(),
     );
-    expect(after.passwordHash).toBe(legacyHash);
     expect(
       await prisma.betterAuthSession.count({ where: { userId: user.id } }),
     ).toBe(0);
-    expect(
-      await prisma.session.findUnique({ where: { id: legacySession.id } }),
-    ).not.toBeNull();
     expect(
       await prisma.organizationMembership.findUnique({
         where: {
@@ -467,7 +427,6 @@ describe("native credential reset with guarded PostgreSQL", () => {
         query: { disableCookieCache: true, disableRefresh: true },
       }),
     ).toBeNull();
-    expect(await prisma.session.count({ where: { userId: user.id } })).toBe(1);
     expect(
       await prisma.passwordResetToken.findUniqueOrThrow({
         where: { id: tokenRecord.id },
@@ -497,37 +456,6 @@ describe("native credential reset with guarded PostgreSQL", () => {
     expect(
       await prisma.betterAuthSession.count({ where: { userId: user.id } }),
     ).toBe(1);
-    const unexpectedProof = () => {
-      throw new Error(
-        "Verified legacy login must not enter verification proof",
-      );
-    };
-    const legacyLogin = createLoginService({
-      configuration,
-      passwordVerifier: { verify: verifyPassword },
-      repository: createPrismaAuthenticationRepository(prisma),
-      tokenProvider: secureSessionTokenProvider,
-      verificationRepository: { proveCredentialSnapshot: unexpectedProof },
-      security: { prove: unexpectedProof, phantom: unexpectedProof },
-    });
-    expect(
-      (
-        await legacyLogin.login({
-          email: user.email,
-          password: "legacy-only password",
-          existingTokenHash: null,
-        })
-      ).outcome,
-    ).toBe("authenticated");
-    expect(
-      (
-        await legacyLogin.login({
-          email: user.email,
-          password: newPassword,
-          existingTokenHash: null,
-        })
-      ).outcome,
-    ).toBe("credential_failure");
   });
 
   it.each([

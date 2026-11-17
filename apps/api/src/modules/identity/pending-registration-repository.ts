@@ -118,7 +118,7 @@ async function eligible(
   );
 }
 
-/** Separately composed only. Never installed in authentication-runtime or main. */
+/** Separately composed only. Never installed in the application runtime or main. */
 export function createPendingRegistrationRepository(
   prisma: Client,
 ): PendingRegistrationRepository {

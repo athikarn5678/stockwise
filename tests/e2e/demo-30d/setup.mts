@@ -46,11 +46,11 @@ try {
     [
       `DATABASE_URL=${databaseUrl}`,
       "STOCKWISE_RUNTIME_ENV=development",
-      "STOCKWISE_AUTHENTICATION_AUTHORITY=legacy",
       "STOCKWISE_API_PORT=3231",
       "STOCKWISE_API_ORIGIN=http://127.0.0.1:3231",
       "STOCKWISE_PUBLIC_WEB_ORIGIN=http://localhost:3230",
       "STOCKWISE_EMAIL_PROVIDER=non_delivery",
+      `STOCKWISE_BETTER_AUTH_SECRET=${key()}`,
       `STOCKWISE_INVITATION_CONTINUATION_KEY=${key()}`,
       `STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY=${key()}`,
       `STOCKWISE_VERIFICATION_OTP_KEY=${key()}`,

@@ -4,7 +4,7 @@ import {
   verifyOperatorAltTab,
   recordOperatorHistory,
 } from "./operator-focus";
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import type { IdentityEmailMessage } from "../../../apps/api/src/modules/identity/email-provider.ts";
 import {
   journey,
@@ -441,51 +441,13 @@ journey(
   async (input) => {
     const completed = await completedAccount(input);
     expect(
-      await input.harness.prisma.session.count({
+      await input.harness.prisma.betterAuthSession.count({
         where: { userId: completed.pendingId },
       }),
     ).toBe(0);
     const scope = await createOwnerScope(input);
-    input.stage = "legacy-authority-denied";
-    const legacyToken = randomBytes(32).toString("base64url");
-    await input.harness.prisma.session.create({
-      data: {
-        userId: completed.pendingId,
-        tokenHash: createHash("sha256").update(legacyToken).digest("hex"),
-        idleExpiresAt: new Date(Date.now() + 86_400_000),
-        absoluteExpiresAt: new Date(Date.now() + 604_800_000),
-      },
-    });
-    const legacyOnly = await input.context
-      .browser()!
-      .newContext({ baseURL: webOrigin });
-    try {
-      await legacyOnly.addCookies([
-        {
-          name: "stockwise_session",
-          value: legacyToken,
-          url: webOrigin,
-          httpOnly: true,
-          sameSite: "Lax",
-          secure: false,
-        },
-      ]);
-      expect(
-        (
-          await legacyOnly.request.get(`${webOrigin}/api/v1/me/access-context`)
-        ).status(),
-      ).toBe(401);
-    } finally {
-      await legacyOnly.close();
-    }
     const response = await login(input);
     expect((await response).status()).toBe(200);
-    // The single legacy row is the negative-authority fixture, not a Native write.
-    expect(
-      await input.harness.prisma.session.count({
-        where: { userId: completed.pendingId },
-      }),
-    ).toBe(1);
     const cookie = (await input.context.cookies()).find(
       (candidate) => candidate.name === nativeSessionCookie,
     );
@@ -623,7 +585,7 @@ journey(
       expect((await logoutResponse).status()).toBe(204);
       await expect(input.page).toHaveURL(`${webOrigin}/login`);
       expect(
-        await input.harness.prisma.session.count({
+        await input.harness.prisma.betterAuthSession.count({
           where: { userId: completed.pendingId },
         }),
       ).toBe(1);
@@ -650,7 +612,7 @@ journey(
   async (input) => {
     await completedAccount(input);
     expect(
-      await input.harness.prisma.session.count({
+      await input.harness.prisma.betterAuthSession.count({
         where: { user: { email: input.email } },
       }),
     ).toBe(0);
@@ -767,7 +729,7 @@ journey(
       expect((await login(input)).status()).toBe(401);
       expect((await login(input, replacement)).status()).toBe(200);
       expect(
-        await input.harness.prisma.session.count({
+        await input.harness.prisma.betterAuthSession.count({
           where: { user: { email: input.email } },
         }),
       ).toBe(0);

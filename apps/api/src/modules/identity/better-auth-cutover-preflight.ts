@@ -193,23 +193,6 @@ export async function hasCrossedAccountIdentity(
   );
 }
 
-/**
- * Read-only Legacy startup guard. Once the fence leaves LEGACY, Legacy authority
- * never runs again: there is no downgrade from QUIESCED or a sealed NATIVE state.
- */
-export async function assertLegacyAuthorityAllowed(
-  prisma: PrismaClient,
-): Promise<void> {
-  try {
-    const fence = await prisma.$queryRaw<
-      { state: string }[]
-    >`SELECT state FROM public.native_auth_transition WHERE id = true`;
-    if (fence.length !== 1 || fence[0]?.state !== "LEGACY") throw refusal();
-  } catch {
-    throw new Error("Legacy authentication startup refused.");
-  }
-}
-
 /** Read-only, consistent-snapshot source readiness check; not deployment approval. */
 export async function assertNativeCutoverReady(
   prisma: PrismaClient,

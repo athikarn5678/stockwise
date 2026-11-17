@@ -715,6 +715,7 @@ describe("verification-security", () => {
       STOCKWISE_API_PORT: "3001",
       STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: analyticsKey,
       STOCKWISE_PUBLIC_WEB_ORIGIN: "http://localhost:3000",
+      STOCKWISE_BETTER_AUTH_SECRET: Buffer.alloc(32, 55).toString("base64url"),
       STOCKWISE_RUNTIME_ENV: "development",
       STOCKWISE_VERIFICATION_OTP_KEY: otpKey.toString("base64url"),
       STOCKWISE_VERIFICATION_OTP_KEY_ID: "1",

@@ -1,15 +1,16 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createApp } from "../../app.ts";
 import { loadApiEnvironment } from "../../environment.ts";
 import { loadTestDatabaseEnvironment } from "../../test/database-environment.ts";
+import { createNativeFixtureUser } from "../../test/native-user-fixture.ts";
 import {
   createTestPrismaClient,
   resetTestDatabase,
 } from "../../test/database-harness.ts";
 import { startApiServer, type RunningApiServer } from "../../server.ts";
-import { createAuthenticationRuntime } from "./authentication-runtime.ts";
+import { createBetterAuthApplicationRuntime } from "./better-auth-application-runtime.ts";
 import { createRecordingEmailProvider } from "./email-provider.ts";
 import { createPrismaMembershipAccessRepository } from "./membership-access-repository.ts";
 import { createMembershipAccessService } from "./membership-access-service.ts";
@@ -17,8 +18,7 @@ import {
   hashOneTimeToken,
   secureOneTimeTokenProvider,
 } from "./one-time-token.ts";
-import { hashPassword } from "./password-hasher.ts";
-import { SESSION_COOKIE_NAME } from "./session-cookie.ts";
+import { BETTER_AUTH_NATIVE_COOKIE_NAME as SESSION_COOKIE_NAME } from "./better-auth-native.ts";
 import {
   encryptInvitationContinuation,
   hashContinuationSessionCredential,
@@ -36,6 +36,7 @@ const environment = loadApiEnvironment({
   STOCKWISE_VERIFICATION_OTP_KEY_ID: "1",
   STOCKWISE_VERIFICATION_PROOF_KEY: randomBytes(32).toString("base64url"),
   STOCKWISE_VERIFICATION_PROOF_KEY_ID: "2",
+  STOCKWISE_BETTER_AUTH_SECRET: randomBytes(32).toString("base64url"),
   STOCKWISE_INVITATION_CONTINUATION_KEY: randomBytes(32).toString("base64url"),
 });
 const prisma = createTestPrismaClient(database);
@@ -73,13 +74,11 @@ async function post(
 }
 
 async function invite(email: string) {
-  const owner = await prisma.user.create({
-    data: {
-      displayName: "Invitation owner",
-      email: `owner-${randomBytes(8).toString("hex")}@example.test`,
-      emailVerifiedAt: new Date(),
-      passwordHash: await hashPassword(password),
-    },
+  const owner = await createNativeFixtureUser(prisma, {
+    id: randomUUID(),
+    displayName: "Invitation owner",
+    email: `owner-${randomBytes(8).toString("hex")}@example.test`,
+    password,
   });
   const organization = await prisma.organization.create({
     data: { name: `Continuation ${randomBytes(6).toString("hex")}` },
@@ -115,18 +114,16 @@ async function invite(email: string) {
 }
 
 async function user(email: string) {
-  return prisma.user.create({
-    data: {
-      displayName: "Invitee",
-      email,
-      emailVerifiedAt: new Date(),
-      passwordHash: await hashPassword(password),
-    },
+  return createNativeFixtureUser(prisma, {
+    id: randomUUID(),
+    displayName: "Invitee",
+    email,
+    password,
   });
 }
 
 async function startApi() {
-  const startedRuntime = createAuthenticationRuntime({
+  const startedRuntime = createBetterAuthApplicationRuntime({
     environment,
     prisma,
     emailProvider: { async send() {} },

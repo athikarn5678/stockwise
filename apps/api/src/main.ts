@@ -1,12 +1,7 @@
 import { Router } from "express";
 
-import { createAuthenticationRuntime } from "./modules/identity/authentication-runtime.ts";
-import { selectAuthenticationAuthority } from "./modules/identity/authentication-authority-selection.ts";
 import { createBetterAuthApplicationRuntime } from "./modules/identity/better-auth-application-runtime.ts";
-import {
-  assertLegacyAuthorityAllowed,
-  assertNativeCutoverReady,
-} from "./modules/identity/better-auth-cutover-preflight.ts";
+import { assertNativeCutoverReady } from "./modules/identity/better-auth-cutover-preflight.ts";
 import { createApp } from "./app.ts";
 import { loadApiEnvironment } from "./environment.ts";
 import { createPrismaAnalyticsBranchRepository } from "./modules/analytics/analytics-branch-repository.ts";
@@ -82,7 +77,7 @@ async function main(): Promise<void> {
   const prisma = getPrismaClient(environment);
   const emailProvider = createIdentityEmailProvider(environment);
   const onDeliveryFailure: Parameters<
-    typeof createAuthenticationRuntime
+    typeof createBetterAuthApplicationRuntime
   >[0]["onDeliveryFailure"] = (kind, failure) => {
     logger.error(
       {
@@ -95,32 +90,13 @@ async function main(): Promise<void> {
       "identity email delivery failed",
     );
   };
-  // Only one auth authority may be constructed per process, chosen before any
-  // listener opens. Native requires a sealed NATIVE database; Legacy requires
-  // an untouched LEGACY fence. Neither ever falls back to the other.
-  const nativeEnabled =
-    environment.STOCKWISE_AUTHENTICATION_AUTHORITY === "native";
-  if (nativeEnabled) {
-    await assertNativeCutoverReady(prisma);
-  } else {
-    await assertLegacyAuthorityAllowed(prisma);
-  }
-  const authentication = selectAuthenticationAuthority({
-    nativeEnabled,
-    legacy: () =>
-      createAuthenticationRuntime({
-        environment,
-        prisma,
-        emailProvider,
-        onDeliveryFailure,
-      }),
-    native: () =>
-      createBetterAuthApplicationRuntime({
-        environment,
-        prisma,
-        emailProvider,
-        onDeliveryFailure,
-      }),
+  // Native is the only authority; startup never selects or falls back to Legacy.
+  await assertNativeCutoverReady(prisma);
+  const authentication = createBetterAuthApplicationRuntime({
+    environment,
+    prisma,
+    emailProvider,
+    onDeliveryFailure,
   });
   const { authenticationMiddleware } = authentication;
   const firstOrganizationOnboardingService =

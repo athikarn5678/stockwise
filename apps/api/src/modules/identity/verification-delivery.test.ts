@@ -2,14 +2,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { EmailDeliveryError } from "./email-provider.ts";
 import { createVerificationDelivery } from "./verification-delivery.ts";
-import { testVerificationSecurity } from "../../test/identity-backend-fixture.ts";
+import { createVerificationSecurity } from "./verification-security.ts";
 
-const prepared = testVerificationSecurity().prepare(
-  "00000000-0000-4000-8000-000000000001",
-  1n,
-  new Date(),
-);
 const publicWebOrigin = "http://localhost:3000";
+const prepared = createVerificationSecurity({
+  publicWebOrigin,
+  otpKey: Buffer.alloc(32, 11),
+  otpKeyId: 1,
+  proofKey: Buffer.alloc(32, 22),
+  proofKeyId: 2,
+}).prepare("00000000-0000-4000-8000-000000000001", 1n, new Date());
 
 afterEach(() => vi.useRealTimers());
 

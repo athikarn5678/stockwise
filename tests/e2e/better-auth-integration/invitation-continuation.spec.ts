@@ -248,7 +248,7 @@ async function explicitAccept(
     }),
   ).toBe(0);
   expect(
-    await input.harness.prisma.session.count({
+    await input.harness.prisma.betterAuthSession.count({
       where: { userId: membership.userId },
     }),
   ).toBe(0);

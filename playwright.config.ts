@@ -130,7 +130,6 @@ export default defineConfig({
         ...process.env,
         DATABASE_URL: testDatabaseUrl,
         STOCKWISE_API_PORT: "3001",
-        STOCKWISE_AUTHENTICATION_AUTHORITY: "native",
         STOCKWISE_BETTER_AUTH_SECRET: betterAuthSecret,
         STOCKWISE_PUBLIC_WEB_ORIGIN: "http://localhost:3000",
         STOCKWISE_RUNTIME_ENV: "test",

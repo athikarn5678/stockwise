@@ -284,7 +284,6 @@ await withLocalPostgres(
         DATABASE_URL: urlFor("stockwise_demo"),
         STOCKWISE_RUNTIME_ENV: "test",
         STOCKWISE_EMAIL_PROVIDER: "non_delivery",
-        STOCKWISE_AUTHENTICATION_AUTHORITY: "native",
         STOCKWISE_API_PORT: String(API_PORT),
         STOCKWISE_PUBLIC_WEB_ORIGIN: WEB_ORIGIN,
         STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: key(),

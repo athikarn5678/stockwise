@@ -7,10 +7,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { verifyLocalPostgresReceipt } from "../../../../tests/e2e/better-auth-d5/local-runner.mts";
 
 import type { Prisma, PrismaClient } from "../generated/prisma/client.ts";
-import {
-  assertLegacyAuthorityAllowed,
-  assertNativeCutoverReady,
-} from "../modules/identity/better-auth-cutover-preflight.ts";
+import { assertNativeCutoverReady } from "../modules/identity/better-auth-cutover-preflight.ts";
 import {
   hashPassword,
   verifyPassword,
@@ -809,7 +806,6 @@ describe("live ownership guard on the runner-owned cluster", () => {
 describe("operator Native cutover", () => {
   it("seals an empty migrated database and passes the Native startup preflight", async () => {
     const { name, url, prisma } = await freshLegacyDatabase("empty");
-    await expect(assertLegacyAuthorityAllowed(prisma)).resolves.toBeUndefined();
     await expect(assertNativeCutoverReady(prisma)).rejects.toThrow();
 
     const result = await cli(url, ["--confirm-database", name]);
@@ -835,10 +831,6 @@ describe("operator Native cutover", () => {
     expect(state.fence.run_id).toBe(result.last?.runId);
     expect(state.enrollments).toBe(0);
     await expect(assertNativeCutoverReady(prisma)).resolves.toBeUndefined();
-    // No downgrade: Legacy startup is refused once the fence has left LEGACY.
-    await expect(assertLegacyAuthorityAllowed(prisma)).rejects.toThrow(
-      "Legacy authentication startup refused.",
-    );
 
     // Already NATIVE: revalidation only, with or without --resume.
     for (const args of [
@@ -1029,7 +1021,6 @@ describe("operator Native cutover", () => {
     ]);
     expect(await authorityState(prisma)).toEqual(partial);
     await expect(assertNativeCutoverReady(prisma)).rejects.toThrow();
-    await expect(assertLegacyAuthorityAllowed(prisma)).rejects.toThrow();
 
     // An explicit resume completes under the stored run without duplicates.
     const resumed = await cli(url, ["--confirm-database", name, "--resume"]);
@@ -1109,7 +1100,6 @@ describe("operator Native cutover", () => {
     });
     // Still editable Legacy data: nothing quiesced, revoked or enrolled.
     expect(await authorityState(prisma)).toEqual(pristine);
-    await expect(assertLegacyAuthorityAllowed(prisma)).resolves.toBeUndefined();
 
     // Once the Legacy record is consistent the same command completes.
     await prisma.user.update({
@@ -1219,9 +1209,6 @@ describe("operator Native cutover", () => {
       );
       // Nothing irreversible happened: still LEGACY, nothing revoked or enrolled.
       expect(await authorityState(prisma)).toEqual(pristine);
-      await expect(
-        assertLegacyAuthorityAllowed(prisma),
-      ).resolves.toBeUndefined();
     },
     120_000,
   );

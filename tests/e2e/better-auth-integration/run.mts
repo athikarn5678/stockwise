@@ -18,12 +18,8 @@ import {
 
 const source = fileURLToPath(new URL("../../../", import.meta.url));
 const mode = process.argv[2];
-if (
-  !["browser", "database", "legacy", "quality", "surface"].includes(mode ?? "")
-) {
-  throw new Error(
-    "Select browser, database, legacy, quality or surface verification.",
-  );
+if (!["browser", "database", "quality", "surface"].includes(mode ?? "")) {
+  throw new Error("Select browser, database, quality or surface verification.");
 }
 if (process.env.STOCKWISE_D4N3_ISOLATED !== "1") {
   throw new Error(
@@ -268,7 +264,6 @@ try {
       "tests/e2e/better-auth-integration",
       "playwright.better-auth-integration.config.ts",
       "vitest.better-auth-integration-db.config.mts",
-      "vitest.better-auth-integration-legacy.config.mts",
     ]);
     await command("WEB_TESTS", process.execPath, [
       cli("vitest", "vitest.mjs"),
@@ -303,15 +298,13 @@ try {
     const owned = await createOwnedAuthDatabase(environment);
     try {
       await command(
-        mode === "database" ? "NATIVE_DATABASE" : "LEGACY_DATABASE",
+        "NATIVE_DATABASE",
         process.execPath,
         [
           cli("vitest", "vitest.mjs"),
           "run",
           "--config",
-          mode === "database"
-            ? "vitest.better-auth-integration-db.config.mts"
-            : "vitest.better-auth-integration-legacy.config.mts",
+          "vitest.better-auth-integration-db.config.mts",
         ],
         owned.environment,
       );

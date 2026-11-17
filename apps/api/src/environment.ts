@@ -52,13 +52,6 @@ const verificationProofKeyIdSchema = z.coerce
   .min(0)
   .max(4_294_967_295);
 
-/** Unset authority: production is Native-only; local development/test stay Legacy. */
-export function defaultAuthenticationAuthority(
-  runtime: "development" | "test" | "production",
-): "legacy" | "native" {
-  return runtime === "production" ? "native" : "legacy";
-}
-
 const verificationPreviousKeyLastIssuedAtSchema = z
   .string()
   .datetime({ offset: true });
@@ -71,12 +64,7 @@ export const apiEnvironmentSchema = z
       .regex(/^[\x21-\x7e]+$/)
       .optional(),
     RESEND_API_KEY: z.string().min(1).optional(),
-    // Exactly one authority per process. Production defaults to and requires
-    // Native; Legacy remains only for local development and test databases.
-    STOCKWISE_AUTHENTICATION_AUTHORITY: z.enum(["legacy", "native"]).optional(),
-    // Inactive Native configuration cannot prevent Legacy startup.
-    // The Native composition validates this dedicated key before construction.
-    STOCKWISE_BETTER_AUTH_SECRET: z.string().optional(),
+    STOCKWISE_BETTER_AUTH_SECRET: z.string().min(1),
     STOCKWISE_INVITATION_CONTINUATION_KEY: z
       .string()
       .regex(/^[A-Za-z0-9_-]{43}$/)
@@ -128,9 +116,6 @@ export const apiEnvironmentSchema = z
   .strict()
   .transform((environment) => ({
     ...environment,
-    STOCKWISE_AUTHENTICATION_AUTHORITY:
-      environment.STOCKWISE_AUTHENTICATION_AUTHORITY ??
-      defaultAuthenticationAuthority(environment.STOCKWISE_RUNTIME_ENV),
     STOCKWISE_EMAIL_PROVIDER:
       environment.STOCKWISE_EMAIL_PROVIDER ??
       (environment.STOCKWISE_RUNTIME_ENV === "production"
@@ -146,16 +131,6 @@ export const apiEnvironmentSchema = z
         code: "custom",
         message: "Demo Insight is disabled in production.",
         path: ["STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID"],
-      });
-    }
-    if (
-      environment.STOCKWISE_RUNTIME_ENV === "production" &&
-      environment.STOCKWISE_AUTHENTICATION_AUTHORITY !== "native"
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Production runtime requires Native authentication.",
-        path: ["STOCKWISE_AUTHENTICATION_AUTHORITY"],
       });
     }
     if (
@@ -366,8 +341,6 @@ export function loadApiEnvironment(
     DATABASE_URL: environment.DATABASE_URL,
     OPENROUTER_API_KEY: environment.OPENROUTER_API_KEY,
     RESEND_API_KEY: environment.RESEND_API_KEY,
-    STOCKWISE_AUTHENTICATION_AUTHORITY:
-      environment.STOCKWISE_AUTHENTICATION_AUTHORITY,
     STOCKWISE_BETTER_AUTH_SECRET: environment.STOCKWISE_BETTER_AUTH_SECRET,
     STOCKWISE_INVITATION_CONTINUATION_KEY:
       environment.STOCKWISE_INVITATION_CONTINUATION_KEY,

@@ -40,8 +40,7 @@ import {
 
 /**
  * TEST-ONLY launcher: the full StockWise web application and the unmodified
- * `apps/api/src/main.ts` (actual Native API, STOCKWISE_AUTHENTICATION_AUTHORITY
- * =native) on a freshly migrated, seeded and NATIVE-sealed disposable
+ * `apps/api/src/main.ts` (the actual Native API) on a freshly migrated, seeded and NATIVE-sealed disposable
  * PostgreSQL created by the receipt-bound local runner. Mail is never sent;
  * synthetic `d5br-*@example.invalid` messages are recorded to a JSON-lines
  * file by `browser-mail-capture.mts`. Usage:
@@ -269,7 +268,6 @@ await withPrivateCapture(
             ...databaseEnvironment,
             STOCKWISE_RUNTIME_ENV: "test",
             STOCKWISE_EMAIL_PROVIDER: "non_delivery",
-            STOCKWISE_AUTHENTICATION_AUTHORITY: "native",
             STOCKWISE_API_PORT: String(API_PORT),
             STOCKWISE_PUBLIC_WEB_ORIGIN: WEB_ORIGIN,
             STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: key(),

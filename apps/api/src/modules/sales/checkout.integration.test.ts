@@ -34,7 +34,6 @@ async function createActor(input: {
     data: {
       displayName: `${input.role ?? "OWNER"} Employee`,
       email: `${randomUUID()}@example.com`,
-      passwordHash: "checkout-integration-test",
     },
   });
   const membership = await prisma.organizationMembership.create({

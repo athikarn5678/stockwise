@@ -36,7 +36,6 @@ async function fixture(label: string) {
     data: {
       displayName: `${label} Cashier`,
       email: `${randomUUID()}@example.com`,
-      passwordHash: "sales-schema-test",
     },
   });
   const membership = await prisma.organizationMembership.create({

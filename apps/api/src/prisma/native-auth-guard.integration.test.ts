@@ -86,20 +86,27 @@ describe("users guard", () => {
     ).rejects.toThrow(/credential version cannot decrease/);
   });
 
-  it("makes password_hash immutable", async () => {
+  it("has no users.password_hash column and the guard no longer references it (M3-F1)", async () => {
+    const columns = await prisma.$queryRaw<{ column_name: string }[]>`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'users'
+        AND column_name = 'password_hash'`;
+    expect(columns).toEqual([]);
+    // PL/pgSQL resolves column names when a statement runs: if the guard
+    // still named the dropped column, every users UPDATE would fail here.
     const user = await bareUser();
     await expect(
       prisma.user.update({
         where: { id: user.id },
-        data: { passwordHash: "$argon2id$v=19$other" },
+        data: { displayName: "After the column drop", phone: "+66 1 234 5678" },
       }),
-    ).rejects.toThrow(/password_hash is immutable/);
-    await expect(
-      prisma.user.update({
-        where: { id: user.id },
-        data: { passwordHash: user.passwordHash },
-      }),
-    ).resolves.toMatchObject({ id: user.id });
+    ).resolves.toMatchObject({ displayName: "After the column drop" });
+    // pending_registrations.password_hash is a different column and remains.
+    const pending = await prisma.$queryRaw<{ column_name: string }[]>`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'pending_registrations'
+        AND column_name = 'password_hash'`;
+    expect(pending).toHaveLength(1);
   });
 
   it.each(["nativeRegistrationCompletedAt", "emailVerifiedAt"] as const)(

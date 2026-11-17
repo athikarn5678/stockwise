@@ -28,8 +28,6 @@ const environment = loadTestDatabaseEnvironment();
 const prisma = createTestPrismaClient(environment);
 const NOW = new Date();
 const DAY_MILLISECONDS = 24 * 60 * 60 * 1000;
-const PASSWORD_HASH_FIXTURE =
-  "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$c2NoZW1hLXRlc3Q";
 const configuration: SessionConfiguration = {
   absoluteTimeoutMilliseconds: 7 * DAY_MILLISECONDS,
   idleTimeoutMilliseconds: DAY_MILLISECONDS,
@@ -78,7 +76,6 @@ describe("first organization onboarding with PostgreSQL", () => {
         displayName,
         email,
         emailVerifiedAt: verified ? new Date(NOW.getTime() - 1_000) : null,
-        passwordHash: PASSWORD_HASH_FIXTURE,
         phone,
       },
     });

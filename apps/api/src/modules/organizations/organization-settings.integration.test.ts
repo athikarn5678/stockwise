@@ -28,7 +28,6 @@ async function user(email: string, verified = true) {
     data: {
       email,
       emailVerifiedAt: verified ? now : null,
-      passwordHash: "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$c2NoZW1hLXRlc3Q",
     },
   });
 }
@@ -185,7 +184,6 @@ describe("organization settings with PostgreSQL", () => {
           },
         },
       );
-      expect(userAfter.passwordHash).toBe(userBefore.passwordHash);
       expect(userAfter.credentialVersion).toBe(userBefore.credentialVersion);
       expect(sessionAfter).toEqual(sessionBefore);
       expect(branchAfter).toEqual(branchBefore);

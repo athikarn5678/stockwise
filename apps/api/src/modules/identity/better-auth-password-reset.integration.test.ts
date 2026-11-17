@@ -264,8 +264,12 @@ describe("native credential reset with guarded PostgreSQL", () => {
           ),
         );
       await client.query("BEGIN");
+      // The historical schema replayed above still has users.password_hash NOT
+      // NULL (dropped later by M3-F1); give the copied row a placeholder.
       await client.query(
-        "INSERT INTO users SELECT (json_populate_record(NULL::users, row_to_json(u))).* FROM public.users u WHERE id = $1",
+        `INSERT INTO users SELECT (json_populate_record(NULL::users,
+           (row_to_json(u)::jsonb || '{"password_hash":"historical-placeholder"}'::jsonb)::json)).*
+         FROM public.users u WHERE id = $1`,
         [user.id],
       );
       await client.query(

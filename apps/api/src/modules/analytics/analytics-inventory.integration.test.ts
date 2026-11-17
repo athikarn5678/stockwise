@@ -37,7 +37,6 @@ async function actor(
       displayName: role,
       email: `${randomUUID()}@example.test`,
       emailVerifiedAt: new Date("2026-01-01T00:00:00.000Z"),
-      passwordHash: "test",
     },
   });
   const membership = await prisma.organizationMembership.create({

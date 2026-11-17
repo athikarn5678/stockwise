@@ -31,7 +31,6 @@ async function createActor(input: {
       displayName: `${input.role} Analytics Actor`,
       email: `${randomUUID()}@example.test`,
       emailVerifiedAt: new Date("2026-01-01T00:00:00.000Z"),
-      passwordHash: "analytics-sales-test",
     },
   });
   await prisma.organizationMembership.create({

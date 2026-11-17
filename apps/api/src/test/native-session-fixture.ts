@@ -30,8 +30,8 @@ export const NATIVE_TEST_SESSION_CONFIGURATION: SessionConfiguration = {
 // Far in the past so the Native predicate (`provenance <= session.createdAt`)
 // holds for any test clock.
 const PROVENANCE_INSTANT = new Date("2020-01-01T00:00:00.000Z");
-// Public dummy verifier (schema default of users.password_hash): the Native
-// predicate only needs a non-null credential account password to exist.
+// Placeholder PHC verifier: the Native predicate only needs a non-null
+// credential account password to exist.
 const PLACEHOLDER_CREDENTIAL =
   "$argon2id$v=19$m=65536,p=4,t=3$MELWslgkJzw87Me69Wz1tw$l9XoBv1UBhpmS40M2xzT5cHzqoSubftPd1Md5u/ZmvQ";
 

@@ -29,7 +29,6 @@ async function owner(organizationId: string, email: string) {
       displayName: "x",
       email,
       emailVerifiedAt: T0,
-      passwordHash: "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$c2NoZW1hLXRlc3Q",
     },
   });
   await prisma.organizationMembership.create({

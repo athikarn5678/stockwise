@@ -1572,7 +1572,7 @@ database, migration, fault and full-stack smoke checks NOT_RUN in P1-A.
   `email_verified_at`. This is not ongoing synchronization: legacy writers
   remain authoritative. The gated cutover must reconcile and synchronize both
   fields while auth writers are quiesced before native authority is enabled.
-- `users.password_hash` stays non-null with a valid Argon2id default using
+- (Historical; the column was dropped by M3-F1, `ADR-045`.) `users.password_hash` stays non-null with a valid Argon2id default using
   65536 KiB / 3 iterations / 4 lanes. Its 32-byte random preimage was generated
   and discarded in memory; only public dummy PHC material persists. The legacy
   runtime still explicitly inserts actual credential hashes. No existing hash,

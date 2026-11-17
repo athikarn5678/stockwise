@@ -20,12 +20,7 @@ export default defineConfig({
   },
   root: repositoryRoot,
   test: {
-    exclude: [
-      ...configDefaults.exclude,
-      "tests/e2e/**",
-      // Operator cutover runs only inside the receipt-bound D5-P4 coordinator.
-      "apps/api/src/native-cutover/native-cutover.integration.test.ts",
-    ],
+    exclude: [...configDefaults.exclude, "tests/e2e/**"],
     fileParallelism: false,
     globalSetup: [databaseTestSetup],
     include: ["**/*.test.{ts,tsx}"],

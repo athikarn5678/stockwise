@@ -1,3 +1,4 @@
+import { withTriggersDisabled } from "../../test/trigger-bypass.ts";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Router, type Request } from "express";
@@ -145,8 +146,11 @@ afterEach(async () => {
       select: { id: true },
     });
     if (user !== null) {
-      await prisma.betterAuthAccount.deleteMany({ where: { userId: user.id } });
-      await prisma.user.deleteMany({ where: { id: user.id } });
+      // Cleanup only: the Native guards forbid deleting users and accounts.
+      await withTriggersDisabled(prisma, async (tx) => {
+        await tx.betterAuthAccount.deleteMany({ where: { userId: user.id } });
+        await tx.user.deleteMany({ where: { id: user.id } });
+      });
     }
   }
   observedEmails.clear();

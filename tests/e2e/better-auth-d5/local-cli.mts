@@ -32,20 +32,15 @@ const allowed = new Set([
 if (
   Object.keys(values).some((key) => !allowed.has(key)) ||
   typeof values.mode !== "string" ||
-  ![
-    "database",
-    "browser",
-    "all",
-    "cutover",
-    "cleanup-previous",
-    "smoke",
-  ].includes(values.mode) ||
+  !["database", "browser", "all", "cleanup-previous", "smoke"].includes(
+    values.mode,
+  ) ||
   typeof values.dockerExecutable !== "string" ||
   !isAbsolute(values.dockerExecutable)
 )
   throw new Error("LOCAL_CONFIG_INVALID");
 const mode = values.mode as
-  "database" | "browser" | "all" | "cutover" | "cleanup-previous" | "smoke";
+  "database" | "browser" | "all" | "cleanup-previous" | "smoke";
 if (
   typeof values.evidenceDirectory !== "string" ||
   !isAbsolute(values.evidenceDirectory)

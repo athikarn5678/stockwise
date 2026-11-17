@@ -84,24 +84,9 @@ export async function applyTestDatabaseMigrations(
 }
 
 /**
- * Reset policy for the durable authentication fence singleton. An absent fence
- * (pre-migration target), `LEGACY` and `NATIVE` are resettable; a quiesced or
- * unrecognised state is a target in an undefined transition, so it is refused.
- */
-export function assertFenceAllowsReset(state: string | null): void {
-  if (state === null || state === "LEGACY" || state === "NATIVE") return;
-  if (state === "QUIESCED")
-    throw new Error(
-      "test reset refused while the authentication transition is quiesced",
-    );
-  throw new Error("test reset refused for an unknown authentication fence");
-}
-
-/**
  * Clears only the disposable test database's public tables and removes the
  * harness-owned scratch schema. The URL guard runs before any destructive
- * statement is issued, while the durable fence singleton and future Prisma
- * migration metadata stay intact.
+ * statement is issued, while Prisma migration metadata stays intact.
  */
 export async function resetTestDatabase(
   environment: TestDatabaseEnvironment,
@@ -117,17 +102,6 @@ export async function resetTestDatabase(
   try {
     await testClient.connect();
     await testClient.query("BEGIN");
-    // Retain the durable fence across ordinary test resets: Legacy and Native
-    // targets are both resettable, an undefined transition state is not.
-    const fenceTable = await testClient.query<{ exists: boolean }>(
-      "SELECT to_regclass('public.native_auth_transition') IS NOT NULL AS exists",
-    );
-    if (fenceTable.rows[0]?.exists === true) {
-      const fence = await testClient.query<{ state: string }>(
-        "SELECT state FROM public.native_auth_transition WHERE id = true FOR SHARE",
-      );
-      assertFenceAllowsReset(fence.rows[0]?.state ?? null);
-    }
     await testClient.query(
       "DROP SCHEMA IF EXISTS stockwise_test_harness CASCADE",
     );
@@ -139,7 +113,7 @@ export async function resetTestDatabase(
         SELECT string_agg(format('%I.%I', schemaname, tablename), ', ')
         INTO tableList
         FROM pg_tables
-        WHERE schemaname = 'public' AND tablename NOT IN ('_prisma_migrations', 'native_auth_transition');
+        WHERE schemaname = 'public' AND tablename <> '_prisma_migrations';
 
         IF tableList IS NOT NULL THEN
           EXECUTE 'TRUNCATE TABLE ' || tableList || ' RESTART IDENTITY CASCADE';

@@ -1,7 +1,6 @@
 import { Router } from "express";
 
 import { createBetterAuthApplicationRuntime } from "./modules/identity/better-auth-application-runtime.ts";
-import { assertNativeCutoverReady } from "./modules/identity/better-auth-cutover-preflight.ts";
 import { createApp } from "./app.ts";
 import { loadApiEnvironment } from "./environment.ts";
 import { createPrismaAnalyticsBranchRepository } from "./modules/analytics/analytics-branch-repository.ts";
@@ -91,7 +90,6 @@ async function main(): Promise<void> {
     );
   };
   // Native is the only authority; startup never selects or falls back to Legacy.
-  await assertNativeCutoverReady(prisma);
   const authentication = createBetterAuthApplicationRuntime({
     environment,
     prisma,

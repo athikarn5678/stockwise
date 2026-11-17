@@ -1,20 +1,20 @@
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 
-import { runNativeCutover } from "../../../apps/api/src/native-cutover/native-cutover-runner.ts";
-import { assertNativeCutoverReady } from "../../../apps/api/src/modules/identity/better-auth-cutover-preflight.ts";
+import { randomUUID } from "node:crypto";
+
 import { hashPassword } from "../../../apps/api/src/modules/identity/password-hasher.ts";
 import { createPrismaClient } from "../../../apps/api/src/prisma/client.ts";
+import { createNativeFixtureUser } from "../../../apps/api/src/test/native-user-fixture.ts";
 import { assertClusterOwned } from "../../../apps/api/src/test/disposable-ownership.ts";
 import { loopbackReceiptDatabase } from "./browser-mail-capture.mts";
 import { FIXTURES, FIXTURE_PASSWORD } from "./browser-stack-config.mts";
 
 /**
  * Seeds the synthetic fixtures of the browser acceptance stack into the
- * launcher's freshly created, receipt-bound disposable database, then seals it
- * NATIVE with the accepted operator cutover (users are created while the fence
- * is LEGACY, so they receive proper enrollment provenance). Ownership of the
- * cluster is proven on a dedicated connection first; output is counts only.
+ * launcher's freshly created, receipt-bound disposable database (Native from
+ * its migrations; users are created through the Native fixture). Ownership of
+ * the cluster is proven on a dedicated connection first; output is counts only.
  */
 const receipt = loopbackReceiptDatabase(process.env);
 const databaseUrl = process.env.DATABASE_URL;
@@ -35,18 +35,14 @@ try {
 const prisma = createPrismaClient({ DATABASE_URL: databaseUrl });
 try {
   const passwordHash = await hashPassword(FIXTURE_PASSWORD);
-  const verifiedAt = new Date(Date.now() - 120_000);
   const createUser = (email: string, displayName: string) =>
-    prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        status: "ACTIVE",
-        displayName,
-        emailVerified: true,
-        emailVerifiedAt: verifiedAt,
-        passwordChangedAt: verifiedAt,
-      },
+    createNativeFixtureUser(prisma, {
+      id: randomUUID(),
+      email,
+      displayName,
+      password: FIXTURE_PASSWORD,
+      passwordHash,
+      at: new Date(Date.now() - 120_000),
     });
   const onboard = async (userId: string, name: string) => {
     const organization = await prisma.organization.create({
@@ -68,14 +64,7 @@ try {
   const second = await createUser(FIXTURES.second, "Browser Second");
   await onboard(second.id, "Synthetic Second Store");
 
-  await runNativeCutover({
-    prisma,
-    confirmDatabase: receipt.testDatabase,
-    resume: false,
-    report: (event) => console.log(JSON.stringify(event)),
-  });
-  await assertNativeCutoverReady(prisma);
-  console.log(JSON.stringify({ event: "seeded", users: 2, sealed: "NATIVE" }));
+  console.log(JSON.stringify({ event: "seeded", users: 2 }));
 } finally {
   await prisma.$disconnect();
 }

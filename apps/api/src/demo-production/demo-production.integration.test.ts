@@ -1,3 +1,4 @@
+import { withTriggersDisabled } from "../test/trigger-bypass.ts";
 import { createHash, randomUUID } from "node:crypto";
 
 import {
@@ -94,6 +95,7 @@ async function createWorld(
         email: `dp-${role.toLowerCase()}@example.invalid`,
         emailVerifiedAt: new Date("2026-01-01T00:00:00Z"),
         emailVerified: true,
+        nativeRegistrationCompletedAt: new Date("2026-01-01T00:00:00Z"),
         displayName: role,
       },
     });
@@ -680,9 +682,11 @@ describe("Production demo import recovery", () => {
     });
     const before = await unrelatedSnapshot();
     // The presenter credentials may be gone by the time an operator must retire.
-    await prisma.betterAuthAccount.deleteMany({
-      where: { userId: world.users.CASHIER },
-    });
+    await withTriggersDisabled(prisma, (tx) =>
+      tx.betterAuthAccount.deleteMany({
+        where: { userId: world.users.CASHIER },
+      }),
+    );
     await expect(
       provision({
         mode: "retire",

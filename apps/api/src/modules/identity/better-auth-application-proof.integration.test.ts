@@ -1,3 +1,4 @@
+import { withTriggersDisabled } from "../../test/trigger-bypass.ts";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { createServer } from "node:http";
@@ -187,21 +188,27 @@ describe("Native application runtime verification-password-proof HTTP regression
         },
       },
     });
-    await prisma.user.update({
-      where: { id: verifiedUser.id },
-      data: { nativeRegistrationCompletedAt: null },
-    });
+    // The DB guard makes registration provenance write-once; denial of a
+    // user whose provenance is absent is seeded without the guards (setup).
+    await withTriggersDisabled(prisma, (tx) =>
+      tx.user.update({
+        where: { id: verifiedUser.id },
+        data: { nativeRegistrationCompletedAt: null },
+      }),
+    );
     expect(
       (await post("/auth/verification-password-proof", { email, password }))
         .status,
     ).toBe(401);
-    await prisma.user.update({
-      where: { id: verifiedUser.id },
-      data: {
-        nativeRegistrationCompletedAt:
-          verifiedUser.nativeRegistrationCompletedAt,
-      },
-    });
+    await withTriggersDisabled(prisma, (tx) =>
+      tx.user.update({
+        where: { id: verifiedUser.id },
+        data: {
+          nativeRegistrationCompletedAt:
+            verifiedUser.nativeRegistrationCompletedAt,
+        },
+      }),
+    );
     await prisma.betterAuthAccount.update({
       where: { id: nativeAccount.id },
       data: { password: null },
@@ -234,11 +241,14 @@ describe("Native application runtime verification-password-proof HTTP regression
             where: { id: verifiedUser.id },
             data: { credentialVersion: { increment: 1 } },
           }),
+        // The guard forbids lowering a credential version; restoring it is setup.
         restore: () =>
-          prisma.user.update({
-            where: { id: verifiedUser.id },
-            data: { credentialVersion: verifiedUser.credentialVersion },
-          }),
+          withTriggersDisabled(prisma, (tx) =>
+            tx.user.update({
+              where: { id: verifiedUser.id },
+              data: { credentialVersion: verifiedUser.credentialVersion },
+            }),
+          ),
       },
       {
         apply: () =>
@@ -254,20 +264,24 @@ describe("Native application runtime verification-password-proof HTTP regression
       },
       {
         apply: () =>
-          prisma.user.update({
-            where: { id: verifiedUser.id },
-            data: {
-              nativeRegistrationCompletedAt: new Date(Date.now() + 1_000),
-            },
-          }),
+          withTriggersDisabled(prisma, (tx) =>
+            tx.user.update({
+              where: { id: verifiedUser.id },
+              data: {
+                nativeRegistrationCompletedAt: new Date(Date.now() + 1_000),
+              },
+            }),
+          ),
         restore: () =>
-          prisma.user.update({
-            where: { id: verifiedUser.id },
-            data: {
-              nativeRegistrationCompletedAt:
-                verifiedUser.nativeRegistrationCompletedAt,
-            },
-          }),
+          withTriggersDisabled(prisma, (tx) =>
+            tx.user.update({
+              where: { id: verifiedUser.id },
+              data: {
+                nativeRegistrationCompletedAt:
+                  verifiedUser.nativeRegistrationCompletedAt,
+              },
+            }),
+          ),
       },
       {
         apply: () =>

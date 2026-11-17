@@ -159,7 +159,7 @@ export async function issueDemoDatabaseReceipt(input: {
     if (actual.systemId !== container.systemId)
       throw new Error("Demo database live instance differs from Docker.");
     const tables = await client.query(
-      "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename <> '_prisma_migrations' AND tablename <> 'native_auth_transition'",
+      "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename <> '_prisma_migrations'",
     );
     for (const row of tables.rows) {
       const name = z

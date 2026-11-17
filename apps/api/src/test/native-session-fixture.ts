@@ -6,6 +6,7 @@ import type { PrismaClient } from "../generated/prisma/client.ts";
 import { createSessionAuthenticationMiddleware } from "../modules/identity/authentication-context.ts";
 import { createPrismaBetterAuthSessionRepository } from "../modules/identity/better-auth-session-repository.ts";
 import type { SessionConfiguration } from "../modules/identity/session-configuration.ts";
+import { withTriggersDisabled } from "./trigger-bypass.ts";
 
 /**
  * Test-only Native authentication double for router/integration tests. It
@@ -45,8 +46,6 @@ export interface NativeTestSessionOptions {
   createdAt?: Date;
   updatedAt?: Date;
   expiresAt?: Date;
-  /** Defaults to the user's current credential version. */
-  credentialVersion?: bigint;
   /** Defaults to `APPLICATION`; `null` creates a provisional (non-application) session. */
   purpose?: "APPLICATION" | null;
 }
@@ -59,7 +58,7 @@ export interface NativeTestSessionOptions {
 async function promoteToNative(
   prisma: Pick<PrismaClient, "user" | "betterAuthAccount">,
   userId: string,
-): Promise<{ credentialVersion: bigint }> {
+): Promise<{ credentialVersion: bigint; eligible: boolean }> {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   if (user.emailVerifiedAt !== null) {
     await prisma.user.update({
@@ -84,41 +83,73 @@ async function promoteToNative(
       update: {},
     });
   }
-  return { credentialVersion: user.credentialVersion };
+  return {
+    credentialVersion: user.credentialVersion,
+    eligible:
+      user.emailVerifiedAt !== null &&
+      user.status === "ACTIVE" &&
+      user.disabledAt === null,
+  };
 }
 
 export async function createNativeTestSession(
   prisma: Pick<
     PrismaClient,
-    "user" | "betterAuthAccount" | "betterAuthSession"
+    "user" | "betterAuthAccount" | "betterAuthSession" | "$transaction"
   >,
   userId: string,
   options: NativeTestSessionOptions = {},
 ): Promise<NativeTestSession> {
-  const { credentialVersion } = await promoteToNative(prisma, userId);
+  const { credentialVersion, eligible } = await promoteToNative(prisma, userId);
   const token = randomBytes(24).toString("base64url");
   const purpose = options.purpose === undefined ? "APPLICATION" : null;
-  const session = await prisma.betterAuthSession.create({
-    data: {
-      token,
-      userId,
-      stockwisePurpose: purpose,
-      stockwiseCredentialVersion:
-        purpose === null
-          ? null
-          : (options.credentialVersion ?? credentialVersion),
-      expiresAt:
-        options.expiresAt ?? new Date(Date.now() + 7 * 24 * 60 * MINUTE),
-      ...(options.createdAt === undefined
-        ? {}
-        : { createdAt: options.createdAt }),
-      ...(options.updatedAt === undefined
-        ? options.createdAt === undefined
-          ? {}
-          : { updatedAt: options.createdAt }
-        : { updatedAt: options.updatedAt }),
-    },
-  });
+  const common = {
+    token,
+    userId,
+    expiresAt: options.expiresAt ?? new Date(Date.now() + 7 * 24 * 60 * MINUTE),
+    ...(options.createdAt === undefined
+      ? {}
+      : { createdAt: options.createdAt }),
+  };
+  const updatedAt = options.updatedAt ?? options.createdAt;
+  const touched = updatedAt === undefined ? {} : { updatedAt };
+  let session: { id: string };
+  if (eligible) {
+    // The Native database guard only accepts a provisional insert for an
+    // eligible user, then a finalizing update, exactly like real login.
+    session = await prisma.betterAuthSession.create({
+      data: {
+        ...common,
+        ...touched,
+        stockwisePurpose: null,
+        stockwiseCredentialVersion: null,
+      },
+    });
+    if (purpose !== null)
+      await prisma.betterAuthSession.update({
+        where: { id: session.id },
+        data: {
+          stockwisePurpose: purpose,
+          stockwiseCredentialVersion: credentialVersion,
+          ...touched,
+        },
+      });
+  } else {
+    // A session that pre-dates the user becoming ineligible (disabled or
+    // unverified) cannot be created through the guard; reproduce that stored
+    // state for authentication-denial cases only.
+    session = await withTriggersDisabled(prisma, (tx) =>
+      tx.betterAuthSession.create({
+        data: {
+          ...common,
+          ...touched,
+          stockwisePurpose: purpose,
+          stockwiseCredentialVersion:
+            purpose === null ? null : credentialVersion,
+        },
+      }),
+    );
+  }
   return {
     id: session.id,
     token,

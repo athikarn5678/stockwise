@@ -1,3 +1,4 @@
+import { createNativeTestSession } from "../../test/native-session-fixture.ts";
 import {
   dropSingleOwnerIndex,
   restoreSingleOwnerIndex,
@@ -699,16 +700,10 @@ describe("membership invitation and access management with PostgreSQL", () => {
       cashierUser,
       "CASHIER",
     );
-    await prisma.session.create({
-      data: {
-        absoluteExpiresAt: new Date(NOW.getTime() + 86_400_000),
-        idleExpiresAt: new Date(NOW.getTime() + 3_600_000),
-        issuedAt: NOW,
-        lastUsedAt: NOW,
-        tokenHash: "cashier-session-hash",
-        userId: cashierUser.id,
-      },
-    });
+    const cashierSession = await createNativeTestSession(
+      prisma,
+      cashierUser.id,
+    );
     await prisma.branchAssignment.create({
       data: {
         branchId: first.id,
@@ -776,11 +771,12 @@ describe("membership invitation and access management with PostgreSQL", () => {
       (await createPrismaBranchRepository(prisma).accessContext(cashierUser.id))
         ?.organizations,
     ).toEqual([]);
+    // Deactivation removes effective access without revoking the session.
     expect(
-      await prisma.session.findFirstOrThrow({
-        where: { userId: cashierUser.id },
+      await prisma.betterAuthSession.findUniqueOrThrow({
+        where: { id: cashierSession.id },
       }),
-    ).toMatchObject({ revokedAt: null });
+    ).toMatchObject({ userId: cashierUser.id });
     if (deactivated.kind !== "success")
       throw new Error("Expected deactivation.");
     const reactivated = await access.reactivateMembership({

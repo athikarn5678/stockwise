@@ -5,12 +5,7 @@ import { readdirSync } from "node:fs";
 import { Prisma, type PrismaClient } from "../generated/prisma/client.ts";
 import { verifyPassword } from "../modules/identity/password-hasher.ts";
 import { buildDemoFixture } from "./demo-fixture.ts";
-import {
-  DEMO_COUNTED_TABLES,
-  DEMO_TRANSITION_TABLE,
-  DEMO_USER_NATIVE_DEFAULTS,
-  assertDemoSchema,
-} from "./demo-schema.ts";
+import { DEMO_COUNTED_TABLES, assertDemoSchema } from "./demo-schema.ts";
 
 type Transaction = Prisma.TransactionClient;
 type Fixture = Awaited<ReturnType<typeof buildDemoFixture>>;
@@ -89,7 +84,7 @@ function equalRows(
   }
 }
 
-/** Refuses any target that is not exactly the committed, LEGACY-fenced schema. */
+/** Refuses any target that is not exactly the committed Native schema. */
 export async function assertDemoTargetSchema(tx: Transaction): Promise<void> {
   const publicTables = await tx.$queryRaw<
     Array<{ tablename: string }>
@@ -112,12 +107,6 @@ export async function assertDemoTargetSchema(tx: Transaction): Promise<void> {
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name);
   const tableNames = publicTables.map((row) => row.tablename);
-  // The fence row is read only when its table is part of the exact manifest.
-  const transition = tableNames.includes(DEMO_TRANSITION_TABLE)
-    ? await tx.$queryRaw<Array<{ state: string }>>(Prisma.sql`
-        SELECT state FROM native_auth_transition
-      `)
-    : [];
   assertDemoSchema({
     tables: tableNames,
     migrations: migrations.map((row) => ({
@@ -126,7 +115,6 @@ export async function assertDemoTargetSchema(tx: Transaction): Promise<void> {
       rolledBack: row.rolled_back_at !== null,
     })),
     localMigrations,
-    transitionStates: transition.map((row) => row.state),
   });
 }
 
@@ -151,6 +139,7 @@ async function verifyManifest(
     ["branches", fixture.branchRows.length],
     ["branch_status_events", fixture.branchRows.length],
     ["users", fixture.userRows.length],
+    ["better_auth_accounts", fixture.userRows.length],
     ["organization_memberships", fixture.memberships.length],
     ["branch_assignments", fixture.assignments.length],
     ["first_organization_onboardings", fixture.onboarding.length],
@@ -215,30 +204,39 @@ async function verifyManifest(
           throw new Error(
             "A demo user credential version differs from the initial generation.",
           );
-        // Native columns stay at their pre-cutover values until native:cutover.
+        // Native identity: verified, registered at the fixture instant, no
+        // image. The credential lives only in the Better Auth account.
         if (
-          emailVerified !== DEMO_USER_NATIVE_DEFAULTS.emailVerified ||
-          image !== DEMO_USER_NATIVE_DEFAULTS.image ||
-          nativeRegistrationCompletedAt !==
-            DEMO_USER_NATIVE_DEFAULTS.nativeRegistrationCompletedAt
+          emailVerified !== true ||
+          image !== null ||
+          nativeRegistrationCompletedAt?.getTime() !==
+            user.passwordChangedAt.getTime()
         )
           throw new Error(
-            "A demo user Native authentication field differs from its pre-cutover value.",
+            "A demo user Native authentication field differs from the fixture.",
           );
         return user;
       },
     ),
   );
-  for (const user of userRows) {
+  const accounts = await tx.betterAuthAccount.findMany();
+  const demoUsers = new Set(userRows.map((user) => user.id));
+  for (const account of accounts) {
     if (
-      !/^\$argon2id\$v=19\$m=65536,p=4,t=3\$/.test(user.passwordHash) ||
-      !(await verifyPassword(user.passwordHash, password))
+      account.providerId !== "credential" ||
+      account.accountId !== account.userId ||
+      !demoUsers.delete(account.userId) ||
+      account.password === null ||
+      !/^\$argon2id\$v=19\$m=65536,p=4,t=3\$/.test(account.password) ||
+      !(await verifyPassword(account.password, password))
     ) {
       throw new Error(
         "A demo user credential differs from the supplied password.",
       );
     }
   }
+  if (demoUsers.size !== 0)
+    throw new Error("A demo user has no credential account.");
   equalRows(
     "organization_memberships",
     fixture.memberships,
@@ -311,7 +309,28 @@ async function verifyManifest(
 async function insert(tx: Transaction, fixture: Fixture): Promise<void> {
   await tx.organization.createMany({ data: fixture.organization });
   await tx.branch.createMany({ data: fixture.branchRows });
-  await tx.user.createMany({ data: fixture.userRows });
+  // The fixture carries each user's Argon2id verifier in `passwordHash` only
+  // to build the credential account: `users.password_hash` keeps its schema
+  // default and nothing writes it.
+  await tx.user.createMany({
+    data: fixture.userRows.map((row) => {
+      const user: Prisma.UserCreateManyInput = {
+        ...row,
+        emailVerified: true,
+        nativeRegistrationCompletedAt: row.passwordChangedAt as Date,
+      };
+      delete user.passwordHash;
+      return user;
+    }),
+  });
+  await tx.betterAuthAccount.createMany({
+    data: fixture.userRows.map((user) => ({
+      providerId: "credential",
+      accountId: user.id as string,
+      userId: user.id as string,
+      password: user.passwordHash as string,
+    })),
+  });
   await tx.organizationMembership.createMany({ data: fixture.memberships });
   await tx.branchAssignment.createMany({ data: fixture.assignments });
   await tx.firstOrganizationOnboarding.createMany({ data: fixture.onboarding });

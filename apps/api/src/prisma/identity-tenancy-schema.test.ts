@@ -1,3 +1,4 @@
+import { withTriggersDisabled } from "../test/trigger-bypass.ts";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -545,22 +546,28 @@ describe("identity and tenancy database schema", () => {
     const user = await createUser("tokens@example.com");
     const secondUser = await createUser("tokens-two@example.com");
 
-    await prisma.passwordResetToken.create({
-      data: {
-        userId: user.id,
-        tokenHash: "reset-hash",
-        expiresAt: futureHours(0.5),
-      },
-    });
-    await expect(
-      prisma.passwordResetToken.create({
+    // The Native trigger would refuse these inserts first; run them without
+    // triggers so the unique index is what is under test.
+    await withTriggersDisabled(prisma, (tx) =>
+      tx.passwordResetToken.create({
         data: {
-          userId: secondUser.id,
+          userId: user.id,
           tokenHash: "reset-hash",
           expiresAt: futureHours(0.5),
         },
       }),
-    ).rejects.toThrow();
+    );
+    await expect(
+      withTriggersDisabled(prisma, (tx) =>
+        tx.passwordResetToken.create({
+          data: {
+            userId: secondUser.id,
+            tokenHash: "reset-hash",
+            expiresAt: futureHours(0.5),
+          },
+        }),
+      ),
+    ).rejects.toThrow(/Unique constraint|duplicate key/);
   });
 
   it("rejects invalid one-time-token time ordering", async () => {
@@ -568,16 +575,18 @@ describe("identity and tenancy database schema", () => {
     const issuedAt = new Date();
 
     await expect(
-      prisma.passwordResetToken.create({
-        data: {
-          userId: user.id,
-          tokenHash: "invalid-reset-time-order",
-          issuedAt,
-          expiresAt: futureHours(0.5),
-          consumedAt: futureHours(1),
-        },
-      }),
-    ).rejects.toThrow();
+      withTriggersDisabled(prisma, (tx) =>
+        tx.passwordResetToken.create({
+          data: {
+            userId: user.id,
+            tokenHash: "invalid-reset-time-order",
+            issuedAt,
+            expiresAt: futureHours(0.5),
+            consumedAt: futureHours(1),
+          },
+        }),
+      ),
+    ).rejects.toThrow(/check constraint/);
   });
 
   it("represents verification and invitation replacement without deleting history", async () => {
@@ -655,7 +664,7 @@ describe("identity and tenancy database schema", () => {
 
     await expect(
       prisma.user.delete({ where: { id: user.id } }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/user deletion is not permitted/);
     await expect(
       prisma.organization.delete({ where: { id: organization.id } }),
     ).rejects.toThrow();

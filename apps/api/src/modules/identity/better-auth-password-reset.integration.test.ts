@@ -1,3 +1,4 @@
+import { withTriggersDisabled } from "../../test/trigger-bypass.ts";
 import { randomBytes, randomUUID } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { Client } from "pg";
@@ -223,14 +224,17 @@ describe("native credential reset with guarded PostgreSQL", () => {
     const membership = await seedMembership(user.id);
     const legacyToken = secureOneTimeTokenProvider.generate();
     const issuedAt = new Date();
-    const token = await prisma.passwordResetToken.create({
-      data: {
-        userId: user.id,
-        tokenHash: legacyToken.tokenHash,
-        issuedAt,
-        expiresAt: new Date(issuedAt.getTime() + 1800000),
-      },
-    });
+    // A pre-migration (non-Native) token cannot be created through the guard.
+    const token = await withTriggersDisabled(prisma, (tx) =>
+      tx.passwordResetToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: legacyToken.tokenHash,
+          issuedAt,
+          expiresAt: new Date(issuedAt.getTime() + 1800000),
+        },
+      }),
+    );
     const client = new Client({
       connectionString: environment.TEST_DATABASE_URL,
     });
@@ -473,25 +477,32 @@ describe("native credential reset with guarded PostgreSQL", () => {
           where: { id: user.id },
           data: { emailVerified: false },
         });
+      // Stored ineligible states are seeded without the guards (setup only).
       if (state === "unverified_at")
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { emailVerifiedAt: null },
-        });
+        await withTriggersDisabled(prisma, (tx) =>
+          tx.user.update({
+            where: { id: user.id },
+            data: { emailVerifiedAt: null },
+          }),
+        );
       if (state === "disabled")
         await prisma.user.update({
           where: { id: user.id },
           data: { status: "DISABLED", disabledAt: new Date() },
         });
       if (state === "unfinished")
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { nativeRegistrationCompletedAt: null },
-        });
+        await withTriggersDisabled(prisma, (tx) =>
+          tx.user.update({
+            where: { id: user.id },
+            data: { nativeRegistrationCompletedAt: null },
+          }),
+        );
       if (state === "missing_account")
-        await prisma.betterAuthAccount.deleteMany({
-          where: { userId: user.id },
-        });
+        await withTriggersDisabled(prisma, (tx) =>
+          tx.betterAuthAccount.deleteMany({
+            where: { userId: user.id },
+          }),
+        );
       const provider = createRecordingEmailProvider();
       await makeLifecycle({ emailProvider: provider }).requestPasswordReset(
         user.email,
@@ -523,10 +534,12 @@ describe("native credential reset with guarded PostgreSQL", () => {
     const current = await prisma.passwordResetToken.findFirstOrThrow({
       where: { userId: user.id, tokenHash: hashOneTimeToken(second) },
     });
-    await prisma.passwordResetToken.update({
-      where: { id: current.id },
-      data: { expiresAt: new Date(Date.now() - 1) },
-    });
+    await withTriggersDisabled(prisma, (tx) =>
+      tx.passwordResetToken.update({
+        where: { id: current.id },
+        data: { expiresAt: new Date(Date.now() - 1) },
+      }),
+    );
     expect(
       await lifecycle.resetPassword({ rawToken: second, newPassword }),
     ).toBe(false);
@@ -571,11 +584,14 @@ describe("native credential reset with guarded PostgreSQL", () => {
       const expiredRecord = await prisma.passwordResetToken.findFirstOrThrow({
         where: { tokenHash: hashOneTimeToken(expiredToken) },
       });
-      await prisma.$executeRaw`
+      await withTriggersDisabled(
+        prisma,
+        (tx) => tx.$executeRaw`
       UPDATE password_reset_tokens
       SET issued_at = clock_timestamp() - interval '31 minutes',
           expires_at = clock_timestamp() - interval '1 minute'
-      WHERE id = ${expiredRecord.id}::uuid`;
+      WHERE id = ${expiredRecord.id}::uuid`,
+      );
       const passwordHasher: PasswordHasher = {
         hash: vi.fn(argon2PasswordHasher.hash),
       };
@@ -607,14 +623,16 @@ describe("native credential reset with guarded PostgreSQL", () => {
     const collisionIssuedAt = collisionClockRows[0]?.now;
     if (collisionIssuedAt === undefined)
       throw new Error("Missing database time");
-    await prisma.passwordResetToken.create({
-      data: {
-        userId: user.id,
-        tokenHash: hashOneTimeToken(firstRaw),
-        issuedAt: collisionIssuedAt,
-        expiresAt: new Date(collisionIssuedAt.getTime() + 1800000),
-      },
-    });
+    await withTriggersDisabled(prisma, (tx) =>
+      tx.passwordResetToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: hashOneTimeToken(firstRaw),
+          issuedAt: collisionIssuedAt,
+          expiresAt: new Date(collisionIssuedAt.getTime() + 1800000),
+        },
+      }),
+    );
     const provider = createRecordingEmailProvider();
     await makeLifecycle({
       emailProvider: provider,
@@ -781,10 +799,12 @@ describe("native credential reset with guarded PostgreSQL", () => {
     });
     const passwordHasher: PasswordHasher = {
       async hash(password) {
-        await prisma.passwordResetToken.update({
-          where: { id: tokenRecord.id },
-          data: { expiresAt: new Date(Date.now() - 1) },
-        });
+        await withTriggersDisabled(prisma, (tx) =>
+          tx.passwordResetToken.update({
+            where: { id: tokenRecord.id },
+            data: { expiresAt: new Date(Date.now() - 1) },
+          }),
+        );
         return argon2PasswordHasher.hash(password);
       },
     };
@@ -810,19 +830,6 @@ describe("native credential reset with guarded PostgreSQL", () => {
     const rawToken = recordedToken(provider);
     const token = await prisma.passwordResetToken.findFirstOrThrow({
       where: { userId: user.id, tokenHash: hashOneTimeToken(rawToken) },
-    });
-    const challengeIssuedAt = new Date();
-    const challenge = await prisma.emailVerificationChallenge.create({
-      data: {
-        credentialVersion: user.credentialVersion,
-        issuedAt: challengeIssuedAt,
-        expiresAt: new Date(challengeIssuedAt.getTime() + 10 * 60 * 1000),
-        failedOtpAttempts: 0,
-        otpMac: randomBytes(32).toString("hex"),
-        otpKeyId: 1,
-        linkTokenHash: randomBytes(32).toString("hex"),
-        userId: user.id,
-      },
     });
     const functionName = `reset_test_fail_${randomBytes(8).toString("hex")}`;
     const triggerName = `reset_test_fail_${randomBytes(8).toString("hex")}`;
@@ -865,11 +872,6 @@ describe("native credential reset with guarded PostgreSQL", () => {
         where: { id: token.id },
       }),
     ).toMatchObject({ consumedAt: null, revokedAt: null });
-    expect(
-      await prisma.emailVerificationChallenge.findUniqueOrThrow({
-        where: { id: challenge.id },
-      }),
-    ).toMatchObject({ revokedAt: null, revocationReason: null });
     expect(
       (
         await loginService.login(

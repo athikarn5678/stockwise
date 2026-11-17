@@ -19,9 +19,7 @@ import { withLocalPostgres } from "../better-auth-d5/local-runner.mts";
  *      ownership, and applies the committed migrations;
  *   2. runs the seeder's vitest suite (unit + integration) against one of them;
  *   3. runs the real seeder CLI (generate, then exact no-op rerun);
- *   4. runs the operator Native cutover on the seeded database, then proves the
- *      seeder refuses the sealed database;
- *   5. starts the unmodified API with Native authority and signs in as a seeded
+ *   4. starts the unmodified API with Native authority and signs in as a seeded
  *      demo user, then checks the access context.
  * Output is step names and exit codes only; generated passwords and keys stay
  * in memory.
@@ -237,45 +235,7 @@ await withLocalPostgres(
       String(second.code),
     );
 
-    // 4. Operator Native cutover of the seeded database, then refusal.
-    const cutover = await run(
-      [
-        join(apiRoot, "src/native-cutover/native-cutover-main.ts"),
-        "--confirm-database",
-        "stockwise_demo",
-      ],
-      { ...base, DATABASE_URL: urlFor("stockwise_demo") },
-      apiRoot,
-      join(evidence, "native-cutover.log"),
-    );
-    const complete = cutover.output
-      .split("\n")
-      .map((line) => {
-        try {
-          return JSON.parse(line) as Record<string, unknown>;
-        } catch {
-          return {};
-        }
-      })
-      .find((event) => event.event === "complete");
-    record(
-      "NATIVE_CUTOVER",
-      cutover.code === 0 && complete !== undefined,
-      complete ? `users_${String(complete.users)}` : String(cutover.code),
-    );
-    const sealed = await run(
-      seed,
-      seedEnvironment,
-      apiRoot,
-      join(evidence, "seed-after-native.log"),
-    );
-    record(
-      "SEED_REFUSES_NATIVE_DATABASE",
-      sealed.code === 1 && /LEGACY/.test(sealed.output),
-      String(sealed.code),
-    );
-
-    // 5. Unmodified API, Native authority: a seeded demo user signs in.
+    // 4. Unmodified API, Native authority: a seeded demo user signs in.
     const apiLog = openSync(join(evidence, "api.log"), "a");
     const api = spawn(process.execPath, [join(apiRoot, "src/main.ts")], {
       cwd: apiRoot,

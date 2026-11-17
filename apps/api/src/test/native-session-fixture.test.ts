@@ -105,10 +105,13 @@ describe("native session test double", () => {
       await createNativeTestSession(prisma, expired.id, {
         expiresAt: new Date(Date.now() - 1000),
       }),
-      await createNativeTestSession(prisma, stale.id, {
-        credentialVersion: 99n,
-      }),
+      await createNativeTestSession(prisma, stale.id),
     ];
+    // A password change after login makes the session's credential version stale.
+    await prisma.user.update({
+      where: { id: stale.id },
+      data: { credentialVersion: { increment: 1 } },
+    });
     await serve(async (url) => {
       for (const session of sessions) {
         const response = await fetch(url, {

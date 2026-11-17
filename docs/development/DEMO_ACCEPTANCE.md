@@ -1,8 +1,8 @@
 # Demo acceptance suite (STOCKWISE-DEMO-E2E-01)
 
 Automated Playwright journeys for the AWS Academy Learner Lab demonstration on
-Better Auth Native, which per `ADR-045` is becoming the only authentication
-authority (Legacy removal pending M3-T5). This is a **demo gate**, not D5-P5 production acceptance: it proves
+Better Auth Native, which per `ADR-045` is the only authentication
+authority (Legacy was removed in M3-T5/T6). This is a **demo gate**, not D5-P5 production acceptance: it proves
 only that the essential Register, Login, Onboarding and Invitation flows work
 end to end on the real application.
 
@@ -18,8 +18,7 @@ Requires Docker, free ports `3202`/`3203`, and installed Playwright Chromium.
 The runner starts the test-only Native browser stack
 (`tests/e2e/better-auth-d5/browser-stack.mts`; see
 `BETTER_AUTH_MIGRATION.md`, "Native browser acceptance stack"): the built
-Next.js application and the unmodified `apps/api/src/main.ts` with
-`STOCKWISE_AUTHENTICATION_AUTHORITY=native`, on a freshly migrated, NATIVE-sealed,
+Next.js application and the unmodified `apps/api/src/main.ts` (Native is the only authority), on a freshly migrated,
 receipt-owned disposable PostgreSQL, with controlled non-delivery mail capture.
 It then runs `playwright.demo.config.ts` and scans every retained output for
 leaks. Each run writes only to a fresh `test-results/demo-acceptance/run-*`

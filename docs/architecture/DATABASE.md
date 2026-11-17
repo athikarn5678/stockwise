@@ -51,13 +51,10 @@ through its local `postgres` database when necessary.
 Each Vitest run provisions the target, applies committed migrations with
 `prisma migrate deploy`, then clears public-schema table data with
 `TRUNCATE ... RESTART IDENTITY CASCADE` while preserving Prisma migration
-metadata and the initial LEGACY `native_auth_transition` singleton, and removes
-only the harness-owned `stockwise_test_harness` scratch schema. When the fence table
-exists, reset takes a transactional fence read and refuses a transitioned or
-missing singleton before destructive statements; it cannot reconstruct Legacy
-authority. Test files run
-serially because they intentionally share one resettable target. The irreversible
-D5-P3 suite runs last on its owned cluster, which is then destroyed, not reset.
+metadata, and removes only the harness-owned `stockwise_test_harness` scratch
+schema. There is no authentication fence table any more (`ADR-045`, M3-T6), so
+reset has no fence read. Test files run
+serially because they intentionally share one resettable target.
 
 Run `pnpm test` for the full suite or `pnpm test:db` for the focused harness.
 Both require `TEST_DATABASE_URL` in the invoking process environment. Test

@@ -1,6 +1,6 @@
 PREPARED Migration historical source review status PREPARED Migration owner scope notice # Better Auth migration
 
-> **Status update 2026-11-17 (ADR-045).** [`ADR-045`](../decisions/0045-native-only-authentication.md) makes Better Auth Native the only authentication authority in every runtime (development, test, production); Legacy and the cutover fence are being removed by milestone M3, and until M3-T5/T6 land the code still contains Legacy and `STOCKWISE_AUTHENTICATION_AUTHORITY`/`native:cutover`. ADR-040 Learner Lab deployment: implemented in source, never provisioned; container images built to GHCR (2026-10-29/30); deployment planned as M9. D0–D5-P4 acceptance evidence below is history and is not restated by this update.
+> **Status update 2026-11-17 (ADR-045).** [`ADR-045`](../decisions/0045-native-only-authentication.md) makes Better Auth Native the only authentication authority in every runtime (development, test, production); Legacy, `STOCKWISE_AUTHENTICATION_AUTHORITY`, the cutover fence and `native:cutover` were removed by milestone M3-T5/T6 (the sections below are historical). ADR-040 Learner Lab deployment: implemented in source, never provisioned; container images built to GHCR (2026-10-29/30); deployment planned as M9. D0–D5-P4 acceptance evidence below is history and is not restated by this update.
 
 ## Authority and status
 
@@ -455,7 +455,7 @@ never downgrade to Legacy or overwrite newer Native credentials.
 
 ## D5-P5 — Native Live activation (historical design; superseded by ADR-045)
 
-This candidate is historical: `ADR-045` (accepted 2026-11-17) makes Native the only authority in every runtime, and Legacy and the cutover fence are being removed by milestone M3, which supersedes the activation described here.
+This candidate is historical: `ADR-045` (accepted 2026-11-17) makes Native the only authority in every runtime, and Legacy and the cutover fence were removed by milestone M3-T5/T6, which supersedes the activation described here.
 
 Required by `ADR-039` D-03R: the AWS Academy Learner Lab deployment must run
 Native Live, never Legacy. This section describes the implementation candidate;

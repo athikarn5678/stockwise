@@ -384,8 +384,8 @@ Phase 8. Implementation and verification status are separate from commit status.
 **Status update 2026-11-17 (ADR-045 / M3, supersedes the D5-P5 present-tense status below and in Phase 8):**
 `ADR-045` (owner decision, accepted 2026-11-17) makes Better Auth Native the only
 authentication authority in development, test and production; Legacy and the
-cutover fence are being removed by milestone M3 (until M3-T5/T6 land the code
-still contains Legacy and `STOCKWISE_AUTHENTICATION_AUTHORITY`/`native:cutover`).
+cutover fence were removed by milestone M3-T5/T6 (`infra/learner-lab` is aligned
+by M3-T7).
 D5-P5 is no longer a live status. ADR-040 Learner Lab deployment: implemented in
 source, never provisioned; container images built to GHCR (2026-10-29/30);
 deployment planned as M9. Every older status row and checkpoint paragraph below
@@ -394,7 +394,8 @@ is history as recorded at its date and stays unchanged.
 **Historical status (2026-10-27; superseded by the 2026-11-17 status update above):**
 D5-P5 Native Live activation is **IN PROGRESS** (candidate under Codex review; not
 accepted, not live). The compile-time `BETTER_AUTH_NATIVE_ENABLED` constant was
-removed by the D5-P5 candidate in favour of `STOCKWISE_AUTHENTICATION_AUTHORITY`.
+removed by the D5-P5 candidate in favour of `STOCKWISE_AUTHENTICATION_AUTHORITY`
+(itself since removed by `ADR-045`; Native is unconditional).
 Phase 8 has **STARTED** for the Learner Lab demo, under `ADR-040` (which supersedes
 the `ADR-039` topology on 2026-10-28). It requires Better Auth Native Live (D-03R);
 no infrastructure is provisioned or deployed.

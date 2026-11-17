@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted (2026-11-17, owner decision)
 date: 2026-11-17
 ---
 

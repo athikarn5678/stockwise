@@ -12,13 +12,27 @@ import {
   calculateRefundLineAmounts,
   refundIdempotencyKeyHash,
 } from "../modules/sales/refund-values.ts";
-import { buildDemo30dPlan, type Demo30dPlan } from "./demo-30d-plan.ts";
+import {
+  buildDemo30dPlan,
+  demoShapeSchema,
+  type Demo30dPlan,
+} from "./demo-30d-plan.ts";
+
+const sha256 = (value: string) =>
+  createHash("sha256").update(value, "utf8").digest("hex");
 
 // Local fixture metadata lives outside the canonical application's public schema.
 export async function initializeDemoProvenance(
   prisma: Prisma.TransactionClient,
 ) {
-  await prisma.$executeRawUnsafe("CREATE SCHEMA IF NOT EXISTS stockwise_demo");
+  // PostgreSQL checks CREATE on the database before honouring IF NOT EXISTS, and
+  // the Learner Lab migrator role has no database-level CREATE (roles.sql
+  // pre-creates the schema for it), so only create the schema when it is absent.
+  const schema = await prisma.$queryRaw<
+    Array<{ exists: boolean }>
+  >`SELECT to_regnamespace('stockwise_demo') IS NOT NULL AS exists`;
+  if (!schema[0]?.exists)
+    await prisma.$executeRawUnsafe("CREATE SCHEMA stockwise_demo");
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS stockwise_demo.seed_runs (
     organization_id uuid PRIMARY KEY, plan jsonb NOT NULL, signature text NOT NULL,
     state text NOT NULL CHECK (state IN ('IN_PROGRESS','COMPLETE')), fingerprint text)`);
@@ -91,6 +105,7 @@ const planInputSchema = z.object({
     salesVatStatus: z.enum(["NOT_REGISTERED", "REGISTERED"]),
     salesVatRate: z.string().nullable(),
   }),
+  shape: demoShapeSchema.optional(),
 });
 
 export async function readDemoProvenance(
@@ -292,7 +307,7 @@ export async function assertDemoHistory(
       );
       const item = refund.items[0]!;
       assert(
-        item.productId === plan.products[0]!.id &&
+        item.productId === expected.items[0]!.productId &&
           item.refundQuantity.eq(1) &&
           item.restockQuantity.eq(1),
         "Demo30d refund item differs from provenance.",
@@ -330,6 +345,40 @@ export async function assertDemoHistory(
       });
     }
   }
+  // Manual adjustments have no document id; the planned idempotency key is their identity.
+  const adjustmentByHash = new Map(
+    (plan.adjustments ?? []).map((a) => [sha256(a.key), a]),
+  );
+  const adjustmentMovements = movements.filter(
+    (m) => m.source === "MANUAL_ADJUSTMENT",
+  );
+  for (const movement of adjustmentMovements) {
+    const expected = movement.idempotencyKeyHash
+      ? adjustmentByHash.get(movement.idempotencyKeyHash)
+      : undefined;
+    assert(
+      expected &&
+        movement.idempotencyKeyHash &&
+        movement.purchaseReceiptItemId === null &&
+        movement.saleItemId === null &&
+        movement.saleRefundItemId === null &&
+        movement.branchId === expected.branchId &&
+        movement.productId === expected.productId &&
+        movement.delta.eq(expected.delta) &&
+        movement.adjustmentReason === expected.reason &&
+        movement.note === expected.note &&
+        movement.actorUserId === plan.settings.actorUserId &&
+        movement.occurredAt.getTime() === expected.at.getTime(),
+      "Demo30d unrecognized manual adjustment.",
+    );
+    allowedMovements.set(movement.idempotencyKeyHash, {
+      source: "MANUAL_ADJUSTMENT",
+      branchId: expected.branchId,
+      productId: expected.productId,
+      delta: movement.delta,
+      at: movement.occurredAt,
+    });
+  }
   assert(
     movements.length === allowedMovements.size,
     "Demo30d inventory history differs from provenance.",
@@ -340,7 +389,10 @@ export async function assertDemoHistory(
     const id =
       movement.purchaseReceiptItemId ??
       movement.saleItemId ??
-      movement.saleRefundItemId;
+      movement.saleRefundItemId ??
+      (movement.source === "MANUAL_ADJUSTMENT"
+        ? movement.idempotencyKeyHash
+        : null);
     const expected = id ? allowedMovements.get(id) : undefined;
     assert(
       id &&
@@ -391,7 +443,8 @@ export async function assertDemoHistory(
         orders.length === plan.orders.length &&
         orders.every((o) => o.receipt !== null) &&
         sales.flatMap((s) => s.refunds).length ===
-          plan.sales.filter((s) => s.refund).length,
+          plan.sales.filter((s) => s.refund).length &&
+        adjustmentMovements.length === (plan.adjustments?.length ?? 0),
       "Demo30d provenance is incomplete.",
     );
   }

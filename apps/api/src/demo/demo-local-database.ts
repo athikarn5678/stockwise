@@ -7,6 +7,8 @@ import { Client } from "pg";
 import { z } from "zod";
 
 import type { PrismaClient } from "../generated/prisma/client.ts";
+import { DEMO_30D_ORGANIZATION } from "./demo-30d-plan.ts";
+import { demoId } from "./demo-values.ts";
 
 const exec = promisify(execFile);
 const localDockerEndpoint =
@@ -249,4 +251,92 @@ export async function verifyDemoDatabase(
   } catch {
     throw new Error("Demo database disposable ownership verification failed.");
   }
+}
+
+const learnerLabDatabase = /^[a-z][a-z0-9_]*_demo$/;
+
+/**
+ * Learner Lab ops-container attestation (the AWS `seed` ops action only).
+ *
+ * The Docker receipt cannot exist inside an ECS task, so this is a separate,
+ * narrower proof that never replaces `verifyDemoDatabase` for local use. All of
+ * these must hold: the process is the ops task (`STOCKWISE_OPS_ROLE=ops`), the
+ * seed wrapper asked for it explicitly (`STOCKWISE_DEMO_SEED_TARGET`), the URL
+ * is the wrapper's own loopback forwarder to a `*_demo` database that is not
+ * production-looking, the connected database matches the URL, and the database
+ * holds NO data except, on a rerun (or after its own bootstrap), exactly one
+ * organization: the deterministic synthetic demo organization. A real tenant
+ * therefore can never be touched: any other organization makes the proof fail
+ * closed.
+ */
+export async function verifyLearnerLabSeedTarget(prisma: PrismaClient) {
+  try {
+    const databaseUrl = process.env.DEMO_DATABASE_URL;
+    if (
+      !databaseUrl ||
+      process.env.STOCKWISE_OPS_ROLE !== "ops" ||
+      process.env.STOCKWISE_DEMO_SEED_TARGET !== "learner-lab-ops" ||
+      process.env.STOCKWISE_RUNTIME_ENV === "production"
+    )
+      throw new Error("not the ops seed task");
+    const url = new URL(databaseUrl);
+    const name = decodeURIComponent(url.pathname.slice(1));
+    if (
+      url.protocol !== "postgresql:" ||
+      url.hostname !== "127.0.0.1" ||
+      !learnerLabDatabase.test(name) ||
+      /(^|_)(prod|production|stage|staging|live|test)(_|$)/.test(name) ||
+      url.hash ||
+      [...url.searchParams].some(([k, v]) => k !== "schema" || v !== "public")
+    )
+      throw new Error("target shape");
+    const actual = (
+      await prisma.$queryRaw<
+        Array<{ name: string }>
+      >`SELECT current_database() AS name`
+    )[0];
+    if (actual?.name !== name) throw new Error("database differs");
+    const counts = (
+      await prisma.$queryRaw<
+        Array<{
+          users: bigint;
+          organizations: bigint;
+          products: bigint;
+          sales: bigint;
+        }>
+      >`SELECT (SELECT count(*) FROM users) AS users,
+               (SELECT count(*) FROM organizations) AS organizations,
+               (SELECT count(*) FROM products) AS products,
+               (SELECT count(*) FROM sales) AS sales`
+    )[0]!;
+    const empty =
+      counts.users === 0n &&
+      counts.organizations === 0n &&
+      counts.products === 0n &&
+      counts.sales === 0n;
+    if (!empty) {
+      // Rerun, or the run after its own bootstrap: the one organization must be
+      // the deterministic synthetic demo organization, never anyone else's.
+      const organizations = await prisma.$queryRaw<
+        Array<{ id: string; name: string }>
+      >`SELECT id::text AS id, name FROM organizations`;
+      if (
+        organizations.length !== 1 ||
+        organizations[0]!.id !==
+          demoId("organization", DEMO_30D_ORGANIZATION) ||
+        organizations[0]!.name !== DEMO_30D_ORGANIZATION
+      )
+        throw new Error("foreign organization");
+    }
+    return databaseUrl;
+  } catch {
+    throw new Error("Demo database disposable ownership verification failed.");
+  }
+}
+
+/** Local runs need the Docker receipt; only the explicit ops seed task uses the Learner Lab proof. */
+export function verifyDemoSeedTarget(prisma: PrismaClient) {
+  return process.env.STOCKWISE_DEMO_SEED_TARGET === "learner-lab-ops"
+    ? verifyLearnerLabSeedTarget(prisma)
+    : verifyDemoDatabase(prisma);
 }

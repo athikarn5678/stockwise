@@ -8,11 +8,11 @@ import {
   createTestPrismaClient,
   resetTestDatabase,
 } from "../../test/database-harness.ts";
-import { createPrismaAuthenticationSessionRepository } from "../identity/authentication-repository.ts";
-import { createAuthenticationMiddleware } from "../identity/authentication-context.ts";
+import {
+  createNativeTestAuthenticationMiddleware,
+  createNativeTestSession,
+} from "../../test/native-session-fixture.ts";
 import type { SessionConfiguration } from "../identity/session-configuration.ts";
-import { SESSION_COOKIE_NAME } from "../identity/session-cookie.ts";
-import { hashSessionToken } from "../identity/session-token.ts";
 import { branchCreateRequestSchema } from "./branch-schemas.ts";
 import { createPrismaBranchRepository } from "./branch-repository.ts";
 import { createBranchRouter } from "./branch-router.ts";
@@ -637,22 +637,15 @@ describe("branch management with PostgreSQL", () => {
     const main = await prisma.branch.create({
       data: { code: "MAIN", name: "Main", organizationId: organization.id },
     });
-    const rawToken = "H".repeat(43);
-    await prisma.session.create({
-      data: {
-        absoluteExpiresAt: new Date(NOW.getTime() + 7 * DAY_MILLISECONDS),
-        idleExpiresAt: new Date(NOW.getTime() + DAY_MILLISECONDS),
-        issuedAt: NOW,
-        lastUsedAt: NOW,
-        tokenHash: hashSessionToken(rawToken),
-        userId: owner.id,
-      },
+    const rawToken = await createNativeTestSession(prisma, owner.id, {
+      createdAt: NOW,
+      updatedAt: NOW,
+      expiresAt: new Date(NOW.getTime() + 7 * DAY_MILLISECONDS),
     });
-    const authenticationMiddleware = createAuthenticationMiddleware({
-      configuration,
-      now: () => NOW,
-      repository: createPrismaAuthenticationSessionRepository(prisma),
-    });
+    const authenticationMiddleware = createNativeTestAuthenticationMiddleware(
+      prisma,
+      { configuration, now: () => NOW },
+    );
     const apiRouter = createBranchRouter({
       authenticationMiddleware,
       branchService: createBranchService({ repository }),
@@ -666,7 +659,7 @@ describe("branch management with PostgreSQL", () => {
     const base = `http://${runningServer.address.host}:${runningServer.address.port}/api/v1`;
     const headers = {
       "content-type": "application/json",
-      cookie: `${SESSION_COOKIE_NAME}=${rawToken}`,
+      cookie: rawToken.cookie,
       origin: "http://localhost:3000",
     };
 
@@ -697,7 +690,7 @@ describe("branch management with PostgreSQL", () => {
     expect(deactivatedResponse.status).toBe(200);
 
     const accessResponse = await fetch(`${base}/me/access-context`, {
-      headers: { cookie: `${SESSION_COOKIE_NAME}=${rawToken}` },
+      headers: { cookie: rawToken.cookie },
     });
     const access = (await accessResponse.json()) as {
       data: { organizations: Array<{ branches: Array<{ id: string }> }> };

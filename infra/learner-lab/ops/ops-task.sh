@@ -5,7 +5,7 @@
 # Each ops task definition receives only its own secrets and sets
 # STOCKWISE_OPS_ROLE; an action outside that role is refused:
 #   bootstrap  bootstrap-roles                       (RDS master credentials)
-#   ops        prepare | migrate | grants | fence-state | status | seed | cutover |
+#   ops        prepare | migrate | grants | status | seed |
 #              uat-provision | reconcile-owners | provision-demo
 #   export     export                                (LabRole task role, S3)
 # Credentials travel only in environment variables, never in arguments or
@@ -40,7 +40,7 @@ require STOCKWISE_OPS_ROLE STOCKWISE_DB_HOST STOCKWISE_DB_PORT STOCKWISE_DB_NAME
 
 case "${STOCKWISE_OPS_ROLE}:${action}" in
   bootstrap:bootstrap-roles | export:export) ;;
-  ops:prepare | ops:migrate | ops:grants | ops:fence-state | ops:status | ops:seed | ops:cutover | ops:uat-provision | ops:reconcile-owners | ops:provision-demo) ;;
+  ops:prepare | ops:migrate | ops:grants | ops:status | ops:seed | ops:uat-provision | ops:reconcile-owners | ops:provision-demo) ;;
   *) die "action '${action}' is not permitted for the '${STOCKWISE_OPS_ROLE}' task definition" ;;
 esac
 
@@ -60,10 +60,6 @@ as_migrator() {
 
 psql_quiet() { psql --no-psqlrc --quiet --set ON_ERROR_STOP=1 "$@"; }
 
-fence_state() {
-  psql_quiet --tuples-only --no-align --command "SELECT state FROM native_auth_transition" | tr -d '[:space:]'
-}
-
 prisma() { node node_modules/prisma/build/index.js "$@" --config prisma.config.ts; }
 
 migrate() {
@@ -74,12 +70,6 @@ migrate() {
 grants() {
   step "re-applying runtime grants and checking stockwise_app privileges"
   psql_quiet --file "${db_dir}/grants.sql"
-}
-
-report_fence() {
-  local state
-  state="$(fence_state)"
-  echo "STOCKWISE_FENCE_STATE:${state}"
 }
 
 case "$action" in
@@ -97,13 +87,11 @@ case "$action" in
     ;;
   migrate) as_migrator; migrate ;;
   grants) as_migrator; grants ;;
-  fence-state) as_migrator; report_fence ;;
-  prepare) as_migrator; migrate; grants; report_fence ;;
+  prepare) as_migrator; migrate; grants ;;
   status) as_migrator; DATABASE_URL="$PRISMA_MIGRATE_DATABASE_URL" prisma migrate status ;;
   seed)
     as_migrator
     require DEMO_USER_PASSWORD
-    [[ "$(fence_state)" == "LEGACY" ]] || die "seeding requires the LEGACY state (seed before the Native cutover)"
     step "seeding synthetic stockwise-demo-v1 data (optional, D-08)"
     node /opt/stockwise/seed-through-loopback.mjs
     ;;
@@ -113,7 +101,6 @@ case "$action" in
     as_migrator
     require STOCKWISE_UAT_PHASE STOCKWISE_UAT_SPEC_B64
     [[ "$STOCKWISE_UAT_PHASE" =~ ^(accounts|memberships)$ ]] || die "STOCKWISE_UAT_PHASE must be accounts or memberships"
-    [[ "$(fence_state)" == "NATIVE" ]] || die "UAT provisioning requires the NATIVE state"
     step "uat-provision ${STOCKWISE_UAT_PHASE} on ${STOCKWISE_DB_NAME}"
     node dist/uat/uat-provision-main.js
     ;;
@@ -131,7 +118,6 @@ case "$action" in
       require STOCKWISE_RECONCILE_CONFIRM_DIGEST
       [[ "$STOCKWISE_RECONCILE_CONFIRM_DIGEST" =~ ^[0-9a-f]{16}$ ]] || die "STOCKWISE_RECONCILE_CONFIRM_DIGEST must be 16 hex digits"
     fi
-    [[ "$(fence_state)" == "NATIVE" ]] || die "owner reconciliation requires the NATIVE state"
     step "reconcile-owners ${STOCKWISE_RECONCILE_MODE} on ${STOCKWISE_DB_NAME}"
     node dist/owner-reconciliation/owner-reconciliation-main.js
     ;;
@@ -149,34 +135,8 @@ case "$action" in
       require STOCKWISE_DEMO_CONFIRM_DIGEST
       [[ "$STOCKWISE_DEMO_CONFIRM_DIGEST" =~ ^[0-9a-f]{16}$ ]] || die "STOCKWISE_DEMO_CONFIRM_DIGEST must be 16 hex digits"
     fi
-    [[ "$(fence_state)" == "NATIVE" ]] || die "demo provisioning requires the NATIVE state"
     step "provision-demo ${STOCKWISE_DEMO_MODE} on ${STOCKWISE_DB_NAME}"
     node dist/demo-production/demo-production-main.js
-    ;;
-  cutover)
-    as_migrator
-    state="$(fence_state)"
-    case "$state" in
-      NATIVE)
-        echo "STOCKWISE_FENCE_STATE:NATIVE"
-        echo "STOCKWISE_CUTOVER:ALREADY_NATIVE"
-        exit 0
-        ;;
-      QUIESCED) die "a cutover was interrupted; inspect it, then resume deliberately with native-cutover-main.js --resume" ;;
-      LEGACY) ;;
-      *) die "unexpected fence state" ;;
-    esac
-    # Independent of the ECS check in run-ops-task.sh: no runtime-role session
-    # may be open while the database is sealed.
-    sessions="$(psql_quiet --tuples-only --no-align --command \
-      "SELECT count(*) FROM pg_stat_activity WHERE usename = 'stockwise_app'" | tr -d '[:space:]')"
-    [[ "$sessions" == "0" ]] || die "stockwise_app has ${sessions} open session(s); stop the application service first"
-    step "running native:cutover on ${STOCKWISE_DB_NAME} (one-way)"
-    node dist/native-cutover/native-cutover-main.js --confirm-database "$STOCKWISE_DB_NAME"
-    state="$(fence_state)"
-    [[ "$state" == "NATIVE" ]] || die "cutover did not seal the database NATIVE (state ${state})"
-    echo "STOCKWISE_FENCE_STATE:NATIVE"
-    echo "STOCKWISE_CUTOVER:COMPLETE"
     ;;
   export)
     as_migrator

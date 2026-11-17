@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import {
   DEMO_AUTHENTICATION_TABLES,
   DEMO_FIXTURE_TABLES,
-  DEMO_TRANSITION_TABLE,
   assertDemoSchema,
   expectedDemoSchemaTables,
   type DemoSchemaState,
@@ -53,7 +52,6 @@ function current(overrides: Partial<DemoSchemaState> = {}): DemoSchemaState {
       rolledBack: false,
     })),
     localMigrations: committedMigrations,
-    transitionStates: ["LEGACY"],
     ...overrides,
   };
 }
@@ -64,23 +62,18 @@ describe("stockwise-demo-v1 schema manifest", () => {
   });
 
   it("classifies each table exactly once", () => {
-    const all = [
-      ...DEMO_FIXTURE_TABLES,
-      ...DEMO_AUTHENTICATION_TABLES,
-      DEMO_TRANSITION_TABLE,
-    ];
+    const all = [...DEMO_FIXTURE_TABLES, ...DEMO_AUTHENTICATION_TABLES];
     expect(new Set(all).size).toBe(all.length);
   });
 
-  it("accepts the fully migrated LEGACY schema", () => {
+  it("accepts the fully migrated Native schema", () => {
     expect(() => assertDemoSchema(current())).not.toThrow();
   });
 
   it("refuses the pre-Better-Auth manifest shape (missing authentication tables)", () => {
     const legacyOnly = expectedDemoSchemaTables().filter(
       (table) =>
-        !(DEMO_AUTHENTICATION_TABLES as readonly string[]).includes(table) &&
-        table !== DEMO_TRANSITION_TABLE,
+        !(DEMO_AUTHENTICATION_TABLES as readonly string[]).includes(table),
     );
     expect(() => assertDemoSchema(current({ tables: legacyOnly }))).toThrow(
       /Database schema differs/,
@@ -92,9 +85,7 @@ describe("stockwise-demo-v1 schema manifest", () => {
       [...expectedDemoSchemaTables(), "unexpected_table"],
       expectedDemoSchemaTables().filter((table) => table !== "users"),
       expectedDemoSchemaTables().map((table) =>
-        table === "email_verification_challenges"
-          ? "email_verification_tokens"
-          : table,
+        table === "better_auth_accounts" ? "better_auth_credentials" : table,
       ),
     ])
       expect(() => assertDemoSchema(current({ tables }))).toThrow(
@@ -141,15 +132,13 @@ describe("stockwise-demo-v1 schema manifest", () => {
       ).toThrow(/incomplete or rolled-back/);
   });
 
-  it("refuses any authentication state other than one LEGACY fence row", () => {
-    for (const transitionStates of [
-      ["QUIESCED"],
-      ["NATIVE"],
-      [],
-      ["LEGACY", "LEGACY"],
+  it("has no transition fence, Legacy session or verification table", () => {
+    for (const removed of [
+      "native_auth_transition",
+      "native_auth_enrollments",
+      "sessions",
+      "email_verification_challenges",
     ])
-      expect(() => assertDemoSchema(current({ transitionStates }))).toThrow(
-        /pre-cutover LEGACY/,
-      );
+      expect(expectedDemoSchemaTables()).not.toContain(removed);
   });
 });

@@ -35,11 +35,6 @@ async function main(): Promise<void> {
     DATABASE_URL: databaseUrlSchema.parse(process.env.DATABASE_URL),
   });
   try {
-    const fence = await prisma.$queryRaw<
-      Array<{ state: string }>
-    >`SELECT state FROM native_auth_transition`;
-    if (fence[0]?.state !== "NATIVE")
-      throw new Error("DEMOPROD_REQUIRES_NATIVE");
     await runProvision(
       prisma,
       {

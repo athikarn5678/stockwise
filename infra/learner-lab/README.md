@@ -28,13 +28,13 @@ No Learner Lab create permission has been exercised.
 
 ## Invariants
 
-- **Authentication:** Better Auth Native only. The task definition fixes `STOCKWISE_AUTHENTICATION_AUTHORITY=native` and production mode, and the API refuses a database not sealed NATIVE. There is no Legacy fallback.
+- **Authentication:** Better Auth Native only (`ADR-045`). The task definition fixes production mode and injects `STOCKWISE_BETTER_AUTH_SECRET` from Secrets Manager; there is no authority selection and no Legacy fallback.
 - **Exactly one application task.** The login/password-proof limiter is process-local, so `app_desired_count` is 0 or 1, and releases stop the old task before starting the new one.
   - The ASG scales EC2 capacity, not application replicas.
   - The configuration is not fully highly available: a failed task is replaced on the other AZ's instance after a short outage.
   - Running more replicas requires the PostgreSQL-backed limiter described in ADR-040.
 - **Loopback API.** The API listens on `127.0.0.1:3001` inside the task's network namespace. Only Next.js (`:3000`) is an ALB target.
-- **Migrations and cutover.** Forward-only migrations run, then grants are re-applied. Optional seeding happens only while LEGACY. The one-way Native cutover runs only with the service at 0 tasks and no `stockwise_app` session. The application starts only after that.
+- **Migrations.** Forward-only migrations run, then grants are re-applied. The database is Native directly from its migrations (`ADR-045`); there is no cutover step. Optional seeding runs after the migrations, and the application starts afterwards.
 - **Secrets.** No secret in Git, images, Terraform state, logs or evidence. The application task has no IAM task role; only the export task has `LabRole`.
 - **No ALB request logging (F1).** ALB access logs would record the `?token=` query strings of the emailed verification, reset and invitation links. They stay disabled, and no variable can re-enable them. Request visibility comes from CloudWatch metrics, alarms and the containers' logs; the API logs paths without query strings.
 - **Container log boundary (R2-F1, R3-F1).** The `web` and `api` servers run under `docker/redacting-log-pipe.mjs`. Query redaction includes punctuation-bearing values and supported percent/Unicode/hex-escaped representations; authorization schemes are case-insensitive. CR and backslash-newline continuations cannot split a credential from its context. Bounded records discard oversized tails through their continuations. Paths, error codes and other diagnostics remain. This is a contextual redactor, not a detector for arbitrary unlabelled plaintext secrets.
@@ -50,7 +50,7 @@ No Learner Lab create permission has been exercised.
 | G3 | Image publication (GHCR workflow and the ECR copy) |
 | G4 | `terraform apply` (chargeable provisioning) |
 | G5 | DNS records (ACM validation and the demo hostname) |
-| G6 | Public deploy and the one-way Native cutover |
+| G6 | Public deploy |
 | G7 | Real email through Resend |
 
 ## Prerequisites (operator machine)
@@ -103,11 +103,11 @@ Each step's completion check is in **bold**. Each gate (G3–G7) is a separate o
    operator/run-ops-task.sh bootstrap-roles
    ```
    **`STOCKWISE_BOOTSTRAP:COMPLETE`.**
-9. **Deploy, optional seed, and cutover (G6).**
+9. **Deploy and optional seed (G6).**
    ```bash
-   operator/deploy.sh --release <release.env> --var-file terraform/demo.tfvars [--seed-demo] --native-cutover
+   operator/deploy.sh --release <release.env> --var-file terraform/demo.tfvars [--seed-demo]
    ```
-   This checks public HTTPS, then runs `prepare` (migrate, grants, fence state), the optional seed, `cutover`, and one application task. It then waits for stability and runs `smoke.sh` against the public hostname. **`STOCKWISE_SMOKE:PASS`.**
+   This checks public HTTPS, then runs `prepare` (migrate, grants), the optional seed, and one application task. It then waits for stability and runs `smoke.sh` against the public hostname. **`STOCKWISE_SMOKE:PASS`.**
 10. **Baseline export.**
     ```bash
     operator/run-ops-task.sh export
@@ -115,14 +115,7 @@ Each step's completion check is in **bold**. Each gate (G3–G7) is a separate o
     **A `STOCKWISE_EXPORT_RESULT:v1 ... sha256=...` line.**
 11. **Real email (G7).** Separate approval; see "Email" below.
 
-Later releases: steps 1, 4 and 9, without the cutover flag. `deploy.sh` applies new ops task definitions first, migrates, and only then rolls the application.
-
-### Interrupted cutover (fence `QUIESCED`)
-
-`deploy.sh` and `ops-task.sh` refuse to continue. Inspect the ops log and the
-D5-P3 runbook in `docs/development/BETTER_AUTH_MIGRATION.md`, then resume
-deliberately: run the ops image's `node dist/native-cutover/native-cutover-main.js --resume`
-in a one-off task. The application stays at 0 tasks throughout.
+Later releases: steps 1, 4 and 9. `rollback.sh` redeploys the previous images only; it never reverts the schema, so a release older than the Native-only migration (`ADR-045`) cannot be rolled back to. `deploy.sh` applies new ops task definitions first, migrates, and only then rolls the application.
 
 ## Operations
 
@@ -134,7 +127,7 @@ in a one-off task. The application stays at 0 tasks throughout.
 | Dashboard / alarms | `terraform output dashboard_url` | 11 alarms to SNS (`alarm_email` optional). The no-healthy-target alarm judges availability against the ECS service's desired count: a missing target metric is an outage, and an intentional pause (desired 0) is not. `capacity.sh resume`, `deploy.sh` and `rollback.sh` re-arm an alarm left in ALARM, so a failed resume notifies (R2-F8). |
 | Export | `operator/run-ops-task.sh export` | `pg_dump` custom format to the private exports bucket; prints one `STOCKWISE_EXPORT_RESULT:v1` line |
 | Pause / resume | `operator/capacity.sh pause|resume --var-file …` | Stops EC2 and RDS hours only; the ALB, both NAT gateways and IPv4 keep billing |
-| Budget | `operator/budget-check.sh --remaining-usd <panel amount>` | Running resources, estimated rate, projection to the deadline |
+| Budget | `operator/budget-check.sh --remaining-usd <panel amount>` | Running resources, estimated rate, projection to `demo_end_time` (the deadline is decided in M9) |
 
 **Learner Lab sessions:**
 - EC2 instances stop when a session ends and restart at the next one.
@@ -154,11 +147,11 @@ Exceeding the Learner Lab budget disables the account and deletes everything.
 
 **Guards:**
 - `budget-check.sh`, with the panel amount.
-- `deploy.sh`, `rollback.sh` and `capacity.sh resume` refuse to run after the deadline.
+- `deploy.sh`, `rollback.sh` and `capacity.sh resume` refuse to run after the deadline (`demo_end_time`, decided in M9).
 - An ASG scheduled action scales the container instances to 0 at `demo_end_time`. This is only a backstop: the ALB, NAT gateways and RDS keep billing.
 - Optional AWS Budgets alert (`enable_aws_budget`; access unverified).
 
-**Teardown** (irreversible; before the deadline):
+**Teardown** (irreversible; before the deadline decided in M9):
 ```bash
 operator/teardown.sh --var-file terraform/demo.tfvars --confirm <name_prefix>
 ```
@@ -166,7 +159,7 @@ Real teardown needs the owner's separate authorization. It **fails closed (F2)**
 1. A final export task bound to a fresh export id exits successfully and prints exactly one matching result marker.
 2. `verify-export.sh` downloads exactly that S3 object to `operator/.state/exports/` (or `--export-dir`).
 3. The downloaded file is non-empty and matches the marker's size and SHA-256, and the object's checksum metadata.
-4. Pinned `pg_restore` 16 lists it as an archive of the expected database, containing `users`, `native_auth_transition` and `_prisma_migrations`.
+4. Pinned `pg_restore` 16 lists it as an archive of the expected database, containing `users`, `better_auth_accounts` and `_prisma_migrations`.
 5. Every other stored export also downloads.
 
 There is no flag that skips the export. Only then does it lift deletion protection, run `terraform destroy` and check for residual resources. **It must end with `STOCKWISE_TEARDOWN_VERIFIED`.** Remove the DNS records afterwards (G5).

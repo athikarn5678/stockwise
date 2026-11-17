@@ -10,9 +10,10 @@ import {
   resetTestDatabase,
 } from "../../test/database-harness.ts";
 import { loadTestDatabaseEnvironment } from "../../test/database-environment.ts";
-import { createPrismaAuthenticationSessionRepository } from "../identity/authentication-repository.ts";
-import { createAuthenticationMiddleware } from "../identity/authentication-context.ts";
-import { generateSessionToken } from "../identity/session-token.ts";
+import {
+  createNativeTestAuthenticationMiddleware,
+  createNativeTestSession,
+} from "../../test/native-session-fixture.ts";
 import { createPrismaCheckoutRepository } from "../sales/checkout-repository.ts";
 import { createPrismaAnalyticsBranchRepository } from "./analytics-branch-repository.ts";
 import { createAnalyticsBranchService } from "./analytics-branch-service.ts";
@@ -134,18 +135,12 @@ describe("analytics HTTP API with PostgreSQL", () => {
       await prisma.branchAssignment.create({
         data: { branchId, organizationId, userId: user.id },
       });
-    const token = generateSessionToken();
-    await prisma.session.create({
-      data: {
-        absoluteExpiresAt: new Date(now.getTime() + 86_400_000),
-        idleExpiresAt: new Date(now.getTime() + 86_400_000),
-        issuedAt: now,
-        lastUsedAt: now,
-        tokenHash: token.tokenHash,
-        userId: user.id,
-      },
+    const session = await createNativeTestSession(prisma, user.id, {
+      createdAt: now,
+      updatedAt: now,
+      expiresAt: new Date(now.getTime() + 86_400_000),
     });
-    return { id: user.id, cookie: `stockwise_session=${token.rawToken}` };
+    return { id: user.id, cookie: session.cookie };
   }
 
   async function setup() {
@@ -258,16 +253,18 @@ describe("analytics HTTP API with PostgreSQL", () => {
       now: () => analyticsNow,
       scopeRepository: createPrismaAnalyticsScopeRepository(prisma),
     });
-    const authenticationMiddleware = createAuthenticationMiddleware({
-      configuration: {
-        absoluteTimeoutMilliseconds: 86_400_000,
-        idleTimeoutMilliseconds: 86_400_000,
-        secureCookie: false,
-        touchIntervalMilliseconds: 900_000,
+    const authenticationMiddleware = createNativeTestAuthenticationMiddleware(
+      prisma,
+      {
+        configuration: {
+          absoluteTimeoutMilliseconds: 86_400_000,
+          idleTimeoutMilliseconds: 86_400_000,
+          secureCookie: false,
+          touchIntervalMilliseconds: 900_000,
+        },
+        now: () => now,
       },
-      now: () => now,
-      repository: createPrismaAuthenticationSessionRepository(prisma),
-    });
+    );
     const router = Router();
     router.use(
       createAnalyticsRouter({

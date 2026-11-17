@@ -12,9 +12,10 @@ import {
   resetTestDatabase,
 } from "../test/database-harness.ts";
 import { createDemo30dTestFixture } from "../test/demo-30d-fixture.ts";
-import { createPrismaAuthenticationSessionRepository } from "../modules/identity/authentication-repository.ts";
-import { createAuthenticationMiddleware } from "../modules/identity/authentication-context.ts";
-import { generateSessionToken } from "../modules/identity/session-token.ts";
+import {
+  createNativeTestAuthenticationMiddleware,
+  createNativeTestSession,
+} from "../test/native-session-fixture.ts";
 import { ORGANIZATION_ROLES } from "../modules/identity/authorization-policy.ts";
 import { createPrismaCatalogRepository } from "../modules/catalog/catalog-repository.ts";
 import { createCatalogRouter } from "../modules/catalog/catalog-router.ts";
@@ -98,29 +99,25 @@ suite("DEMO-30D-RBAC-AI-01 on disposable PostgreSQL", () => {
     expect(await databaseFingerprint()).toBe(before);
     await runDemo30d(prisma, { ...options(), apply: true });
     for (const actor of fixture.actors) {
-      const token = generateSessionToken();
-      await prisma.session.create({
-        data: {
-          userId: actor.user.id,
-          tokenHash: token.tokenHash,
-          issuedAt: now,
-          lastUsedAt: now,
-          idleExpiresAt: new Date(now.getTime() + 86_400_000),
-          absoluteExpiresAt: new Date(now.getTime() + 86_400_000),
-        },
+      const session = await createNativeTestSession(prisma, actor.user.id, {
+        createdAt: now,
+        updatedAt: now,
+        expiresAt: new Date(now.getTime() + 86_400_000),
       });
-      cookies.set(actor.role, `stockwise_session=${token.rawToken}`);
+      cookies.set(actor.role, session.cookie);
     }
-    const authenticationMiddleware = createAuthenticationMiddleware({
-      repository: createPrismaAuthenticationSessionRepository(prisma),
-      now: () => now,
-      configuration: {
-        absoluteTimeoutMilliseconds: 86_400_000,
-        idleTimeoutMilliseconds: 86_400_000,
-        touchIntervalMilliseconds: 900_000,
-        secureCookie: false,
+    const authenticationMiddleware = createNativeTestAuthenticationMiddleware(
+      prisma,
+      {
+        now: () => now,
+        configuration: {
+          absoluteTimeoutMilliseconds: 86_400_000,
+          idleTimeoutMilliseconds: 86_400_000,
+          touchIntervalMilliseconds: 900_000,
+          secureCookie: false,
+        },
       },
-    });
+    );
     const shared = {
       authenticationMiddleware,
       publicWebOrigin: "http://localhost:3000",

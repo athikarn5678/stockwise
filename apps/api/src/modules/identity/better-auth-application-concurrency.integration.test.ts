@@ -1,3 +1,4 @@
+import { withTriggersDisabled } from "../../test/trigger-bypass.ts";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Router, type Request } from "express";
@@ -7,9 +8,18 @@ import { loadApiEnvironment } from "../../environment.ts";
 import { PrismaClient } from "../../generated/prisma/client.ts";
 import { loadTestDatabaseEnvironment } from "../../test/database-environment.ts";
 import { startApiServer, type RunningApiServer } from "../../server.ts";
+import { createBetterAuthApplicationRouter } from "./better-auth-application-router.ts";
 import { createBetterAuthApplicationRuntime } from "./better-auth-application-runtime.ts";
+import { createBetterAuthApplicationSessionService } from "./better-auth-application-session.ts";
+import { createBetterAuthNative } from "./better-auth-native.ts";
+import { createLoginLimiter } from "./login-limiter.ts";
+import { requireBetterAuthSecret } from "./better-auth-secret.ts";
 import { createPendingRegistrationRepository } from "./pending-registration-repository.ts";
+import { createPendingRegistrationRouter } from "./pending-registration-router.ts";
+import { createPendingRegistrationService } from "./pending-registration-service.ts";
 import { hashPassword } from "./password-hasher.ts";
+import { verifyPassword } from "./password-hasher.ts";
+import { createNativeFixtureUser } from "../../test/native-user-fixture.ts";
 import {
   createVerificationSecurity,
   verificationSecurityConfiguration,
@@ -136,8 +146,11 @@ afterEach(async () => {
       select: { id: true },
     });
     if (user !== null) {
-      await prisma.betterAuthAccount.deleteMany({ where: { userId: user.id } });
-      await prisma.user.deleteMany({ where: { id: user.id } });
+      // Cleanup only: the Native guards forbid deleting users and accounts.
+      await withTriggersDisabled(prisma, async (tx) => {
+        await tx.betterAuthAccount.deleteMany({ where: { userId: user.id } });
+        await tx.user.deleteMany({ where: { id: user.id } });
+      });
     }
   }
   observedEmails.clear();
@@ -244,6 +257,202 @@ async function expectFinalSlot(
 }
 
 describe("actual Native runtime shared login/proof admission", () => {
+  it("rejects a concurrent credential-generation change after password demonstration in verified_login", async () => {
+    const email = `${randomUUID()}@example.test`;
+    const user = await createNativeFixtureUser(prisma, {
+      id: randomUUID(),
+      email,
+      password,
+      passwordHash,
+    });
+    observedEmails.add(email);
+    const gate = blockAfterCredentialRead(email, "user");
+    const pendingResponse = fetch(`${base}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: origin },
+      body: JSON.stringify({ email, password }),
+    });
+    await gate.entered;
+    try {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          credentialVersion: { increment: 1 },
+          passwordChangedAt: new Date(),
+        },
+      });
+    } finally {
+      gate.release.resolve();
+    }
+    const response = await pendingResponse;
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({
+      error: { code: "INVALID_CREDENTIALS" },
+    });
+    expect(response.headers.getSetCookie()).toEqual([]);
+    expect(
+      await prisma.betterAuthSession.count({ where: { userId: user.id } }),
+    ).toBe(0);
+    const control = await fetch(`${base}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: origin },
+      body: JSON.stringify({ email, password }),
+    });
+    expect(control.status).toBe(200);
+    await prisma.betterAuthSession.deleteMany({ where: { userId: user.id } });
+  });
+
+  function blockablePendingService() {
+    const demonstrated = deferred();
+    const continueAuthority = deferred();
+    const service = createPendingRegistrationService({
+      delivery: { reserve: () => null, drain: async () => undefined },
+      passwordHasher: { hash: hashPassword },
+      passwordVerifier: {
+        async verify(candidateHash, candidate) {
+          const matches = await verifyPassword(candidateHash, candidate);
+          demonstrated.resolve();
+          await continueAuthority.promise;
+          return matches;
+        },
+      },
+      repository: pendingRepository,
+      security,
+    });
+    return {
+      demonstrated: demonstrated.promise,
+      release: continueAuthority.resolve,
+      service,
+    };
+  }
+
+  it("rejects a concurrent generation change after password demonstration in pending_login", async () => {
+    const email = `${randomUUID()}@example.test`;
+    await stagePending(email);
+    const fixture = blockablePendingService();
+    const continuationKey = environment.STOCKWISE_INVITATION_CONTINUATION_KEY;
+    if (continuationKey === undefined)
+      throw new Error("The Native test environment lacks a continuation key.");
+    const native = createBetterAuthNative({
+      prisma,
+      secret: requireBetterAuthSecret(environment),
+      publicWebOrigin: origin,
+      secureCookie: true,
+    });
+    const sessionService = createBetterAuthApplicationSessionService({
+      prisma,
+      native,
+      publicWebOrigin: origin,
+      configuration: {
+        absoluteTimeoutMilliseconds: 604800000,
+        idleTimeoutMilliseconds: 86400000,
+        secureCookie: true,
+        touchIntervalMilliseconds: 900000,
+      },
+      limiter: createLoginLimiter(),
+      pendingRegistrationService: fixture.service,
+    });
+    const server = await startApiServer(
+      createApp({
+        apiRouter: createBetterAuthApplicationRouter({
+          continuationKey,
+          publicWebOrigin: origin,
+          service: sessionService,
+        }),
+        logger: { info() {}, error() {} },
+      }),
+      { host: "127.0.0.1", port: 0 },
+    );
+    try {
+      const pendingResponse = fetch(
+        `http://${server.address.host}:${server.address.port}/api/v1/auth/login`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Origin: origin },
+          body: JSON.stringify({ email, password }),
+        },
+      );
+      await fixture.demonstrated;
+      try {
+        await prisma.pendingRegistration.update({
+          where: { email },
+          data: { credentialVersion: { increment: 1 } },
+        });
+      } finally {
+        fixture.release();
+      }
+      const response = await pendingResponse;
+      expect(response.status).toBe(401);
+      expect(await response.json()).toMatchObject({
+        error: { code: "INVALID_CREDENTIALS" },
+      });
+      expect(response.headers.getSetCookie()).toEqual([]);
+    } finally {
+      await server.stop();
+    }
+    expect(await prisma.user.findUnique({ where: { email } })).toBeNull();
+    expect(
+      await prisma.pendingRegistration.findUniqueOrThrow({
+        where: { email },
+      }),
+    ).toMatchObject({ credentialVersion: 2n, consumedAt: null });
+    expect(
+      await prisma.betterAuthSession.count({ where: { user: { email } } }),
+    ).toBe(0);
+  });
+
+  it("rejects a concurrent generation change after password demonstration in fallback", async () => {
+    const email = `${randomUUID()}@example.test`;
+    await stagePending(email);
+    const fixture = blockablePendingService();
+    const server = await startApiServer(
+      createApp({
+        apiRouter: createPendingRegistrationRouter({
+          pendingRegistrationService: fixture.service,
+          publicWebOrigin: origin,
+        }),
+        logger: { info() {}, error() {} },
+      }),
+      { host: "127.0.0.1", port: 0 },
+    );
+    try {
+      const pendingResponse = fetch(
+        `http://${server.address.host}:${server.address.port}/api/v1/auth/verification-password-proof`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Origin: origin },
+          body: JSON.stringify({ email, password }),
+        },
+      );
+      await fixture.demonstrated;
+      try {
+        await prisma.pendingRegistration.update({
+          where: { email },
+          data: { credentialVersion: { increment: 1 } },
+        });
+      } finally {
+        fixture.release();
+      }
+      const response = await pendingResponse;
+      expect(response.status).toBe(401);
+      expect(await response.json()).toMatchObject({
+        error: { code: "INVALID_CREDENTIALS" },
+      });
+      expect(response.headers.getSetCookie()).toEqual([]);
+    } finally {
+      await server.stop();
+    }
+    expect(await prisma.user.findUnique({ where: { email } })).toBeNull();
+    expect(
+      await prisma.pendingRegistration.findUniqueOrThrow({
+        where: { email },
+      }),
+    ).toMatchObject({ credentialVersion: 2n, consumedAt: null });
+    expect(
+      await prisma.betterAuthSession.count({ where: { user: { email } } }),
+    ).toBe(0);
+  });
+
   it.each([
     {
       firstEndpoint: "verification-password-proof",

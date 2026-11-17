@@ -484,7 +484,11 @@ Invitation tokens remain URL-transient and are never copied to browser storage.
 
 The browser never receives a JWT or refresh token and never stores an auth token in `localStorage` or `sessionStorage`. Session expiry/revocation and disabled actors are evaluated server-side; deauthorized membership is denied later by the separate authorization boundary. The cookie has `Path=/`, is host-only, `SameSite=Lax`, and `Secure` in production but not local HTTP. Configurable timeout baselines are sliding 24 hours idle, fixed seven days absolute, and a 15-minute minimum persisted-touch interval.
 
-#### Better Auth pre-cutover transition boundary
+#### Better Auth pre-cutover transition boundary (historical; removed by M3-T5/T6, `ADR-045`)
+
+The paragraph below records the accepted D5-P3/P4 design for the Legacy-to-Native
+transition. The writer, the fence singleton, the enrollment provenance table and
+`native:cutover` no longer exist.
 
 ADR-035/036 and owner-approved D5-P3 DEC-01/02/03 retain StockWise User UUIDs,
 tenant/branch relationships and RBAC. The accepted transition writer
@@ -498,11 +502,11 @@ command (`native:cutover`) construct it.
 
 Under `ADR-045` (accepted 2026-11-17) Better Auth Native is the only
 authentication authority in every runtime: development, test and production.
-Legacy and the cutover fence are being removed by milestone M3; until M3-T5/T6
-land the code still contains Legacy, `STOCKWISE_AUTHENTICATION_AUTHORITY` and the
-operator `native:cutover` command. Milestone M3 is replacing the cutover with "migrations create a Native database; no cutover step" (M3-T7).
+Legacy and the cutover fence were removed by milestone M3-T5/T6: a database is
+Native directly from its migrations and there is no cutover step; M3-T7 aligns
+`infra/learner-lab` with that.
 Each process constructs exactly one authority and never falls back.
-The D5-P4 source startup gate reads shipped migration checksums and one consistent
+(Historical) The D5-P4 source startup gate reads shipped migration checksums and one consistent
 read-only database snapshot before a future Native listener can open. It requires
 sealed authority, enabled fence triggers and reconciled credential generations;
 it never runs the transition writer or falls back to Legacy. Existing UUID/business

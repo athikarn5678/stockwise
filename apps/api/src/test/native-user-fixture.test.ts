@@ -74,13 +74,19 @@ describe("native user fixture", () => {
       password,
     });
     const user = await prisma.user.findUniqueOrThrow({ where: { id } });
+    // Provisional insert, then finalize: the only path the Native guard allows.
     await prisma.betterAuthSession.create({
       data: {
         token: "native-fixture-session-token",
         userId: id,
+        expiresAt: new Date(Date.now() + 60 * MINUTE),
+      },
+    });
+    await prisma.betterAuthSession.update({
+      where: { token: "native-fixture-session-token" },
+      data: {
         stockwisePurpose: "APPLICATION",
         stockwiseCredentialVersion: user.credentialVersion,
-        expiresAt: new Date(Date.now() + 60 * MINUTE),
       },
     });
     const session = await prisma.betterAuthSession.findUniqueOrThrow({

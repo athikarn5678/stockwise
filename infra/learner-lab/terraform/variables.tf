@@ -135,7 +135,7 @@ variable "api_image" {
 }
 
 variable "ops_image" {
-  description = "Ops image by digest (migrations, grants, cutover, seed, export)."
+  description = "Ops image by digest (migrations, grants, seed, export)."
   type        = string
   default     = null
   validation {
@@ -329,7 +329,7 @@ variable "alarm_email" {
 }
 
 variable "demo_end_time" {
-  description = "Planning deadline (ADR-040 OD-5: 2026-10-31 23:59 Asia/Bangkok). An ASG scheduled action scales the container instances to zero then; it is a backstop, not teardown. Must be in the future at apply time."
+  description = "Planning deadline (ADR-040 OD-5). The real date is decided in milestone M9; the default below is a stale placeholder from the earlier demo window and must be overridden in demo.tfvars. An ASG scheduled action scales the container instances to zero then; it is a backstop, not teardown. Must be in the future at apply time."
   type        = string
   default     = "2026-10-31T16:59:00Z"
   validation {

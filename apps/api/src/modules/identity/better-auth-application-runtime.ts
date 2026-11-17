@@ -42,9 +42,8 @@ import {
 
 /**
  * Native application authentication. Construct exactly one authentication
- * authority per API process. `main.ts` builds this only when
- * STOCKWISE_AUTHENTICATION_AUTHORITY is `native` and the D5-P4 preflight has
- * confirmed a sealed NATIVE database.
+ * authority per API process after the D5-P4 preflight confirms a sealed NATIVE
+ * database.
  */
 export function createBetterAuthApplicationRuntime(input: {
   environment: ApiEnvironment;

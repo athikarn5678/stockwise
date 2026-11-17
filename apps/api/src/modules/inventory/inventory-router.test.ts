@@ -3,10 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../app.ts";
 import type { ApiLogger } from "../../logger.ts";
 import { startApiServer, type RunningApiServer } from "../../server.ts";
-import type { AuthenticationSessionRepository } from "../identity/authentication-repository.ts";
-import { createAuthenticationMiddleware } from "../identity/authentication-context.ts";
-import type { SessionConfiguration } from "../identity/session-configuration.ts";
-import { SESSION_COOKIE_NAME } from "../identity/session-cookie.ts";
+import { createSessionAuthenticationMiddleware } from "../identity/authentication-context.ts";
 import type { InventoryRepository } from "./inventory-repository.ts";
 import { createInventoryRouter } from "./inventory-router.ts";
 import { createInventoryService } from "./inventory-service.ts";
@@ -15,13 +12,8 @@ const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const BRANCH_ID = "20000000-0000-4000-8000-000000000001";
 const PRODUCT_ID = "30000000-0000-4000-8000-000000000001";
 const TOKEN = "A".repeat(43);
+const TEST_COOKIE_NAME = "stockwise_test_session";
 const logger: ApiLogger = { error() {}, info() {} };
-const configuration: SessionConfiguration = {
-  absoluteTimeoutMilliseconds: 604_800_000,
-  idleTimeoutMilliseconds: 86_400_000,
-  secureCookie: false,
-  touchIntervalMilliseconds: 900_000,
-};
 
 describe("inventory router", () => {
   let server: RunningApiServer | undefined;
@@ -38,9 +30,10 @@ describe("inventory router", () => {
     authenticated?: boolean;
     overrides?: Partial<InventoryRepository>;
   } = {}) {
-    const authenticationRepository: AuthenticationSessionRepository = {
-      resolveSession: vi.fn().mockResolvedValue(
-        authenticated
+    const authenticationMiddleware = createSessionAuthenticationMiddleware(
+      async (request) =>
+        authenticated &&
+        request.headers.cookie === `${TEST_COOKIE_NAME}=${TOKEN}`
           ? {
               actor: {
                 displayName: "Owner",
@@ -50,8 +43,7 @@ describe("inventory router", () => {
               sessionId: "session-id",
             }
           : null,
-      ),
-    };
+    );
     const repository: InventoryRepository = {
       adjust: vi.fn().mockResolvedValue({
         adjustment: {
@@ -94,10 +86,7 @@ describe("inventory router", () => {
       ...overrides,
     };
     const router = createInventoryRouter({
-      authenticationMiddleware: createAuthenticationMiddleware({
-        configuration,
-        repository: authenticationRepository,
-      }),
+      authenticationMiddleware,
       inventoryService: createInventoryService({ repository }),
       publicWebOrigin: "http://localhost:3000",
     });
@@ -113,7 +102,7 @@ describe("inventory router", () => {
 
   function request(url: string) {
     return fetch(url, {
-      headers: { cookie: `${SESSION_COOKIE_NAME}=${TOKEN}` },
+      headers: { cookie: `${TEST_COOKIE_NAME}=${TOKEN}` },
     });
   }
 
@@ -135,7 +124,7 @@ describe("inventory router", () => {
       ),
       headers: {
         "content-type": "application/json",
-        cookie: `${SESSION_COOKIE_NAME}=${TOKEN}`,
+        cookie: `${TEST_COOKIE_NAME}=${TOKEN}`,
         "idempotency-key": "adjustment-key",
         ...input.headers,
       },
@@ -195,7 +184,7 @@ describe("inventory router", () => {
         }),
         headers: {
           "content-type": "application/json",
-          cookie: `${SESSION_COOKIE_NAME}=${TOKEN}`,
+          cookie: `${TEST_COOKIE_NAME}=${TOKEN}`,
         },
         method: "POST",
       },

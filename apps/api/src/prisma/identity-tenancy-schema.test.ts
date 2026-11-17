@@ -1,3 +1,4 @@
+import { withTriggersDisabled } from "../test/trigger-bypass.ts";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -5,7 +6,6 @@ import {
   resetTestDatabase,
 } from "../test/database-harness.ts";
 import { loadTestDatabaseEnvironment } from "../test/database-environment.ts";
-import { testVerificationSecurity } from "../test/identity-backend-fixture.ts";
 
 const environment = loadTestDatabaseEnvironment();
 const prisma = createTestPrismaClient(environment);
@@ -16,14 +16,6 @@ const PASSWORD_HASH_FIXTURE =
 function futureHours(hours: number): Date {
   return new Date(Date.now() + hours * 60 * 60 * 1000);
 }
-function verificationChallenge(userId: string, linkTokenHash: string) {
-  return {
-    ...testVerificationSecurity().prepare(userId, 1n, new Date()).challenge,
-    linkTokenHash,
-    failedOtpAttempts: 0,
-  };
-}
-
 async function createUser(email: string, displayName = "Schema Test User") {
   return prisma.user.create({
     data: {
@@ -550,83 +542,51 @@ describe("identity and tenancy database schema", () => {
     ).rejects.toThrow();
   });
 
-  it("enforces session and one-time token hash uniqueness", async () => {
+  it("enforces one-time reset token hash uniqueness", async () => {
     const user = await createUser("tokens@example.com");
     const secondUser = await createUser("tokens-two@example.com");
 
-    await prisma.session.create({
-      data: {
-        userId: user.id,
-        tokenHash: "session-hash",
-        idleExpiresAt: futureHours(24),
-        absoluteExpiresAt: futureHours(7 * 24),
-      },
-    });
-    await expect(
-      prisma.session.create({
+    // The Native trigger would refuse these inserts first; run them without
+    // triggers so the unique index is what is under test.
+    await withTriggersDisabled(prisma, (tx) =>
+      tx.passwordResetToken.create({
         data: {
-          userId: secondUser.id,
-          tokenHash: "session-hash",
-          idleExpiresAt: futureHours(24),
-          absoluteExpiresAt: futureHours(7 * 24),
-        },
-      }),
-    ).rejects.toThrow();
-
-    await prisma.emailVerificationChallenge.create({
-      data: verificationChallenge(user.id, "a".repeat(64)),
-    });
-    await expect(
-      prisma.emailVerificationChallenge.create({
-        data: verificationChallenge(secondUser.id, "a".repeat(64)),
-      }),
-    ).rejects.toThrow();
-
-    await prisma.passwordResetToken.create({
-      data: {
-        userId: user.id,
-        tokenHash: "reset-hash",
-        expiresAt: futureHours(0.5),
-      },
-    });
-    await expect(
-      prisma.passwordResetToken.create({
-        data: {
-          userId: secondUser.id,
+          userId: user.id,
           tokenHash: "reset-hash",
           expiresAt: futureHours(0.5),
         },
       }),
-    ).rejects.toThrow();
+    );
+    await expect(
+      withTriggersDisabled(prisma, (tx) =>
+        tx.passwordResetToken.create({
+          data: {
+            userId: secondUser.id,
+            tokenHash: "reset-hash",
+            expiresAt: futureHours(0.5),
+          },
+        }),
+      ),
+    ).rejects.toThrow(/Unique constraint|duplicate key/);
   });
 
-  it("rejects invalid session and one-time-token time ordering", async () => {
+  it("rejects invalid one-time-token time ordering", async () => {
     const user = await createUser("time-ordering@example.com");
     const issuedAt = new Date();
 
     await expect(
-      prisma.session.create({
-        data: {
-          userId: user.id,
-          tokenHash: "invalid-session-time-order",
-          issuedAt,
-          lastUsedAt: futureHours(2),
-          idleExpiresAt: futureHours(1),
-          absoluteExpiresAt: futureHours(7 * 24),
-        },
-      }),
-    ).rejects.toThrow();
-    await expect(
-      prisma.passwordResetToken.create({
-        data: {
-          userId: user.id,
-          tokenHash: "invalid-reset-time-order",
-          issuedAt,
-          expiresAt: futureHours(0.5),
-          consumedAt: futureHours(1),
-        },
-      }),
-    ).rejects.toThrow();
+      withTriggersDisabled(prisma, (tx) =>
+        tx.passwordResetToken.create({
+          data: {
+            userId: user.id,
+            tokenHash: "invalid-reset-time-order",
+            issuedAt,
+            expiresAt: futureHours(0.5),
+            consumedAt: futureHours(1),
+          },
+        }),
+      ),
+    ).rejects.toThrow(/check constraint/);
   });
 
   it("represents verification and invitation replacement without deleting history", async () => {
@@ -636,9 +596,6 @@ describe("identity and tenancy database schema", () => {
       organization.id,
       "replacement-issuer",
     );
-    const verification = await prisma.emailVerificationChallenge.create({
-      data: verificationChallenge(user.id, "b".repeat(64)),
-    });
     const invitation = await prisma.invitation.create({
       data: {
         issuedByMembershipId: issuer.id,
@@ -650,11 +607,6 @@ describe("identity and tenancy database schema", () => {
       },
     });
 
-    await expect(
-      prisma.emailVerificationChallenge.create({
-        data: verificationChallenge(user.id, "c".repeat(64)),
-      }),
-    ).rejects.toThrow();
     await expect(
       prisma.invitation.create({
         data: {
@@ -669,25 +621,14 @@ describe("identity and tenancy database schema", () => {
     ).rejects.toThrow();
 
     const replacedAt = new Date();
-    await prisma.$transaction([
-      prisma.emailVerificationChallenge.update({
-        where: { id: verification.id },
-        data: { replacedAt },
-      }),
-      prisma.invitation.update({
-        where: { id: invitation.id },
-        data: {
-          replacedAt,
-          revocationReason: "REPLACED",
-          revokedByMembershipId: issuer.id,
-        },
-      }),
-    ]);
-    await expect(
-      prisma.emailVerificationChallenge.create({
-        data: verificationChallenge(user.id, "d".repeat(64)),
-      }),
-    ).resolves.toBeDefined();
+    await prisma.invitation.update({
+      where: { id: invitation.id },
+      data: {
+        replacedAt,
+        revocationReason: "REPLACED",
+        revokedByMembershipId: issuer.id,
+      },
+    });
     await expect(
       prisma.invitation.create({
         data: {
@@ -723,7 +664,7 @@ describe("identity and tenancy database schema", () => {
 
     await expect(
       prisma.user.delete({ where: { id: user.id } }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/user deletion is not permitted/);
     await expect(
       prisma.organization.delete({ where: { id: organization.id } }),
     ).rejects.toThrow();

@@ -10,7 +10,9 @@ const analyticsKey = Buffer.alloc(32, 7).toString("base64url");
 
 const verificationOtpKey = Buffer.alloc(32, 3).toString("base64url");
 const verificationProofKey = Buffer.alloc(32, 4).toString("base64url");
+const betterAuthSecret = Buffer.alloc(32, 9).toString("base64url");
 const verificationKeys = {
+  STOCKWISE_BETTER_AUTH_SECRET: betterAuthSecret,
   STOCKWISE_VERIFICATION_OTP_KEY: verificationOtpKey,
   STOCKWISE_VERIFICATION_OTP_KEY_ID: "1",
   STOCKWISE_VERIFICATION_PROOF_KEY: verificationProofKey,
@@ -25,7 +27,6 @@ describe("API environment boundary", () => {
       STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: analyticsKey,
       STOCKWISE_PUBLIC_WEB_ORIGIN: "https://stockwise.example.com",
       STOCKWISE_RUNTIME_ENV: "production",
-      STOCKWISE_AUTHENTICATION_AUTHORITY: "native",
       STOCKWISE_EMAIL_PROVIDER: "resend",
       RESEND_API_KEY: "test-only-key",
       STOCKWISE_EMAIL_FROM: "StockWise <sender@example.com>",
@@ -58,8 +59,8 @@ describe("API environment boundary", () => {
     ).toEqual({
       DATABASE_URL:
         "postgresql://local-user:local-password@127.0.0.1:5432/local-database",
+      STOCKWISE_BETTER_AUTH_SECRET: betterAuthSecret,
       STOCKWISE_RUNTIME_ENV: "development",
-      STOCKWISE_AUTHENTICATION_AUTHORITY: "legacy",
       STOCKWISE_EMAIL_PROVIDER: "non_delivery",
       STOCKWISE_API_PORT: 3001,
       STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: analyticsKey,
@@ -95,7 +96,7 @@ describe("API environment boundary", () => {
       }),
     ).toMatchObject({
       STOCKWISE_RUNTIME_ENV: "production",
-      STOCKWISE_AUTHENTICATION_AUTHORITY: "native",
+      STOCKWISE_BETTER_AUTH_SECRET: betterAuthSecret,
       STOCKWISE_EMAIL_PROVIDER: "resend",
       STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: analyticsKey,
       RESEND_API_KEY: "server-only-resend-key",
@@ -107,49 +108,28 @@ describe("API environment boundary", () => {
     });
   });
 
-  it("locks production to Native authentication and rejects unknown authorities", () => {
-    const production = {
+  it("requires STOCKWISE_BETTER_AUTH_SECRET in every runtime (ADR-045)", () => {
+    const withoutSecret: Record<string, string> = { ...verificationKeys };
+    delete withoutSecret.STOCKWISE_BETTER_AUTH_SECRET;
+    const base = {
       DATABASE_URL:
         "postgresql://local-user:local-password@127.0.0.1:5432/local-database",
       STOCKWISE_API_PORT: "3001",
       STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: analyticsKey,
-      STOCKWISE_EMAIL_FROM: "StockWise <verified@example.com>",
-      STOCKWISE_PUBLIC_WEB_ORIGIN: "https://stockwise.example.com",
-      STOCKWISE_RUNTIME_ENV: "production",
-      RESEND_API_KEY: "server-only-resend-key",
-      ...verificationKeys,
+      STOCKWISE_PUBLIC_WEB_ORIGIN: "http://localhost:3000/",
+      STOCKWISE_RUNTIME_ENV: "development",
+      ...withoutSecret,
     };
-    expect(
-      loadApiEnvironment({
-        ...production,
-        STOCKWISE_AUTHENTICATION_AUTHORITY: "native",
-      }).STOCKWISE_AUTHENTICATION_AUTHORITY,
-    ).toBe("native");
+    expect(() => loadApiEnvironment(base)).toThrow();
     expect(() =>
-      loadApiEnvironment({
-        ...production,
-        STOCKWISE_AUTHENTICATION_AUTHORITY: "legacy",
-      }),
-    ).toThrow("Production runtime requires Native authentication.");
-    for (const runtime of ["development", "test", "production"]) {
-      expect(() =>
-        loadApiEnvironment({
-          ...production,
-          STOCKWISE_RUNTIME_ENV: runtime,
-          STOCKWISE_EMAIL_PROVIDER:
-            runtime === "production" ? "resend" : "non_delivery",
-          STOCKWISE_AUTHENTICATION_AUTHORITY: "bridge",
-        }),
-      ).toThrow();
-    }
+      loadApiEnvironment({ ...base, STOCKWISE_BETTER_AUTH_SECRET: "" }),
+    ).toThrow();
     expect(
       loadApiEnvironment({
-        ...production,
-        STOCKWISE_RUNTIME_ENV: "development",
-        STOCKWISE_EMAIL_PROVIDER: "non_delivery",
-        STOCKWISE_AUTHENTICATION_AUTHORITY: "native",
-      }).STOCKWISE_AUTHENTICATION_AUTHORITY,
-    ).toBe("native");
+        ...base,
+        STOCKWISE_BETTER_AUTH_SECRET: betterAuthSecret,
+      }).STOCKWISE_BETTER_AUTH_SECRET,
+    ).toBe(betterAuthSecret);
   });
 
   it("rejects missing, invalid, and unowned configuration", () => {

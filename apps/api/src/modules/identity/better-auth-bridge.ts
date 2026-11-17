@@ -2,7 +2,7 @@ import type { Request } from "express";
 import { z } from "zod";
 
 import { createSessionAuthenticationMiddleware } from "./authentication-context.ts";
-import type { ResolvedAuthenticationSession } from "./authentication-repository.ts";
+import type { ResolvedAuthenticationSession } from "./authentication-context.ts";
 import {
   BETTER_AUTH_NATIVE_COOKIE_NAME,
   type BetterAuthNativeSessionReader,

@@ -2,8 +2,15 @@ import {
   EmailDeliveryError,
   type IdentityEmailProvider,
 } from "./email-provider.ts";
-import type { VerificationRepository } from "./verification-repository.ts";
 import type { VerificationChallengeMaterial } from "./verification-security.ts";
+
+interface VerificationDeliveryRepository {
+  canDeliver(challengeId: string): Promise<boolean>;
+  revokeDelivery(input: {
+    challengeId: string;
+    reason: "DELIVERY_FAILED" | "RESPONSE_ABORTED";
+  }): Promise<void>;
+}
 
 const MAX_OUTSTANDING_DELIVERIES = 32;
 const DELIVERY_TIMEOUT_MILLISECONDS = 10_000;
@@ -47,7 +54,7 @@ export function createVerificationDelivery({
 }: {
   emailProvider: IdentityEmailProvider;
   publicWebOrigin: string;
-  repository: Pick<VerificationRepository, "canDeliver" | "revokeDelivery">;
+  repository: VerificationDeliveryRepository;
   onFailure?: (
     kind: "verification" | "verification_compensation",
     failure: VerificationDeliveryFailure,

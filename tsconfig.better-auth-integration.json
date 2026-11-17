@@ -12,7 +12,6 @@
     "tests/e2e/better-auth-integration/**/*.ts",
     "tests/e2e/better-auth-integration/**/*.mts",
     "playwright.better-auth-integration.config.ts",
-    "vitest.better-auth-integration-db.config.mts",
-    "vitest.better-auth-integration-legacy.config.mts"
+    "vitest.better-auth-integration-db.config.mts"
   ]
 }

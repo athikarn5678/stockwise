@@ -161,9 +161,6 @@ describe("isolated D3 PostgreSQL delivery-suppressed registration", () => {
           }),
         ).toBe(0);
         expect(
-          await prisma.session.count({ where: { userId: pending.id } }),
-        ).toBe(0);
-        expect(
           await prisma.betterAuthSession.count({
             where: { userId: pending.id },
           }),

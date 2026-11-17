@@ -4,7 +4,7 @@
 region        = "us-east-1"
 demo_hostname = "stockwise-demo.example.com"
 email_from    = "StockWise Demo <noreply@demo.example.com>"
-demo_end_time = "2026-10-31T16:59:00Z" # 2026-10-31 23:59 Asia/Bangkok
+demo_end_time = "2026-10-31T16:59:00Z" # placeholder: the real end time is decided in M9 and must be in the future
 
 # Optional:
 # alarm_email       = "owner@example.com"

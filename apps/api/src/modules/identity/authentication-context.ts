@@ -1,13 +1,5 @@
 import type { Request, RequestHandler, Response } from "express";
 
-import type {
-  AuthenticationSessionRepository,
-  ResolvedAuthenticationSession,
-} from "./authentication-repository.ts";
-import type { SessionConfiguration } from "./session-configuration.ts";
-import { readSessionCookie } from "./session-cookie.ts";
-import { hashSessionToken } from "./session-token.ts";
-
 const REQUEST_ID_HEADER = "X-Request-Id";
 const trustedAuthenticationContextKey: unique symbol = Symbol(
   "trustedAuthenticationContext",
@@ -15,6 +7,15 @@ const trustedAuthenticationContextKey: unique symbol = Symbol(
 const trustedAuthenticationContextBrand: unique symbol = Symbol(
   "trustedAuthenticationContextBrand",
 );
+
+export interface ResolvedAuthenticationSession {
+  actor: {
+    displayName: string | null;
+    email: string;
+    id: string;
+  };
+  sessionId: string;
+}
 
 export type TrustedAuthenticationContext = Readonly<{
   actor: Readonly<{
@@ -54,26 +55,6 @@ export function getTrustedAuthenticationContext(
   const context = locals[trustedAuthenticationContextKey];
 
   return context?.[trustedAuthenticationContextBrand] === true ? context : null;
-}
-
-export function createAuthenticationMiddleware({
-  configuration,
-  now = () => new Date(),
-  repository,
-}: {
-  configuration: SessionConfiguration;
-  now?: () => Date;
-  repository: AuthenticationSessionRepository;
-}): RequestHandler {
-  return createSessionAuthenticationMiddleware(async (request) => {
-    const rawToken = readSessionCookie(request.headers.cookie);
-    if (rawToken === null) return null;
-    return repository.resolveSession({
-      configuration,
-      now: now(),
-      tokenHash: hashSessionToken(rawToken),
-    });
-  });
 }
 
 // Both adapters share the private brand; neither supplies membership or RBAC.

@@ -10,11 +10,11 @@ import {
   resetTestDatabase,
 } from "../../test/database-harness.ts";
 import { loadTestDatabaseEnvironment } from "../../test/database-environment.ts";
-import { createPrismaAuthenticationSessionRepository } from "../identity/authentication-repository.ts";
-import { createAuthenticationMiddleware } from "../identity/authentication-context.ts";
+import {
+  createNativeTestAuthenticationMiddleware,
+  createNativeTestSession,
+} from "../../test/native-session-fixture.ts";
 import type { SessionConfiguration } from "../identity/session-configuration.ts";
-import { SESSION_COOKIE_NAME } from "../identity/session-cookie.ts";
-import { generateSessionToken } from "../identity/session-token.ts";
 import { createPrismaCheckoutRepository } from "./checkout-repository.ts";
 import { createCheckoutService } from "./checkout-service.ts";
 import { createPrismaRefundRepository } from "./refund-repository.ts";
@@ -114,18 +114,12 @@ describe("sales HTTP API with PostgreSQL", () => {
   }
 
   async function session(userId: string) {
-    const token = generateSessionToken();
-    await prisma.session.create({
-      data: {
-        absoluteExpiresAt: new Date(NOW.getTime() + 7 * DAY),
-        idleExpiresAt: new Date(NOW.getTime() + DAY),
-        issuedAt: NOW,
-        lastUsedAt: NOW,
-        tokenHash: token.tokenHash,
-        userId,
-      },
+    const session = await createNativeTestSession(prisma, userId, {
+      createdAt: NOW,
+      updatedAt: NOW,
+      expiresAt: new Date(NOW.getTime() + 7 * DAY),
     });
-    return token.rawToken;
+    return session.cookie;
   }
 
   async function product(input: {
@@ -172,11 +166,10 @@ describe("sales HTTP API with PostgreSQL", () => {
   }
 
   async function start() {
-    const authenticationMiddleware = createAuthenticationMiddleware({
-      configuration,
-      now: () => NOW,
-      repository: createPrismaAuthenticationSessionRepository(prisma),
-    });
+    const authenticationMiddleware = createNativeTestAuthenticationMiddleware(
+      prisma,
+      { configuration, now: () => NOW },
+    );
     const router = createSalesRouter({
       authenticationMiddleware,
       checkoutService: createCheckoutService({
@@ -206,9 +199,7 @@ describe("sales HTTP API with PostgreSQL", () => {
   ) {
     return {
       "content-type": "application/json",
-      ...(token === undefined
-        ? {}
-        : { cookie: `${SESSION_COOKIE_NAME}=${token}` }),
+      ...(token === undefined ? {} : { cookie: token }),
       origin: "http://localhost:3000",
       ...extra,
     };

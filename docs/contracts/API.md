@@ -106,7 +106,7 @@ The project must choose one consistent boundary between `409` and `422` during A
 
 ### 3.5 Authentication
 
-Browser authentication uses opaque server-side PostgreSQL sessions. The API sets the cryptographically random session token only in the `stockwise_session` HttpOnly, host-only, `Path=/`, `SameSite=Lax` cookie (`Secure` in production, not local HTTP); PostgreSQL stores only its cryptographic hash. The browser does not receive a JWT or refresh token and must not use `localStorage` or `sessionStorage` for authentication. Session idle and absolute timeouts are configurable (sliding 24 hours and fixed seven days as the baseline), and valid activity persists at most one touch per 15 minutes. The API validates expiry, revocation, and active verified account state for authentication; membership and authorization remain a separate server-resolved boundary.
+Browser authentication uses Better Auth Native opaque server-side PostgreSQL sessions (`better_auth_sessions`; `ADR-045`: Native is the only authority in every runtime). The API sets the session token only in the `stockwise_native.session_token` cookie (`__Secure-` prefixed when `Secure`), HttpOnly, host-only, `Path=/`, `SameSite=Lax` (`Secure` in production, not local HTTP), with the Better Auth cookie cache disabled; the database stores the opaque token and the server secret (`STOCKWISE_BETTER_AUTH_SECRET`) signs the cookie value. The browser does not receive a JWT or refresh token and must not use `localStorage` or `sessionStorage` for authentication. Session idle and absolute timeouts are configurable (sliding 24 hours and fixed seven days as the baseline), and valid activity persists at most one touch per 15 minutes. The API validates expiry, revocation, credential version and active verified account state for authentication on every request; membership and authorization remain a separate server-resolved boundary.
 
 `ADR-034` implements the following backend contract:
 verification password proof, delivered only in the
@@ -486,9 +486,8 @@ checks neither increment nor reset the failure counter, while failed credential
 proof increments it. Existing `User` rows and UUID/FK relationships are never
 adopted or modified. and isolated database/security verification were
 independently ACCEPTED on 2026-10-12 (external D3 isolated final acceptance).
-This router remains unmounted in the normal Legacy runtime, and these
-native D3 endpoints are not exposed to Live traffic. This does not imply
-D4/D5 completion or cutover authorization.
+Since `ADR-045` this router is mounted by the only runtime (Native); the
+Legacy runtime and its registration/verification endpoints no longer exist.
 
 ### Registration/login security requirements
 
@@ -526,7 +525,7 @@ D4/D5 completion or cutover authorization.
   and returns `202` with `data {status: "verification_required",
   nextStep: "verify_email", verification: {challengeId}}` where
   `challengeId` is the usable non-terminal challenge UUID or `null`, plus a
-  real proof cookie. No `Session` row, `stockwise_session` cookie, rotation,
+  real proof cookie. No Native session row, application session cookie, rotation,
   or incoming revocation occurs, and no automatic mail is sent.
 - Correct password with an `ACTIVE` verified account: `200` with the existing
   actor/session behavior, but the server revalidates the snapshot
@@ -606,7 +605,7 @@ options belong to later onboarding and access-management work.
   Both cookie-authenticated writes reject a cross-site Fetch Metadata signal
   or a mismatched supplied `Origin`; `SameSite=Lax` remains the primary browser
   cookie control.
-- The cleared `stockwise_session` cookie retains `Path=/`, `HttpOnly`,
+- The cleared Native session cookie (`stockwise_native.session_token`) retains `Path=/`, `HttpOnly`,
   `SameSite=Lax`, host-only scope, and production-only `Secure`, and adds
   `Max-Age=0` plus the epoch `Expires` value. The cleared proof cookie retains
   `Path=/`, `HttpOnly`, `SameSite=Strict`, host-only scope, `Secure`, and adds

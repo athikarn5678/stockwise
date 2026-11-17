@@ -105,8 +105,8 @@ test("desktop sidebar preserves scoped navigation, active state, logo and logout
     page.getByRole("navigation").getByRole("link", { name: "Sign in" }),
   ).toBeVisible();
   expect(
-    (await page.context().cookies()).some(
-      (cookie) => cookie.name === "stockwise_session",
+    (await page.context().cookies()).some((cookie) =>
+      cookie.name.endsWith("stockwise_native.session_token"),
     ),
   ).toBe(false);
   expect((await page.request.get("/api/v1/me/access-context")).status()).toBe(

@@ -7,7 +7,7 @@ import {
   createBetterAuthNative,
   BETTER_AUTH_NATIVE_COOKIE_NAME,
 } from "./better-auth-native.ts";
-import { loginRequestSchema } from "./login-router.ts";
+import { loginRequestSchema } from "./login-request-schema.ts";
 import type { LoginLimiter } from "./login-limiter.ts";
 import { DUMMY_PASSWORD_HASH, verifyPassword } from "./password-hasher.ts";
 import type { SessionConfiguration } from "./session-configuration.ts";

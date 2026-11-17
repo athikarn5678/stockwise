@@ -3,10 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../app.ts";
 import type { ApiLogger } from "../../logger.ts";
 import { startApiServer, type RunningApiServer } from "../../server.ts";
-import type { AuthenticationSessionRepository } from "../identity/authentication-repository.ts";
-import { createAuthenticationMiddleware } from "../identity/authentication-context.ts";
-import type { SessionConfiguration } from "../identity/session-configuration.ts";
-import { SESSION_COOKIE_NAME } from "../identity/session-cookie.ts";
+import { createSessionAuthenticationMiddleware } from "../identity/authentication-context.ts";
 import type {
   CheckoutRepository,
   SafeCheckoutSale,
@@ -22,13 +19,8 @@ const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const BRANCH_ID = "20000000-0000-4000-8000-000000000001";
 const PRODUCT_ID = "30000000-0000-4000-8000-000000000001";
 const TOKEN = "A".repeat(43);
+const TEST_COOKIE_NAME = "stockwise_test_session";
 const logger: ApiLogger = { error() {}, info() {} };
-const configuration: SessionConfiguration = {
-  absoluteTimeoutMilliseconds: 604_800_000,
-  idleTimeoutMilliseconds: 86_400_000,
-  secureCookie: false,
-  touchIntervalMilliseconds: 900_000,
-};
 
 const sale: SafeCheckoutSale = {
   actorDisplayNameSnapshot: "Cashier",
@@ -181,9 +173,10 @@ describe("sales router", () => {
     searchPosProducts?: SalesApiRepository["searchPosProducts"];
     updateSalesVatProfile?: SalesApiRepository["updateSalesVatProfile"];
   } = {}) {
-    const authenticationRepository: AuthenticationSessionRepository = {
-      resolveSession: vi.fn().mockResolvedValue(
-        authenticated
+    const authenticationMiddleware = createSessionAuthenticationMiddleware(
+      async (request) =>
+        authenticated &&
+        request.headers.cookie === `${TEST_COOKIE_NAME}=${TOKEN}`
           ? {
               actor: {
                 displayName: "Actor",
@@ -193,8 +186,7 @@ describe("sales router", () => {
               sessionId: "session-id",
             }
           : null,
-      ),
-    };
+    );
     const salesRepository: SalesApiRepository = {
       getSalesVatProfile,
       getSalesHistoryDetail,
@@ -203,10 +195,7 @@ describe("sales router", () => {
       updateSalesVatProfile,
     };
     const router = createSalesRouter({
-      authenticationMiddleware: createAuthenticationMiddleware({
-        configuration,
-        repository: authenticationRepository,
-      }),
+      authenticationMiddleware,
       checkoutService: createCheckoutService({ repository: { checkout } }),
       publicWebOrigin: "http://localhost:3000",
       refundService: createRefundService({ repository: { createRefund } }),
@@ -231,7 +220,7 @@ describe("sales router", () => {
   function headers(extra: Record<string, string> = {}) {
     return {
       "content-type": "application/json",
-      cookie: `${SESSION_COOKIE_NAME}=${TOKEN}`,
+      cookie: `${TEST_COOKIE_NAME}=${TOKEN}`,
       origin: "http://localhost:3000",
       ...extra,
     };
@@ -513,7 +502,7 @@ describe("sales router", () => {
     const value = await start();
     const response = await fetch(
       `${value.base}/organizations/${ORGANIZATION_ID}/branches/${BRANCH_ID}/pos/products?q=coffee&barcode=8850000000000&limit=25`,
-      { headers: { cookie: `${SESSION_COOKIE_NAME}=${TOKEN}` } },
+      { headers: { cookie: `${TEST_COOKIE_NAME}=${TOKEN}` } },
     );
     expect(response.status).toBe(200);
     expect(value.searchPosProducts).toHaveBeenCalledWith({
@@ -542,7 +531,7 @@ describe("sales router", () => {
       const value = await start({ searchPosProducts });
       const response = await fetch(
         `${value.base}/organizations/${ORGANIZATION_ID}/branches/${BRANCH_ID}/pos/products`,
-        { headers: { cookie: `${SESSION_COOKIE_NAME}=${TOKEN}` } },
+        { headers: { cookie: `${TEST_COOKIE_NAME}=${TOKEN}` } },
       );
       expect(response.status).toBe(status);
       expect(JSON.stringify(await response.json())).toContain(code);
@@ -554,7 +543,7 @@ describe("sales router", () => {
       (
         await fetch(
           `${value.base}/organizations/${ORGANIZATION_ID}/branches/${BRANCH_ID}/pos/products?limit=101`,
-          { headers: { cookie: `${SESSION_COOKIE_NAME}=${TOKEN}` } },
+          { headers: { cookie: `${TEST_COOKIE_NAME}=${TOKEN}` } },
         )
       ).status,
     ).toBe(400);
@@ -566,7 +555,7 @@ describe("sales router", () => {
     expect(
       (
         await fetch(endpoint, {
-          headers: { cookie: `${SESSION_COOKIE_NAME}=${TOKEN}` },
+          headers: { cookie: `${TEST_COOKIE_NAME}=${TOKEN}` },
         })
       ).status,
     ).toBe(200);

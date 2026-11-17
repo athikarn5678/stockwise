@@ -3,16 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../app.ts";
 import type { ApiLogger } from "../../logger.ts";
 import { startApiServer, type RunningApiServer } from "../../server.ts";
-import type { AuthenticationSessionRepository } from "./authentication-repository.ts";
-import { createAuthenticationMiddleware } from "./authentication-context.ts";
+import { createSessionAuthenticationMiddleware } from "./authentication-context.ts";
 import { createMembershipAccessRouter } from "./membership-access-router.ts";
 import type {
   SafeInvitation,
   SafeMembership,
 } from "./membership-access-repository.ts";
 import type { MembershipAccessService } from "./membership-access-service.ts";
-import type { SessionConfiguration } from "./session-configuration.ts";
-import { SESSION_COOKIE_NAME } from "./session-cookie.ts";
 
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const MEMBERSHIP_ID = "20000000-0000-4000-8000-000000000001";
@@ -20,14 +17,9 @@ const INVITATION_ID = "30000000-0000-4000-8000-000000000001";
 const BRANCH_ID = "40000000-0000-4000-8000-000000000001";
 const USER_ID = "50000000-0000-4000-8000-000000000001";
 const TOKEN = "A".repeat(43);
+const TEST_COOKIE_NAME = "stockwise_test_session";
 const UPDATED_AT = "2026-08-24T18:00:00.000Z";
 const logger: ApiLogger = { error() {}, info() {} };
-const configuration: SessionConfiguration = {
-  absoluteTimeoutMilliseconds: 604_800_000,
-  idleTimeoutMilliseconds: 86_400_000,
-  secureCookie: false,
-  touchIntervalMilliseconds: 900_000,
-};
 const membership: SafeMembership = {
   branchAssignments: [
     {
@@ -62,16 +54,19 @@ describe("membership access router", () => {
   });
 
   async function start(overrides: Partial<MembershipAccessService> = {}) {
-    const repository: AuthenticationSessionRepository = {
-      resolveSession: vi.fn().mockResolvedValue({
-        actor: {
-          displayName: "Owner",
-          email: "owner@example.com",
-          id: USER_ID,
-        },
-        sessionId: "session-id",
-      }),
-    };
+    const authenticationMiddleware = createSessionAuthenticationMiddleware(
+      async (request) =>
+        request.headers.cookie === `${TEST_COOKIE_NAME}=${TOKEN}`
+          ? {
+              actor: {
+                displayName: "Owner",
+                email: "owner@example.com",
+                id: USER_ID,
+              },
+              sessionId: "session-id",
+            }
+          : null,
+    );
     const service: MembershipAccessService = {
       acceptInvitation: vi
         .fn()
@@ -105,10 +100,7 @@ describe("membership access router", () => {
       ...overrides,
     };
     const router = createMembershipAccessRouter({
-      authenticationMiddleware: createAuthenticationMiddleware({
-        configuration,
-        repository,
-      }),
+      authenticationMiddleware,
       membershipAccessService: service,
       publicWebOrigin: "http://localhost:3000",
     });
@@ -126,7 +118,7 @@ describe("membership access router", () => {
     return fetch(url, {
       ...init,
       headers: {
-        cookie: `${SESSION_COOKIE_NAME}=${TOKEN}`,
+        cookie: `${TEST_COOKIE_NAME}=${TOKEN}`,
         ...(init.body === undefined
           ? {}
           : { "content-type": "application/json" }),

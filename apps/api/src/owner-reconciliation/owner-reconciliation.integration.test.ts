@@ -1,3 +1,4 @@
+import { createNativeTestSession } from "../test/native-session-fixture.ts";
 import {
   dropSingleOwnerIndex,
   restoreSingleOwnerIndex,
@@ -137,7 +138,9 @@ async function snapshot() {
     memberships: await prisma.organizationMembership.findMany({
       orderBy: { id: "asc" },
     }),
-    sessions: await prisma.session.findMany({ orderBy: { id: "asc" } }),
+    sessions: await prisma.betterAuthSession.findMany({
+      orderBy: { id: "asc" },
+    }),
     users: await prisma.user.findMany({ orderBy: { id: "asc" } }),
   };
 }
@@ -215,16 +218,7 @@ describe("one-time OWNER reconciliation with PostgreSQL", () => {
 
   it("demotes only the approved membership, records one event, and preserves everything else", async () => {
     const fixture = await twoOwnerOrganization("Mango");
-    await prisma.session.create({
-      data: {
-        absoluteExpiresAt: new Date(NOW.getTime() + 86_400_000),
-        idleExpiresAt: new Date(NOW.getTime() + 3_600_000),
-        issuedAt: NOW,
-        lastUsedAt: NOW,
-        tokenHash: "demoted-session-hash",
-        userId: fixture.demoted.account.id,
-      },
-    });
+    await createNativeTestSession(prisma, fixture.demoted.account.id);
     await prisma.invitation.create({
       data: {
         expiresAt: new Date(NOW.getTime() + 86_400_000),

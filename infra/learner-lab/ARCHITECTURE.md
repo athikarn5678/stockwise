@@ -1,7 +1,8 @@
 # StockWise on AWS — demo architecture (ADR-040)
 
 Restores the original Cloud Computing project design on AWS Academy Learner Lab
-for the demonstration window ending 2026-10-31 23:59 Asia/Bangkok. Synthetic
+for a time-limited demonstration window (its end date is decided in
+milestone M9). Synthetic
 data only. Real production hosting remains open (`OQ-015`/`OQ-020`).
 
 ```mermaid
@@ -23,7 +24,7 @@ flowchart TB
                 api["api: Express 127.0.0.1:3001<br/>Better Auth Native"]
                 web -->|loopback| api
             end
-            ops["one-off ops tasks<br/>bootstrap · migrate/grants · seed · cutover · export"]
+            ops["one-off ops tasks<br/>bootstrap · migrate/grants · seed · export"]
             asg -. hosts .-> task
             asg -. hosts .-> ops
         end

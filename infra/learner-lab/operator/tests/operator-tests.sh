@@ -323,7 +323,6 @@ new_case r2f8-rollback
 mkdir -p "${case_dir}/state"
 printf 'WEB_IMAGE=%s\nAPI_IMAGE=%s\nOPS_IMAGE=%s\n' "$(cat "${case_dir}/outputs/current_web_image")" \
   "$(cat "${case_dir}/outputs/current_api_image")" "$(cat "${case_dir}/outputs/current_ops_image")" >"${case_dir}/state/release-previous.env"
-printf 'STOCKWISE_FENCE_STATE:NATIVE\n' >"${case_dir}/task-log.txt"
 STUB_ALARM_STATE=ALARM operator_run rollback rollback.sh --var-file demo.tfvars && rc=0 || rc=$?
 expect R2F8_ROLLBACK_RECONCILES_AFTER_APPLY reset_after_scale_up
 
@@ -336,8 +335,8 @@ new_case f9-no-public-dns
   echo "API_IMAGE=$(cat "${case_dir}/outputs/current_api_image")"
   echo "OPS_IMAGE=$(cat "${case_dir}/outputs/current_ops_image")"
 } >"${case_dir}/release.env"
-operator_run deploy deploy.sh --release release.env --var-file demo.tfvars --native-cutover && rc=0 || rc=$?
-expect F9_DEPLOY_REFUSES_CUTOVER_BEFORE_PUBLIC_DNS bash -c "[[ $rc != 0 ]] &&
+operator_run deploy deploy.sh --release release.env --var-file demo.tfvars && rc=0 || rc=$?
+expect F9_DEPLOY_REFUSES_BEFORE_PUBLIC_DNS bash -c "[[ $rc != 0 ]] &&
   grep -q 'create the public DNS record (G5)' '${case_dir}/deploy.out' &&
   ! grep -q '^ecs run-task' '${case_dir}/aws.log' && [[ \$(grep -c '^apply' '${case_dir}/terraform.log') == 1 ]]"
 
@@ -347,9 +346,8 @@ docker run -d --label "lls.run=${run}" --name "${run}-pg" -e POSTGRES_PASSWORD=t
 for _ in $(seq 1 60); do docker exec "${run}-pg" pg_isready -U postgres -d stockwise_demo >/dev/null 2>&1 && break; sleep 1; done
 sleep 2
 schema='CREATE TABLE users (id uuid PRIMARY KEY);
-  CREATE TABLE native_auth_transition (id boolean PRIMARY KEY, state text NOT NULL);
-  CREATE TABLE _prisma_migrations (id text PRIMARY KEY);
-  INSERT INTO native_auth_transition VALUES (true, '"'NATIVE'"');'
+  CREATE TABLE better_auth_accounts (id uuid PRIMARY KEY);
+  CREATE TABLE _prisma_migrations (id text PRIMARY KEY);'
 docker exec "${run}-pg" psql -q -U postgres -d stockwise_demo -c "$schema" >/dev/null
 docker exec "${run}-pg" psql -q -U postgres -c "CREATE DATABASE other_demo" >/dev/null
 docker exec "${run}-pg" psql -q -U postgres -d other_demo -c "$schema" >/dev/null

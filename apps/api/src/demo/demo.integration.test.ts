@@ -59,39 +59,34 @@ it.skipIf(!configured)(
     try {
       expect(await runDemoFixture(prisma, password)).toBe("generated");
       await validateDemoGoldens(prisma);
-      const before = await prisma.user.findMany({
-        select: { id: true, passwordHash: true },
-        orderBy: { id: "asc" },
+      const before = await prisma.betterAuthAccount.findMany({
+        select: { userId: true, password: true },
+        orderBy: { userId: "asc" },
       });
       expect(await runDemoFixture(prisma, password)).toBe("no-op");
       await validateDemoGoldens(prisma);
-      const after = await prisma.user.findMany({
-        select: { id: true, passwordHash: true },
-        orderBy: { id: "asc" },
+      const after = await prisma.betterAuthAccount.findMany({
+        select: { userId: true, password: true },
+        orderBy: { userId: "asc" },
       });
       expect(after).toEqual(before);
       expect(await prisma.sale.count()).toBe(1266);
       expect(await prisma.saleItem.count()).toBe(2488);
       expect(await prisma.inventoryTransaction.count()).toBe(2599);
-      // Seeding never touches Native tables or the LEGACY fence.
+      // Seeding writes only the credential accounts among the Native tables.
       for (const table of DEMO_AUTHENTICATION_TABLES) {
         const rows = await prisma.$queryRawUnsafe<Array<{ count: number }>>(
           `SELECT count(*)::integer AS count FROM "${table}"`,
         );
         expect(rows[0]!.count).toBe(0);
       }
-      expect(
-        await prisma.$queryRawUnsafe(
-          `SELECT state FROM native_auth_transition`,
-        ),
-      ).toEqual([{ state: "LEGACY" }]);
       await expect(runDemoFixture(prisma, `${password}!`)).rejects.toThrow(
         /A demo user credential differs/,
       );
       expect(
-        await prisma.user.findMany({
-          select: { id: true, passwordHash: true },
-          orderBy: { id: "asc" },
+        await prisma.betterAuthAccount.findMany({
+          select: { userId: true, password: true },
+          orderBy: { userId: "asc" },
         }),
       ).toEqual(before);
     } finally {

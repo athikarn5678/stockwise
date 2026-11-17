@@ -1,3 +1,4 @@
+import { withTriggersDisabled } from "../../test/trigger-bypass.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -5,7 +6,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadTestDatabaseEnvironment } from "../../test/database-environment.ts";
 import { PrismaClient } from "../../generated/prisma/client.ts";
 import { createBetterAuthNative } from "./better-auth-native.ts";
-import { defaultAuthenticationAuthority } from "../../environment.ts";
 import { hashPassword, verifyPassword } from "./password-hasher.ts";
 import { createPendingRegistrationRepository } from "./pending-registration-repository.ts";
 import { createPendingRegistrationService } from "./pending-registration-service.ts";
@@ -119,7 +119,6 @@ describe("isolated D3 PostgreSQL pending registration", () => {
         })
       ).passwordHash,
     ).toBeNull();
-    expect(await prisma.session.count({ where: { userId: user.id } })).toBe(0);
     expect(
       await prisma.betterAuthSession.count({ where: { userId: user.id } }),
     ).toBe(0);
@@ -144,7 +143,6 @@ describe("isolated D3 PostgreSQL pending registration", () => {
         password: "different password",
       }),
     ).toBe(false);
-    expect(defaultAuthenticationAuthority("test")).toBe("legacy");
   });
   it("requires exact initiating proof; mailbox-only and another attempt cannot activate the password", async () => {
     const row = await stage();
@@ -247,6 +245,48 @@ describe("isolated D3 PostgreSQL pending registration", () => {
         security,
       }),
     ).toBe("proof_required");
+  });
+  it("advances the pending credential generation when a replacement repeats the same plaintext", async () => {
+    const row = await stage();
+    const before = await prisma.pendingRegistration.findUniqueOrThrow({
+      where: { email: row.email },
+    });
+    const replacement = await repository.register({
+      email: row.email,
+      passwordHash: hash,
+      security,
+    });
+    expect(replacement).not.toBeNull();
+    const after = await prisma.pendingRegistration.findUniqueOrThrow({
+      where: { email: row.email },
+    });
+    expect(after.id).toBe(before.id);
+    expect(after.credentialVersion).toBe(before.credentialVersion + 1n);
+    expect(after.passwordHash).toBe(before.passwordHash);
+    expect(await verifyPassword(after.passwordHash!, PASSWORD)).toBe(true);
+    expect(after.challengeId).toBe(replacement!.challenge.id);
+    expect(after.challengeId).not.toBe(before.challengeId);
+    expect(after.consumedAt).toBeNull();
+    expect(after.revokedAt).toBeNull();
+    expect(await complete(row)).toBe("invalid");
+    expect(
+      await repository.completeCode({
+        email: row.email,
+        challengeId: replacement!.challenge.id,
+        code: replacement!.code,
+        cookieHeader: cookie(row.material),
+        security,
+      }),
+    ).toBe("proof_required");
+    expect(
+      await repository.completeCode({
+        email: row.email,
+        challengeId: replacement!.challenge.id,
+        code: replacement!.code,
+        cookieHeader: cookie(replacement!),
+        security,
+      }),
+    ).toBe("verified");
   });
   it("counts five wrong OTPs without proof, preserves link and never consumes valid material without proof", async () => {
     const row = await stage();
@@ -366,6 +406,7 @@ describe("isolated D3 PostgreSQL pending registration", () => {
         email: address,
         emailVerifiedAt: new Date(),
         emailVerified: true,
+        nativeRegistrationCompletedAt: new Date(),
       },
     });
     const account = await prisma.betterAuthAccount.create({
@@ -497,6 +538,94 @@ describe("isolated D3 PostgreSQL pending registration", () => {
       reason: "RESPONSE_ABORTED",
     });
     expect(await repository.canDeliver(replacement!.challenge.id)).toBe(true);
+  });
+  describe("database refuses unsafe reopening of a revoked registration", () => {
+    const refusal = /fresh credential generation or delivery recovery/;
+    async function revoked() {
+      const row = await stage();
+      await repository.revokeDelivery({
+        challengeId: row.material.challenge.id,
+        reason: "DELIVERY_FAILED",
+      });
+      return row;
+    }
+    it("refuses reopening with the unchanged challenge", async () => {
+      const row = await revoked();
+      await expect(
+        prisma.pendingRegistration.update({
+          where: { email: row.email },
+          data: { revokedAt: null },
+        }),
+      ).rejects.toThrow(refusal);
+    });
+    it("refuses a changed password hash without a new credential generation", async () => {
+      const row = await revoked();
+      await expect(
+        prisma.pendingRegistration.update({
+          where: { email: row.email },
+          data: {
+            revokedAt: null,
+            challengeId: randomUUID(),
+            passwordHash: await hashPassword("a different pending password"),
+          },
+        }),
+      ).rejects.toThrow(refusal);
+    });
+    it("refuses delivery recovery of an expired row", async () => {
+      const row = await revoked();
+      // Expiring the row is time manipulation (setup only, no guard assertion).
+      await withTriggersDisabled(prisma, (tx) =>
+        tx.pendingRegistration.update({
+          where: { email: row.email },
+          data: {
+            issuedAt: new Date(Date.now() - 660_000),
+            expiresAt: new Date(Date.now() - 60_000),
+          },
+        }),
+      );
+      await expect(
+        prisma.pendingRegistration.update({
+          where: { email: row.email },
+          data: { revokedAt: null, challengeId: randomUUID() },
+        }),
+      ).rejects.toThrow(refusal);
+    });
+    it("refuses reopening a revoked row under a different email", async () => {
+      const row = await revoked();
+      await expect(
+        prisma.pendingRegistration.update({
+          where: { email: row.email },
+          data: {
+            revokedAt: null,
+            challengeId: randomUUID(),
+            email: email(),
+          },
+        }),
+      ).rejects.toThrow(refusal);
+    });
+    it("refuses reopening or reassigning a consumed row", async () => {
+      const row = await stage();
+      expect(await complete(row)).toBe("verified");
+      await expect(
+        prisma.pendingRegistration.update({
+          where: { email: row.email },
+          data: { consumedAt: null },
+        }),
+      ).rejects.toThrow(/consumed registration cannot be reopened/);
+      await expect(
+        prisma.pendingRegistration.update({
+          where: { email: row.email },
+          data: { passwordHash: hash },
+        }),
+      ).rejects.toThrow(/consumed registration cannot be reopened/);
+      const other = await prisma.user.create({ data: { email: email() } });
+      await expect(
+        prisma.pendingRegistration.update({
+          where: { email: row.email },
+          data: { userId: other.id },
+        }),
+      ).rejects.toThrow(/consumed registration cannot be reopened/);
+    });
   });
   it("persists admission and failure budgets across workers and restart compositions", async () => {
     const address = email();
@@ -789,7 +918,12 @@ describe("isolated D3 PostgreSQL pending registration", () => {
     const user = await prisma.user.findUniqueOrThrow({
       where: { email: row.email },
     });
-    await prisma.$executeRaw`UPDATE pending_registrations SET issued_at = statement_timestamp() - interval '11 minutes', expires_at = statement_timestamp() - interval '1 minute', consumed_at = statement_timestamp() - interval '2 minutes' WHERE email = ${row.email}`;
+    // Rewriting a consumed row's timestamps is time manipulation (setup only).
+    await withTriggersDisabled(
+      prisma,
+      (tx) =>
+        tx.$executeRaw`UPDATE pending_registrations SET issued_at = statement_timestamp() - interval '11 minutes', expires_at = statement_timestamp() - interval '1 minute', consumed_at = statement_timestamp() - interval '2 minutes' WHERE email = ${row.email}`,
+    );
     expect(
       await repository.completeLink({
         linkTokenHash: row.material.challenge.linkTokenHash,

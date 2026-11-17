@@ -1,5 +1,5 @@
 // OPTIONAL synthetic demo seeding (ADR-039/ADR-040, D-08), run only inside the
-// ops container by ops/ops-task.sh seed, before the first native:cutover.
+// ops container by ops/ops-task.sh seed, on the freshly migrated Native database.
 //
 // The accepted seeder (`apps/api/src/demo`) refuses every non-loopback,
 // non-`*_demo` target. This wrapper keeps that guard intact: it listens on the

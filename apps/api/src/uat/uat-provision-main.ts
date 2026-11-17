@@ -29,10 +29,6 @@ async function main(): Promise<void> {
   const databaseUrl = databaseUrlSchema.parse(process.env.DATABASE_URL);
   const prisma = createPrismaClient({ DATABASE_URL: databaseUrl });
   try {
-    const fence = await prisma.$queryRaw<
-      Array<{ state: string }>
-    >`SELECT state FROM native_auth_transition`;
-    if (fence[0]?.state !== "NATIVE") throw new Error("UAT_REQUIRES_NATIVE");
     const selected: UatPhase = phase;
     if (selected === "accounts") await provisionAccounts(prisma, spec, write);
     else await provisionMemberships(prisma, spec, write);

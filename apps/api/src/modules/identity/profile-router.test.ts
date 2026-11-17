@@ -3,22 +3,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../app.ts";
 import type { ApiLogger } from "../../logger.ts";
 import { startApiServer, type RunningApiServer } from "../../server.ts";
-import { createAuthenticationMiddleware } from "./authentication-context.ts";
-import type { AuthenticationSessionRepository } from "./authentication-repository.ts";
+import { createSessionAuthenticationMiddleware } from "./authentication-context.ts";
 import { createSelfProfileRouter } from "./profile-router.ts";
 import type { SelfProfile } from "./profile-repository.ts";
 import type { SelfProfileService } from "./profile-service.ts";
-import type { SessionConfiguration } from "./session-configuration.ts";
-import { SESSION_COOKIE_NAME } from "./session-cookie.ts";
 
-const configuration: SessionConfiguration = {
-  absoluteTimeoutMilliseconds: 7 * 24 * 60 * 60 * 1000,
-  idleTimeoutMilliseconds: 24 * 60 * 60 * 1000,
-  secureCookie: false,
-  touchIntervalMilliseconds: 15 * 60 * 1000,
-};
 const logger: ApiLogger = { error() {}, info() {} };
 const TOKEN = "A".repeat(43);
+const TEST_COOKIE_NAME = "stockwise_test_session";
 const profile: SelfProfile = {
   displayName: "Owner",
   email: "owner@example.com",
@@ -35,16 +27,19 @@ describe("self-profile router", () => {
   });
 
   async function start(serviceOverrides: Partial<SelfProfileService> = {}) {
-    const repository: AuthenticationSessionRepository = {
-      resolveSession: vi.fn().mockResolvedValue({
-        actor: {
-          displayName: null,
-          email: "owner@example.com",
-          id: "trusted-user-id",
-        },
-        sessionId: "session-id",
-      }),
-    };
+    const authenticationMiddleware = createSessionAuthenticationMiddleware(
+      async (request) =>
+        request.headers.cookie === `${TEST_COOKIE_NAME}=${TOKEN}`
+          ? {
+              actor: {
+                displayName: null,
+                email: "owner@example.com",
+                id: "trusted-user-id",
+              },
+              sessionId: "session-id",
+            }
+          : null,
+    );
     const service: SelfProfileService = {
       get: vi.fn().mockResolvedValue(profile),
       update: vi.fn().mockResolvedValue({ kind: "updated", profile }),
@@ -53,10 +48,7 @@ describe("self-profile router", () => {
     server = await startApiServer(
       createApp({
         apiRouter: createSelfProfileRouter({
-          authenticationMiddleware: createAuthenticationMiddleware({
-            configuration,
-            repository,
-          }),
+          authenticationMiddleware,
           profileService: service,
           publicWebOrigin: "http://localhost:3000",
         }),
@@ -72,7 +64,7 @@ describe("self-profile router", () => {
     const { base, service } = await start();
     const response = await fetch(`${base}/me`, {
       headers: {
-        cookie: `${SESSION_COOKIE_NAME}=${TOKEN}`,
+        cookie: `${TEST_COOKIE_NAME}=${TOKEN}`,
         "x-user-id": "forged",
       },
     });
@@ -105,7 +97,7 @@ describe("self-profile router", () => {
         await fetch(`${url}?userId=someone`, {
           method: "PATCH",
           headers: {
-            cookie: `${SESSION_COOKIE_NAME}=${TOKEN}`,
+            cookie: `${TEST_COOKIE_NAME}=${TOKEN}`,
             "content-type": "application/json",
           },
           body: JSON.stringify(valid),
@@ -133,7 +125,7 @@ describe("self-profile router", () => {
           await fetch(url, {
             method: "PATCH",
             headers: {
-              cookie: `${SESSION_COOKIE_NAME}=${TOKEN}`,
+              cookie: `${TEST_COOKIE_NAME}=${TOKEN}`,
               "content-type": "application/json",
             },
             body: JSON.stringify(body),
@@ -151,7 +143,7 @@ describe("self-profile router", () => {
     const response = await fetch(`${base}/me/profile`, {
       method: "PATCH",
       headers: {
-        cookie: `${SESSION_COOKIE_NAME}=${TOKEN}`,
+        cookie: `${TEST_COOKIE_NAME}=${TOKEN}`,
         "content-type": "application/json",
       },
       body: JSON.stringify({
@@ -177,7 +169,7 @@ describe("self-profile router", () => {
     const crossSite = await fetch(`${base}/me/profile`, {
       method: "PATCH",
       headers: {
-        cookie: `${SESSION_COOKIE_NAME}=${TOKEN}`,
+        cookie: `${TEST_COOKIE_NAME}=${TOKEN}`,
         "content-type": "application/json",
         origin: "https://attacker.example",
       },
@@ -187,7 +179,7 @@ describe("self-profile router", () => {
     const response = await fetch(`${base}/me/profile`, {
       method: "PATCH",
       headers: {
-        cookie: `${SESSION_COOKIE_NAME}=${TOKEN}`,
+        cookie: `${TEST_COOKIE_NAME}=${TOKEN}`,
         "content-type": "application/json",
         origin: "http://localhost:3000",
       },
@@ -208,7 +200,7 @@ describe("self-profile router", () => {
     const getPaths = ["/me", "/me/", "/Me", "/ME"];
     for (const path of getPaths) {
       const response = await fetch(`${base}${path}`, {
-        headers: { cookie: `${SESSION_COOKIE_NAME}=${TOKEN}` },
+        headers: { cookie: `${TEST_COOKIE_NAME}=${TOKEN}` },
       });
       expect(response.status).toBe(200);
       expect(response.headers.get("cache-control")).toBe("no-store");
@@ -244,7 +236,7 @@ describe("self-profile router", () => {
       const response = await fetch(`${base}${path}`, {
         method: "PATCH",
         headers: {
-          cookie: `${SESSION_COOKIE_NAME}=${TOKEN}`,
+          cookie: `${TEST_COOKIE_NAME}=${TOKEN}`,
           "content-type": "application/json",
         },
         body,
@@ -262,7 +254,7 @@ describe("self-profile router", () => {
           "content-type": "application/json",
         };
         if (authenticated) {
-          headers.cookie = `${SESSION_COOKIE_NAME}=${TOKEN}`;
+          headers.cookie = `${TEST_COOKIE_NAME}=${TOKEN}`;
           headers.origin = "https://attacker.example";
         }
         const response = await fetch(`${base}${path}`, {

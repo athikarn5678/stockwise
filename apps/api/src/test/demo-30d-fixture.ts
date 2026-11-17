@@ -1,8 +1,11 @@
+import { randomUUID } from "node:crypto";
+
 import type { PrismaClient } from "../generated/prisma/client.ts";
 import { verifyDemoDatabase } from "../demo/demo-local-database.ts";
 import { DEMO_30D_ORGANIZATION } from "../demo/demo-30d-plan.ts";
 import { ORGANIZATION_ROLES } from "../modules/identity/authorization-policy.ts";
 import { hashPassword } from "../modules/identity/password-hasher.ts";
+import { createNativeFixtureUser } from "./native-user-fixture.ts";
 
 /** Only called on an owned disposable database by the test/browser setup. */
 export async function createDemo30dTestFixture(prisma: PrismaClient) {
@@ -32,14 +35,19 @@ export async function createDemo30dTestFixture(prisma: PrismaClient) {
   const passwordHash = await hashPassword(password);
   const actors = await Promise.all(
     ORGANIZATION_ROLES.map(async (role) => {
-      const user = await prisma.user.create({
-        data: {
-          displayName: `Demo ${role}`,
-          email: `demo30d-${role.toLowerCase()}@example.invalid`,
-          passwordHash,
-          emailVerifiedAt: createdAt,
-          createdAt,
-        },
+      // Native identity: verified user plus credential account; `createdAt`
+      // is aligned with the rest of the fixture afterwards.
+      const created = await createNativeFixtureUser(prisma, {
+        id: randomUUID(),
+        email: `demo30d-${role.toLowerCase()}@example.invalid`,
+        displayName: `Demo ${role}`,
+        password,
+        passwordHash,
+        at: createdAt,
+      });
+      const user = await prisma.user.update({
+        where: { id: created.id },
+        data: { createdAt },
       });
       await prisma.organizationMembership.create({
         data: {

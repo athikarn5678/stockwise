@@ -58,7 +58,7 @@ actual_sha="$(sha256sum "$file" | cut -d' ' -f1)"
 listing="$(docker run --rm -i --network none "$postgres_image" pg_restore --list <"$file" 2>&1 | tr -d '\r')" ||
   die "pg_restore cannot read the archive"
 grep -qE "^;[[:space:]]+dbname: ${database}\$" <<<"$listing" || die "the archive was taken from another database"
-for table in users native_auth_transition _prisma_migrations; do
+for table in users better_auth_accounts _prisma_migrations; do
   grep -qE "TABLE public ${table}( |\$)" <<<"$listing" || die "the archive lacks table ${table}"
 done
 

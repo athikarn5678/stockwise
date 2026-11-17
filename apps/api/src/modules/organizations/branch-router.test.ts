@@ -3,10 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../app.ts";
 import type { ApiLogger } from "../../logger.ts";
 import { startApiServer, type RunningApiServer } from "../../server.ts";
-import type { AuthenticationSessionRepository } from "../identity/authentication-repository.ts";
-import { createAuthenticationMiddleware } from "../identity/authentication-context.ts";
-import type { SessionConfiguration } from "../identity/session-configuration.ts";
-import { SESSION_COOKIE_NAME } from "../identity/session-cookie.ts";
+import { createSessionAuthenticationMiddleware } from "../identity/authentication-context.ts";
 import type { SafeBranch } from "./branch-repository.ts";
 import { createBranchRouter } from "./branch-router.ts";
 import type { BranchService } from "./branch-service.ts";
@@ -14,6 +11,7 @@ import type { BranchService } from "./branch-service.ts";
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const BRANCH_ID = "20000000-0000-4000-8000-000000000001";
 const TOKEN = "A".repeat(43);
+const TEST_COOKIE_NAME = "stockwise_test_session";
 const branch: SafeBranch = {
   address: null,
   code: "MAIN",
@@ -25,12 +23,6 @@ const branch: SafeBranch = {
   updatedAt: "2026-08-24T12:00:00.000Z",
 };
 const logger: ApiLogger = { error() {}, info() {} };
-const configuration: SessionConfiguration = {
-  absoluteTimeoutMilliseconds: 604_800_000,
-  idleTimeoutMilliseconds: 86_400_000,
-  secureCookie: false,
-  touchIntervalMilliseconds: 900_000,
-};
 
 describe("branch router", () => {
   let server: RunningApiServer | undefined;
@@ -41,16 +33,19 @@ describe("branch router", () => {
   });
 
   async function start(overrides: Partial<BranchService> = {}) {
-    const repository: AuthenticationSessionRepository = {
-      resolveSession: vi.fn().mockResolvedValue({
-        actor: {
-          displayName: "Owner",
-          email: "owner@example.com",
-          id: "trusted-user-id",
-        },
-        sessionId: "session-id",
-      }),
-    };
+    const authenticationMiddleware = createSessionAuthenticationMiddleware(
+      async (request) =>
+        request.headers.cookie === `${TEST_COOKIE_NAME}=${TOKEN}`
+          ? {
+              actor: {
+                displayName: "Owner",
+                email: "owner@example.com",
+                id: "trusted-user-id",
+              },
+              sessionId: "session-id",
+            }
+          : null,
+    );
     const service: BranchService = {
       accessContext: vi.fn().mockResolvedValue({
         firstOrganizationOnboarding: { eligible: true },
@@ -68,10 +63,7 @@ describe("branch router", () => {
       ...overrides,
     };
     const router = createBranchRouter({
-      authenticationMiddleware: createAuthenticationMiddleware({
-        configuration,
-        repository,
-      }),
+      authenticationMiddleware,
       branchService: service,
       publicWebOrigin: "http://localhost:3000",
     });
@@ -89,7 +81,7 @@ describe("branch router", () => {
     return fetch(path, {
       ...init,
       headers: {
-        cookie: `${SESSION_COOKIE_NAME}=${TOKEN}`,
+        cookie: `${TEST_COOKIE_NAME}=${TOKEN}`,
         ...(init.body === undefined
           ? {}
           : { "content-type": "application/json" }),

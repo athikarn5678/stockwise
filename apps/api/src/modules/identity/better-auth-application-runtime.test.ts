@@ -5,7 +5,6 @@ import { createApp } from "../../app.ts";
 import { loadApiEnvironment } from "../../environment.ts";
 import { createPrismaClient } from "../../prisma/client.ts";
 import { startApiServer } from "../../server.ts";
-import { createAuthenticationRuntime } from "./authentication-runtime.ts";
 import { createBetterAuthApplicationRuntime } from "./better-auth-application-runtime.ts";
 import { requireBetterAuthSecret } from "./better-auth-secret.ts";
 
@@ -42,10 +41,8 @@ describe("Native startup configuration", () => {
   it.each([undefined, ...invalidSecrets])(
     "refuses missing or invalid Native configuration before startup (%s)",
     (secret) => {
-      const configured = {
-        ...environment(),
-        STOCKWISE_BETTER_AUTH_SECRET: secret,
-      };
+      const configured = environment();
+      Reflect.set(configured, "STOCKWISE_BETTER_AUTH_SECRET", secret);
       const prisma = createPrismaClient(configured);
       expect(() =>
         createBetterAuthApplicationRuntime({
@@ -98,13 +95,11 @@ describe("Native startup configuration", () => {
 });
 
 describe("actual authentication runtime HTTP boundary without database access", () => {
-  it.each(["legacy", "native"] as const)(
+  it.each(["native"] as const)(
     "%s rejects the other authority's cookie and unauthenticated access",
-    async (authority) => {
-      // Deliberately unusable Native configuration must not affect Legacy construction.
-      const configured = environment(
-        authority === "legacy" ? "invalid-unused" : undefined,
-      );
+    async (_authority) => {
+      void _authority;
+      const configured = environment();
       const prisma = createPrismaClient(configured);
       const input = {
         environment: configured,
@@ -112,10 +107,7 @@ describe("actual authentication runtime HTTP boundary without database access", 
         emailProvider: { async send() {} },
         onDeliveryFailure() {},
       };
-      const runtime =
-        authority === "legacy"
-          ? createAuthenticationRuntime(input)
-          : createBetterAuthApplicationRuntime(input);
+      const runtime = createBetterAuthApplicationRuntime(input);
       const router = Router();
       router.use(runtime.router);
       router.get(
@@ -129,10 +121,7 @@ describe("actual authentication runtime HTTP boundary without database access", 
       );
       const base = `http://127.0.0.1:${server.address.port}/api/v1`;
       try {
-        const cookie =
-          authority === "legacy"
-            ? "stockwise_native.session_token=synthetic.signature"
-            : `stockwise_session=${randomBytes(32).toString("base64url")}`;
+        const cookie = `stockwise_session=${randomBytes(32).toString("base64url")}`;
         for (const headers of [{}, { cookie }]) {
           const response = await fetch(`${base}/protected`, { headers });
           expect(response.status).toBe(401);
@@ -141,40 +130,38 @@ describe("actual authentication runtime HTTP boundary without database access", 
           });
           expect(response.headers.has("set-cookie")).toBe(false);
         }
-        if (authority === "native") {
-          for (const route of [
-            "register",
-            "login",
-            "logout",
-            "logout-all",
-            "verification-password-proof",
-            "verification-resend",
-            "verify-email",
-            "verify-email-code",
-            "forgot-password",
-            "reset-password",
-          ]) {
-            const response = await fetch(`${base}/auth/${route}`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Origin: "http://wrong.invalid",
-              },
-              body: "{}",
-            });
-            expect(response.status, route).toBe(403);
-            expect(response.headers.has("set-cookie"), route).toBe(false);
-          }
-          const bypass = await fetch(`${base}/auth/sign-in/email`, {
+        for (const route of [
+          "register",
+          "login",
+          "logout",
+          "logout-all",
+          "verification-password-proof",
+          "verification-resend",
+          "verify-email",
+          "verify-email-code",
+          "forgot-password",
+          "reset-password",
+        ]) {
+          const response = await fetch(`${base}/auth/${route}`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Origin: configured.STOCKWISE_PUBLIC_WEB_ORIGIN,
+              Origin: "http://wrong.invalid",
             },
             body: "{}",
           });
-          expect(bypass.status).toBe(404);
+          expect(response.status, route).toBe(403);
+          expect(response.headers.has("set-cookie"), route).toBe(false);
         }
+        const bypass = await fetch(`${base}/auth/sign-in/email`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: configured.STOCKWISE_PUBLIC_WEB_ORIGIN,
+          },
+          body: "{}",
+        });
+        expect(bypass.status).toBe(404);
       } finally {
         await server.stop();
         await runtime.drain();

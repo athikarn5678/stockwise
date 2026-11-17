@@ -3,15 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../app.ts";
 import type { ApiLogger } from "../../logger.ts";
 import { startApiServer, type RunningApiServer } from "../../server.ts";
-import type { AuthenticationSessionRepository } from "../identity/authentication-repository.ts";
-import { createAuthenticationMiddleware } from "../identity/authentication-context.ts";
-import type { SessionConfiguration } from "../identity/session-configuration.ts";
-import { SESSION_COOKIE_NAME } from "../identity/session-cookie.ts";
+import { createSessionAuthenticationMiddleware } from "../identity/authentication-context.ts";
 import { createOrganizationSettingsRouter } from "./organization-settings-router.ts";
 import type { OrganizationSettingsService } from "./organization-settings-service.ts";
 
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const TOKEN = "A".repeat(43);
+const TEST_COOKIE_NAME = "stockwise_test_session";
 const timestamp = "2026-10-25T12:00:00.000Z";
 const organization = {
   id: ORGANIZATION_ID,
@@ -19,12 +17,6 @@ const organization = {
   updatedAt: timestamp,
 };
 const logger: ApiLogger = { error() {}, info() {} };
-const configuration: SessionConfiguration = {
-  absoluteTimeoutMilliseconds: 604_800_000,
-  idleTimeoutMilliseconds: 86_400_000,
-  secureCookie: false,
-  touchIntervalMilliseconds: 900_000,
-};
 
 describe("organization settings router", () => {
   let server: RunningApiServer | undefined;
@@ -34,16 +26,19 @@ describe("organization settings router", () => {
   });
 
   async function start(overrides: Partial<OrganizationSettingsService> = {}) {
-    const authentication: AuthenticationSessionRepository = {
-      resolveSession: vi.fn().mockResolvedValue({
-        actor: {
-          displayName: "Owner",
-          email: "owner@example.com",
-          id: "trusted-user-id",
-        },
-        sessionId: "session-id",
-      }),
-    };
+    const authenticationMiddleware = createSessionAuthenticationMiddleware(
+      async (request) =>
+        request.headers.cookie === `${TEST_COOKIE_NAME}=${TOKEN}`
+          ? {
+              actor: {
+                displayName: "Owner",
+                email: "owner@example.com",
+                id: "trusted-user-id",
+              },
+              sessionId: "session-id",
+            }
+          : null,
+    );
     const service: OrganizationSettingsService = {
       get: vi.fn().mockResolvedValue({ kind: "success", organization }),
       update: vi.fn().mockResolvedValue({
@@ -57,10 +52,7 @@ describe("organization settings router", () => {
       ...overrides,
     };
     const router = createOrganizationSettingsRouter({
-      authenticationMiddleware: createAuthenticationMiddleware({
-        configuration,
-        repository: authentication,
-      }),
+      authenticationMiddleware,
       organizationSettingsService: service,
       publicWebOrigin: "http://localhost:3000",
     });
@@ -78,7 +70,7 @@ describe("organization settings router", () => {
     return fetch(path, {
       ...init,
       headers: {
-        cookie: `${SESSION_COOKIE_NAME}=${TOKEN}`,
+        cookie: `${TEST_COOKIE_NAME}=${TOKEN}`,
         ...(init.body === undefined
           ? {}
           : { "content-type": "application/json" }),

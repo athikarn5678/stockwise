@@ -10,7 +10,7 @@ export interface ValidPasswordResetToken {
   userId: string;
 }
 
-export interface CredentialLifecycleRepository {
+export interface PasswordResetRepository {
   completePasswordReset(input: {
     completedAt: Date;
     passwordHash: string;
@@ -27,30 +27,12 @@ export interface CredentialLifecycleRepository {
     issuedAt: Date;
     tokenHash: string;
   }): Promise<IssuedIdentityToken | null>;
-  revokeAllSessions(input: {
-    reason: "logout_all";
-    revokedAt: Date;
-    userId: string;
-  }): Promise<void>;
   revokePasswordResetToken(input: {
     revokedAt: Date;
     tokenId: string;
   }): Promise<void>;
-  revokeSessionByTokenHash(input: {
-    revokedAt: Date;
-    tokenHash: string;
-  }): Promise<void>;
-}
-
-export type PasswordResetRepository = Pick<
-  CredentialLifecycleRepository,
-  | "completePasswordReset"
-  | "findValidPasswordResetToken"
-  | "issuePasswordResetToken"
-  | "revokePasswordResetToken"
-> & {
   confirmPasswordResetDelivery?(input: { tokenId: string }): Promise<void>;
-};
+}
 
 export class OneTimeTokenCollisionError extends Error {
   constructor() {
@@ -142,17 +124,11 @@ async function freshDbTime(
   return now;
 }
 
-export function createPrismaCredentialLifecycleRepository(
-  prisma: PrismaClient,
-): CredentialLifecycleRepository {
-  return createCredentialLifecycleRepository(prisma, false);
-}
-
 /** Isolated native reset persistence; never exposes legacy logout authority. */
 export function createPrismaBetterAuthCredentialLifecycleRepository(
   prisma: PrismaClient,
 ): PasswordResetRepository {
-  const repository = createCredentialLifecycleRepository(prisma, true);
+  const repository = createCredentialLifecycleRepository(prisma);
   return {
     completePasswordReset: repository.completePasswordReset,
     findValidPasswordResetToken: repository.findValidPasswordResetToken,
@@ -221,9 +197,7 @@ async function nativeEligibleForDelivery(
 
 function createCredentialLifecycleRepository(
   prisma: PrismaClient,
-  native: boolean,
-): CredentialLifecycleRepository {
-  const nativeEligible = nativeEligibleForDelivery;
+): PasswordResetRepository {
   return {
     async issuePasswordResetToken(input) {
       try {
@@ -245,15 +219,11 @@ function createCredentialLifecycleRepository(
             return null;
           }
 
-          if (native && !(await nativeEligible(transaction, userId))) {
+          if (!(await nativeEligibleForDelivery(transaction, userId))) {
             return null;
           }
-          const issuedAt = native
-            ? await freshDbTime(transaction)
-            : input.issuedAt;
-          const expiresAt = native
-            ? new Date(issuedAt.getTime() + 30 * 60 * 1000)
-            : input.expiresAt;
+          const issuedAt = await freshDbTime(transaction);
+          const expiresAt = new Date(issuedAt.getTime() + 30 * 60 * 1000);
 
           await transaction.passwordResetToken.updateMany({
             where: {
@@ -268,7 +238,7 @@ function createCredentialLifecycleRepository(
             data: {
               expiresAt,
               issuedAt,
-              requiresNativeDeliveryConfirmation: native,
+              requiresNativeDeliveryConfirmation: true,
               tokenHash: input.tokenHash,
               userId,
             },
@@ -298,7 +268,7 @@ function createCredentialLifecycleRepository(
     },
 
     async findValidPasswordResetToken({ now, tokenHash }) {
-      if (native) now = await freshDbTime(prisma);
+      now = await freshDbTime(prisma);
       const token = await prisma.passwordResetToken.findUnique({
         where: { tokenHash },
         select: {
@@ -319,9 +289,8 @@ function createCredentialLifecycleRepository(
         token.consumedAt !== null ||
         token.revokedAt !== null ||
         token.replacedAt !== null ||
-        (native && !token.requiresNativeDeliveryConfirmation) ||
-        (token.requiresNativeDeliveryConfirmation &&
-          token.deliveryConfirmedAt === null) ||
+        !token.requiresNativeDeliveryConfirmation ||
+        token.deliveryConfirmedAt === null ||
         now >= token.expiresAt ||
         token.user.status !== "ACTIVE" ||
         token.user.emailVerifiedAt === null
@@ -329,7 +298,7 @@ function createCredentialLifecycleRepository(
         return null;
       }
 
-      if (native && !(await nativeEligible(prisma, token.userId))) {
+      if (!(await nativeEligibleForDelivery(prisma, token.userId))) {
         return null;
       }
 
@@ -345,14 +314,12 @@ function createCredentialLifecycleRepository(
           }
 
           // Same lock order as D4-N1 finalization; Argon2 already finished outside.
-          if (native) {
-            await transaction.$queryRaw`
-              SELECT id FROM better_auth_accounts
-              WHERE user_id = ${userId}::uuid AND provider_id = 'credential'
-              FOR UPDATE`;
-            if (!(await nativeEligible(transaction, userId))) {
-              throw new InvalidPasswordResetStateError();
-            }
+          await transaction.$queryRaw`
+            SELECT id FROM better_auth_accounts
+            WHERE user_id = ${userId}::uuid AND provider_id = 'credential'
+            FOR UPDATE`;
+          if (!(await nativeEligibleForDelivery(transaction, userId))) {
+            throw new InvalidPasswordResetStateError();
           }
 
           const lockedTokenId = await lockPasswordResetTokenById(
@@ -395,45 +362,28 @@ function createCredentialLifecycleRepository(
             token.consumedAt !== null ||
             token.revokedAt !== null ||
             token.replacedAt !== null ||
-            (native && !token.requiresNativeDeliveryConfirmation) ||
-            (token.requiresNativeDeliveryConfirmation &&
-              token.deliveryConfirmedAt === null) ||
+            !token.requiresNativeDeliveryConfirmation ||
+            token.deliveryConfirmedAt === null ||
             now >= token.expiresAt
           ) {
             throw new InvalidPasswordResetStateError();
           }
 
-          if (native) {
-            await transaction.betterAuthAccount.update({
-              where: {
-                providerId_accountId: {
-                  providerId: "credential",
-                  accountId: userId,
-                },
+          await transaction.betterAuthAccount.update({
+            where: {
+              providerId_accountId: {
+                providerId: "credential",
+                accountId: userId,
               },
-              data: { password: passwordHash },
-            });
-          }
+            },
+            data: { password: passwordHash },
+          });
 
           await transaction.user.update({
             where: { id: userId },
             data: {
               credentialVersion: { increment: 1 },
               passwordChangedAt: now,
-              ...(native ? {} : { passwordHash }),
-            },
-          });
-
-          await transaction.emailVerificationChallenge.updateMany({
-            where: {
-              consumedAt: null,
-              replacedAt: null,
-              revokedAt: null,
-              userId,
-            },
-            data: {
-              revocationReason: "PASSWORD_RESET",
-              revokedAt: now,
             },
           });
 
@@ -442,25 +392,15 @@ function createCredentialLifecycleRepository(
             data: { consumedAt: now },
           });
 
-          if (native) {
-            // Deletes APPLICATION and provisional sessions; late old-password
-            // writers cannot finalize against the new version/PHC.
-            await transaction.betterAuthSession.deleteMany({
-              where: { userId },
-            });
-            if (
-              await transaction.betterAuthSession.count({ where: { userId } })
-            ) {
-              throw new Error("Native password reset revocation failed");
-            }
-          } else {
-            await transaction.session.updateMany({
-              where: { revokedAt: null, userId },
-              data: {
-                revocationReason: "password_reset",
-                revokedAt: now,
-              },
-            });
+          // Deletes APPLICATION and provisional sessions; late old-password
+          // writers cannot finalize against the new version/PHC.
+          await transaction.betterAuthSession.deleteMany({
+            where: { userId },
+          });
+          if (
+            await transaction.betterAuthSession.count({ where: { userId } })
+          ) {
+            throw new Error("Native password reset revocation failed");
           }
         });
         return true;
@@ -470,20 +410,6 @@ function createCredentialLifecycleRepository(
         }
         throw error;
       }
-    },
-
-    async revokeSessionByTokenHash({ revokedAt, tokenHash }) {
-      await prisma.session.updateMany({
-        where: { revokedAt: null, tokenHash },
-        data: { revocationReason: "logout", revokedAt },
-      });
-    },
-
-    async revokeAllSessions({ reason, revokedAt, userId }) {
-      await prisma.session.updateMany({
-        where: { revokedAt: null, userId },
-        data: { revocationReason: reason, revokedAt },
-      });
     },
   };
 }

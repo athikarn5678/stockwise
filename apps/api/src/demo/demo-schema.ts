@@ -34,8 +34,7 @@ export const DEMO_FIXTURE_TABLES = [
   "inventory_transactions",
   "first_organization_onboardings",
   "branch_assignments",
-  "sessions",
-  "email_verification_challenges",
+  "better_auth_accounts",
   "password_reset_tokens",
   "invitations",
   "invitation_branch_scopes",
@@ -44,16 +43,14 @@ export const DEMO_FIXTURE_TABLES = [
 ] as const;
 
 /**
- * Better Auth / Native transition tables (migrations 20261012000000 through
- * 20261024000000). Seeding happens before the operator Native cutover
- * (ADR-039), so all of them must be empty before and after seeding; the
- * cutover itself enrolls the seeded users.
+ * Better Auth Native tables the fixture does not seed. Seeding runs on a
+ * database that is Native from its migrations; these must be empty before and
+ * after seeding (`better_auth_accounts` is seeded: one credential account per
+ * demo user).
  */
 export const DEMO_AUTHENTICATION_TABLES = [
-  "better_auth_accounts",
   "better_auth_sessions",
   "better_auth_verifications",
-  "native_auth_enrollments",
   "native_password_reset_quotas",
   "pending_registrations",
   "pending_registration_quotas",
@@ -62,8 +59,6 @@ export const DEMO_AUTHENTICATION_TABLES = [
   "demo_dataset_runs",
 ] as const;
 
-/** Singleton fence row; seeding is allowed only while it is `LEGACY`. */
-export const DEMO_TRANSITION_TABLE = "native_auth_transition";
 const MIGRATION_TABLE = "_prisma_migrations";
 
 /** Every table counted for emptiness and row-compared against the fixture. */
@@ -73,11 +68,7 @@ export const DEMO_COUNTED_TABLES = [
 ] as const;
 
 export function expectedDemoSchemaTables(): string[] {
-  return [
-    ...DEMO_COUNTED_TABLES,
-    DEMO_TRANSITION_TABLE,
-    MIGRATION_TABLE,
-  ].sort();
+  return [...DEMO_COUNTED_TABLES, MIGRATION_TABLE].sort();
 }
 
 export type DemoSchemaState = Readonly<{
@@ -88,7 +79,6 @@ export type DemoSchemaState = Readonly<{
     rolledBack: boolean;
   }>[];
   localMigrations: readonly string[];
-  transitionStates: readonly string[];
 }>;
 
 function sameSet(left: readonly string[], right: readonly string[]): boolean {
@@ -99,8 +89,8 @@ function sameSet(left: readonly string[], right: readonly string[]): boolean {
 
 /**
  * Fail-closed: the database must hold exactly the committed migrations, all
- * finished and none rolled back, exactly the manifest tables, and a LEGACY
- * fence. Unknown, missing or partially migrated schemas are refused.
+ * finished and none rolled back, and exactly the manifest tables. Unknown,
+ * missing or partially migrated schemas are refused.
  */
 export function assertDemoSchema(state: DemoSchemaState): void {
   if (state.migrations.some((row) => !row.finished || row.rolledBack))
@@ -118,18 +108,4 @@ export function assertDemoSchema(state: DemoSchemaState): void {
     throw new Error(
       "Database schema differs from the complete stockwise-demo-v1 manifest.",
     );
-  if (
-    state.transitionStates.length !== 1 ||
-    state.transitionStates[0] !== "LEGACY"
-  )
-    throw new Error(
-      "Demo seeding requires the pre-cutover LEGACY authentication state; run it before native:cutover.",
-    );
 }
-
-/** Columns added to `users` by the Better Auth migrations, with their pre-cutover values. */
-export const DEMO_USER_NATIVE_DEFAULTS = Object.freeze({
-  emailVerified: false,
-  image: null,
-  nativeRegistrationCompletedAt: null,
-});

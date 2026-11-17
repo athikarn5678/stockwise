@@ -348,9 +348,8 @@ describe("live disposable ownership guard", () => {
     const createFunction =
       "CREATE FUNCTION public.operator_fault() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$";
     const createTrigger =
-      "CREATE TRIGGER operator_fault BEFORE INSERT ON public.native_auth_enrollments FOR EACH ROW EXECUTE FUNCTION public.operator_fault()";
-    const dropTrigger =
-      "DROP TRIGGER IF EXISTS operator_fault ON public.native_auth_enrollments";
+      "CREATE TRIGGER operator_fault BEFORE INSERT ON public.users FOR EACH ROW EXECUTE FUNCTION public.operator_fault()";
+    const dropTrigger = "DROP TRIGGER IF EXISTS operator_fault ON public.users";
     const dropFunction = "DROP FUNCTION IF EXISTS public.operator_fault()";
     const owned = {
       currentName: scenario,

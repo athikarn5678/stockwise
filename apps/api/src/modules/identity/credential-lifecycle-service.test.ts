@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { CredentialLifecycleRepository } from "./credential-lifecycle-repository.ts";
-import { createCredentialLifecycleService } from "./credential-lifecycle-service.ts";
+import type { PasswordResetRepository } from "./credential-lifecycle-repository.ts";
+import { createPasswordResetService } from "./credential-lifecycle-service.ts";
 import type { IdentityEmailProvider } from "./email-provider.ts";
 import type { PasswordHasher } from "./password-hasher.ts";
 
@@ -9,7 +9,7 @@ const NOW = new Date("2026-08-24T12:00:00.000Z");
 const rawToken = "A".repeat(43);
 const tokenHash = "a".repeat(64);
 
-function createRepository(): CredentialLifecycleRepository {
+function createRepository(): PasswordResetRepository {
   return {
     completePasswordReset: vi.fn().mockResolvedValue(true),
     findValidPasswordResetToken: vi.fn().mockResolvedValue({
@@ -20,9 +20,7 @@ function createRepository(): CredentialLifecycleRepository {
       id: "reset-token-id",
       recipient: "user@example.com",
     }),
-    revokeAllSessions: vi.fn().mockResolvedValue(undefined),
     revokePasswordResetToken: vi.fn().mockResolvedValue(undefined),
-    revokeSessionByTokenHash: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -33,13 +31,13 @@ function createService({
 }: {
   emailProvider?: IdentityEmailProvider;
   passwordHasher?: PasswordHasher;
-  repository?: CredentialLifecycleRepository;
+  repository?: PasswordResetRepository;
 } = {}) {
   return {
     emailProvider,
     passwordHasher,
     repository,
-    service: createCredentialLifecycleService({
+    service: createPasswordResetService({
       emailProvider,
       now: () => NOW,
       passwordHasher,

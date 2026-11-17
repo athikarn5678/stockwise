@@ -102,12 +102,16 @@ function errorMessage(
     price_changed: t("uiSalesHistoryIsTemporarilyUnavailableTryAgain"),
     product_inactive: t("uiSalesHistoryIsTemporarilyUnavailableTryAgain"),
     product_not_found: t("uiSalesHistoryIsTemporarilyUnavailableTryAgain"),
+    promptpay_not_configured: t(
+      "uiSalesHistoryIsTemporarilyUnavailableTryAgain",
+    ),
     sale_not_found: t("uiThisSaleIsNoLongerAvailableAtThisBranch"),
     sale_already_fully_refunded: t("uiThisSaleIsAlreadyFullyRefunded"),
     refund_quantity_exceeded: t(
       "uiARefundQuantityExceedsWhatRemainsOnTheOriginal",
     ),
     stale_vat_profile: t("uiSalesHistoryIsTemporarilyUnavailableTryAgain"),
+    total_mismatch: t("uiSalesHistoryIsTemporarilyUnavailableTryAgain"),
     unavailable: t("uiSalesHistoryIsTemporarilyUnavailableTryAgain"),
     validation: t("uiCheckTheCashierUserIDAndTryAgain"),
     vat_configuration_required: t(

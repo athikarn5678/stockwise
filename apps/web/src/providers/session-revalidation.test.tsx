@@ -19,6 +19,17 @@ import {
   UNCONFIRMED_HIDDEN_LIMIT_MS,
 } from "./session-lifecycle-provider";
 
+// The shell's silent plan-badge request is not part of the session-revalidation
+// contract this file counts (one access-context request per burst).
+vi.mock("@/billing-api-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/billing-api-client")>()),
+  getBilling: vi.fn(async () => ({
+    canManage: false,
+    enabled: false,
+    subscription: null,
+  })),
+}));
+
 const replace = vi.fn();
 let pathname = "/app";
 vi.mock("next/navigation", () => ({

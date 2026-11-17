@@ -57,6 +57,8 @@ export const DEMO_AUTHENTICATION_TABLES = [
   "pending_registration_credential_attempts",
   // ADR-043 Production demo provenance: operator-written, so this fixture must find it empty.
   "demo_dataset_runs",
+  // ADR-047 Stripe subscription: written only by the OWNER billing confirm flow, so this fixture must find it empty.
+  "organization_subscriptions",
 ] as const;
 
 const MIGRATION_TABLE = "_prisma_migrations";

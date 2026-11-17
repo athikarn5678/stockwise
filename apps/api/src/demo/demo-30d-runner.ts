@@ -3,7 +3,7 @@ import { performance } from "node:perf_hooks";
 
 import { Client } from "pg";
 
-import { verifyDemoDatabase } from "./demo-local-database.ts";
+import { verifyDemoSeedTarget } from "./demo-local-database.ts";
 import {
   initializeDemoProvenance,
   readDemoProvenance,
@@ -13,6 +13,7 @@ import {
 } from "./demo-30d-provenance.ts";
 
 import { Prisma, type PrismaClient } from "../generated/prisma/client.ts";
+import { createPrismaInventoryRepository } from "../modules/inventory/inventory-repository.ts";
 import { createPrismaPurchaseOrderRepository } from "../modules/purchasing/purchase-order-repository.ts";
 import { expectedPurchaseOrderTotal } from "../modules/purchasing/purchase-order-values.ts";
 import { createPrismaReceivingRepository } from "../modules/purchasing/receiving-repository.ts";
@@ -23,6 +24,7 @@ import {
   buildDemo30dPlan,
   DEMO_30D_ORGANIZATION,
   type Demo30dPlan,
+  type Demo30dShape,
 } from "./demo-30d-plan.ts";
 import { demoId } from "./demo-values.ts";
 
@@ -32,6 +34,7 @@ export async function prepareDemo30d(
     organizationId: string;
     referenceDate: string;
     seed: number;
+    shape?: Demo30dShape;
   },
 ) {
   const organization = await prisma.organization.findUnique({
@@ -67,6 +70,7 @@ export async function prepareDemo30d(
     );
   const plan = buildDemo30dPlan({
     ...options,
+    ...(options.shape === undefined ? {} : { shape: options.shape }),
     reportingTimezone: organization.reportingTimezone,
     branches: organization.branches,
     settings: {
@@ -186,6 +190,7 @@ export async function runDemo30d(
     organizationId: string;
     referenceDate: string;
     seed: number;
+    shape?: Demo30dShape;
     apply: boolean;
     // Test coordination runs between atomic commands; no detached work is allowed.
     afterCommand?: () => Promise<void>;
@@ -193,7 +198,7 @@ export async function runDemo30d(
     lockWaitMilliseconds?: number;
   },
 ) {
-  const databaseUrl = await verifyDemoDatabase(prisma);
+  const databaseUrl = await verifyDemoSeedTarget(prisma);
   // Session ownership survives command deadlines; finally runs only after all awaited commands settle.
   const lock = new Client({
     connectionString: databaseUrl,
@@ -221,9 +226,10 @@ export async function runDemo30d(
       `demo30d:${options.organizationId}`,
     ]);
     const started = performance.now();
-    const maximum = options.maximumRunMilliseconds ?? 180_000;
+    const defaultMaximum = options.shape === undefined ? 180_000 : 900_000;
+    const maximum = options.maximumRunMilliseconds ?? defaultMaximum;
     assert(
-      Number.isFinite(maximum) && maximum > 0 && maximum <= 180_000,
+      Number.isFinite(maximum) && maximum > 0 && maximum <= defaultMaximum,
       "Demo30d invalid execution deadline.",
     );
     const check = () =>
@@ -246,12 +252,15 @@ export async function runDemo30d(
         saleCount: plan.sales.length,
         orderCount: plan.orders.length,
         refundCount: plan.sales.filter((s) => s.refund).length,
+        ...(plan.shape === undefined
+          ? {}
+          : { adjustmentCount: plan.adjustments?.length ?? 0 }),
       };
     await initializeDemoProvenance(prisma);
     await prisma.$executeRaw`INSERT INTO stockwise_demo.seed_runs(organization_id,plan,signature,state)
         VALUES (${plan.organizationId}::uuid,${JSON.stringify(plan)}::jsonb,${plan.signature},'IN_PROGRESS')
         ON CONFLICT (organization_id) DO NOTHING`;
-    for (let day = 0; day < 30; day++) {
+    for (let day = 0; day < (plan.shape?.days ?? 30); day++) {
       for (const order of plan.orders.filter((o) => o.day === day)) {
         check();
         let draft = await draftOrder(prisma, target, order);
@@ -356,7 +365,7 @@ export async function runDemo30d(
             items: [
               {
                 saleItemId: completed.sale.items.find(
-                  (i) => i.productId === plan.products[0]!.id,
+                  (i) => i.productId === sale.items[0]!.productId,
                 )!.id,
                 quantity: "1",
                 restockQuantity: "1",
@@ -369,6 +378,30 @@ export async function runDemo30d(
           );
           await afterCommand();
         }
+      }
+      for (const adjustment of plan.adjustments ?? []) {
+        if (adjustment.day !== day) continue;
+        check();
+        const adjusted = await createPrismaInventoryRepository(
+          prisma,
+          () => adjustment.at,
+        ).adjust({
+          actorUserId,
+          organizationId: plan.organizationId,
+          branchId: adjustment.branchId,
+          idempotencyKey: adjustment.key,
+          adjustment: {
+            productId: adjustment.productId,
+            delta: adjustment.delta,
+            reason: adjustment.reason,
+            note: adjustment.note,
+          },
+        });
+        assert(
+          adjusted.kind === "success" || adjusted.kind === "replay",
+          "Demo30d adjustment failed.",
+        );
+        await afterCommand();
       }
     }
     // Validation and its fingerprint must describe one snapshot, even if a writer races completion.
@@ -394,6 +427,9 @@ export async function runDemo30d(
       saleCount: plan.sales.length,
       orderCount: plan.orders.length,
       refundCount: plan.sales.filter((s) => s.refund).length,
+      ...(plan.shape === undefined
+        ? {}
+        : { adjustmentCount: plan.adjustments?.length ?? 0 }),
     };
   } finally {
     await lock.end();

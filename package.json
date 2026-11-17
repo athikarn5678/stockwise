@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "pnpm --recursive --if-present build",
+    "demo:seed:90d": "pnpm --filter @stockwise/api demo:seed:90d",
     "dev:api": "pnpm --filter @stockwise/api dev",
     "dev:web": "pnpm --filter @stockwise/web dev",
     "format": "prettier --write . --ignore-unknown",

@@ -21,6 +21,22 @@ enum OrganizationStatus {
   @@map("organization_status")
 }
 
+enum SubscriptionPlan {
+  STARTER
+  GROWTH
+  BUSINESS
+
+  @@map("subscription_plan")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+
+  @@map("subscription_status")
+}
+
 enum OrganizationRole {
   OWNER
   ADMIN
@@ -347,6 +363,7 @@ model Organization {
   analyticsSnapshots    AnalyticsSnapshot[]
   aiInsightReports      AiInsightReport[]
   demoDatasetRun        DemoDatasetRun?
+  subscription          OrganizationSubscription?
 
   @@map("organizations")
 }
@@ -1128,4 +1145,22 @@ model DemoDatasetRun {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "demo_dataset_runs_organization_id_fkey")
 
   @@map("demo_dataset_runs")
+}
+
+/// Stripe test-mode subscription of one Organization (ADR-047). One row per
+/// Organization; the Stripe IDs are references only, never credentials.
+model OrganizationSubscription {
+  id                      String             @id @default(uuid()) @db.Uuid
+  organizationId          String             @unique @map("organization_id") @db.Uuid
+  plan                    SubscriptionPlan
+  status                  SubscriptionStatus
+  stripeCustomerId        String             @map("stripe_customer_id") @db.VarChar(255)
+  stripeSubscriptionId    String             @unique @map("stripe_subscription_id") @db.VarChar(255)
+  stripeCheckoutSessionId String             @unique @map("stripe_checkout_session_id") @db.VarChar(255)
+  createdAt               DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@map("organization_subscriptions")
 }

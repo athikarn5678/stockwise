@@ -3,9 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   checkoutSale,
   createSaleRefund,
+  getPaymentOptions,
   getSalesHistoryDetail,
   getSalesVatProfile,
   listSalesHistory,
+  quotePromptPay,
   SalesApiError,
   searchPosProducts,
   updateSalesVatProfile,
@@ -375,6 +377,117 @@ describe("sales API client", () => {
         },
       ),
     ).rejects.toEqual(new SalesApiError(kind));
+  });
+
+  it("reads the branch PromptPay payment option", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        data: { promptPay: true },
+        meta: { requestId: "request-1" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const options = await getPaymentOptions({
+      branchId: BRANCH_ID,
+      organizationId: ORGANIZATION_ID,
+    });
+
+    expect(options).toEqual({ promptPay: true });
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      `/api/v1/organizations/${ORGANIZATION_ID}/branches/${BRANCH_ID}/sales/payment-options`,
+    );
+  });
+
+  it("quotes the exact cart for PromptPay and parses only the server amount", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        data: {
+          amount: "60.12",
+          currency: "THB",
+          payload: "00020101021229370016A000000677010111",
+        },
+        meta: { requestId: "request-1" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const quote = await quotePromptPay(
+      { branchId: BRANCH_ID, organizationId: ORGANIZATION_ID },
+      {
+        discount: { amount: "5.00", reason: "Promo", type: "AMOUNT" },
+        items: [
+          {
+            expectedUnitPrice: "60.1234",
+            productId: PRODUCT_ID,
+            quantity: "1",
+          },
+        ],
+      },
+    );
+
+    expect(quote).toEqual({
+      amount: "60.12",
+      currency: "THB",
+      payload: "00020101021229370016A000000677010111",
+    });
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(init.method).toBe("POST");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      `/branches/${BRANCH_ID}/sales/promptpay-qr`,
+    );
+    expect(String(init.body)).toContain('"expectedUnitPrice":"60.1234"');
+    expect(String(init.body)).toContain('"amount":"5.00"');
+    expect(JSON.stringify(quote)).not.toMatch(/cost|cogs/i);
+  });
+
+  it.each([
+    [409, "CHECKOUT_TOTAL_MISMATCH", "total_mismatch"],
+    [404, "PROMPTPAY_NOT_CONFIGURED", "promptpay_not_configured"],
+    [409, "INSUFFICIENT_STOCK", "insufficient_stock"],
+  ] as const)(
+    "maps a %s PromptPay quote safely",
+    async (status, code, kind) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(jsonResponse({ error: { code } }, status)),
+      );
+
+      await expect(
+        quotePromptPay(
+          { branchId: BRANCH_ID, organizationId: ORGANIZATION_ID },
+          { discount: null, items: [] },
+        ),
+      ).rejects.toEqual(new SalesApiError(kind));
+    },
+  );
+
+  it("sends the shown total with a confirmed TRANSFER payment", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ error: { code: "CHECKOUT_TOTAL_MISMATCH" } }, 409),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      checkoutSale(
+        { branchId: BRANCH_ID, organizationId: ORGANIZATION_ID },
+        "checkout-key",
+        {
+          discount: null,
+          items: [],
+          payment: {
+            expectedTotalAmount: "60.12",
+            method: "TRANSFER",
+            reference: "PromptPay",
+          },
+        },
+      ),
+    ).rejects.toEqual(new SalesApiError("total_mismatch"));
+    expect(
+      String((fetchMock.mock.calls[0]?.[1] as RequestInit).body),
+    ).toContain('"expectedTotalAmount":"60.12"');
   });
 
   it.each([

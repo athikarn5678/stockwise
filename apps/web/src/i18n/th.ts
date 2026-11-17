@@ -85,6 +85,36 @@ export const th: Dictionary = {
   organizationSettingsLoadError: "ไม่สามารถโหลดการตั้งค่าองค์กรได้",
   organizationSettingsRetry: "ลองอีกครั้ง",
   organizationSettingsDenied: "คุณไม่มีสิทธิ์จัดการองค์กรนี้",
+  billing: "การเรียกเก็บเงิน",
+  billingDescription: "จัดการการสมัครสมาชิกรายเดือนขององค์กรของคุณ",
+  billingLoading: "กำลังโหลดข้อมูลการเรียกเก็บเงิน…",
+  billingLoadError: "ไม่สามารถโหลดข้อมูลการเรียกเก็บเงินได้ กรุณาลองอีกครั้ง",
+  billingRetry: "ลองอีกครั้ง",
+  billingDenied: "เฉพาะเจ้าขององค์กรเท่านั้นที่จัดการการเรียกเก็บเงินได้",
+  billingUnavailable: "การเรียกเก็บเงินยังไม่พร้อมใช้งานในขณะนี้",
+  billingPerMonth: "ต่อเดือน",
+  billingSubscribe: "สมัคร",
+  billingSubscribing: "กำลังเปิดหน้าชำระเงินที่ปลอดภัย…",
+  billingCurrentPlan: "แพ็กเกจปัจจุบัน: {plan} ({status})",
+  billingPlanStarter: "Starter",
+  billingPlanGrowth: "Growth",
+  billingPlanBusiness: "Business",
+  billingStatusActive: "ใช้งานอยู่",
+  billingStatusPastDue: "ค้างชำระ",
+  billingStatusCanceled: "ยกเลิกแล้ว",
+  billingCanceledNote: "ยกเลิกการชำระเงินแล้ว ไม่มีการเรียกเก็บเงิน",
+  billingConfirming: "กำลังยืนยันการสมัครสมาชิก…",
+  billingConfirmed: "การสมัครสมาชิกใช้งานได้แล้ว: {plan}",
+  billingErrCheckout: "ไม่สามารถเริ่มการชำระเงินได้ กรุณาลองอีกครั้ง",
+  billingErrUntrustedRedirect:
+    "ไม่รู้จักที่อยู่หน้าชำระเงิน จึงไม่ได้เปิดหน้าชำระเงิน",
+  billingErrConfirmForbidden: "การชำระเงินนี้ไม่ได้อยู่ในองค์กรของคุณ",
+  billingErrConflict: "องค์กรนี้มีการสมัครสมาชิกอยู่แล้ว",
+  billingErrNotComplete:
+    "การชำระเงินยังไม่เสร็จสมบูรณ์ กรุณาชำระเงินให้เสร็จแล้วลองอีกครั้ง",
+  billingErrProvider:
+    "ผู้ให้บริการชำระเงินไม่พร้อมใช้งานในขณะนี้ กรุณาลองใหม่ภายหลัง",
+  billingErrConfirm: "ไม่สามารถยืนยันการสมัครสมาชิกได้ กรุณาลองอีกครั้ง",
   organizationSettingsUnsavedConfirm:
     "คุณมีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก ต้องการออกจากหน้านี้หรือไม่?",
   organizationSettingsSaved: "บันทึกชื่อองค์กรแล้ว",
@@ -536,6 +566,18 @@ export const th: Dictionary = {
   aiErrAccess: "สิทธิ์ปัจจุบันของคุณไม่สามารถดูข้อมูลเชิงลึกจาก AI ได้",
   aiErrInvalid: "ตัวเลือกข้อมูลเชิงลึกนี้ไม่ถูกต้อง",
   aiErrLoad: "ไม่สามารถโหลดข้อมูลเชิงลึกจาก AI ได้ กรุณาลองใหม่ภายหลัง",
+  aiAnalyze: "วิเคราะห์",
+  aiAnalyzeTitle: "การวิเคราะห์ตามคำขอ (7 วันล่าสุด)",
+  aiAnalyzeLoading: "กำลังวิเคราะห์…",
+  aiAnalyzeMockBadge: "ตัวอย่าง (Mock)",
+  aiAnalyzeMockNote:
+    "ยังไม่ได้ตั้งค่าคีย์ AI ข้อความนี้จึงเป็นตัวอย่างที่สร้างจากข้อมูลที่คำนวณไว้",
+  aiAnalyzePeriod: "ช่วงที่วิเคราะห์: {period}",
+  aiAnalyzeErrRate: "รอสักครู่ แล้วลองใหม่ (ได้ 1 ครั้งต่อ 1 นาที)",
+  aiAnalyzeErrAccess: "สิทธิ์ปัจจุบันของคุณไม่สามารถใช้การวิเคราะห์ด้วย AI ได้",
+  aiAnalyzeErrProvider:
+    "ระบบ AI ไม่พร้อมใช้งานหรือผลลัพธ์ไม่ผ่านการตรวจ ลองใหม่อีกครั้ง",
+  aiAnalyzeErrLoad: "ไม่สามารถวิเคราะห์ได้ กรุณาลองใหม่ภายหลัง",
   aiTitle: "ข้อมูลเชิงลึกจาก AI",
   aiIntroBefore:
     "สรุปที่สร้างโดย AI จากข้อมูลที่บันทึกไว้ โปรดตรวจสอบตัวเลขจาก",
@@ -719,6 +761,26 @@ export const th: Dictionary = {
   uiEnterTenderedCashAtOrAboveTheCurrentPrice:
     "ใส่เงินสดที่รับไม่น้อยกว่ายอดรวมตามราคาปัจจุบัน",
   uiTransferReferenceOptional: "เลขอ้างอิงการโอน (ไม่บังคับ)",
+  paymentPromptPay: "พร้อมเพย์",
+  uiPromptPay: "ชำระเงินด้วยพร้อมเพย์",
+  uiGeneratePromptPayQr: "สร้าง QR พร้อมเพย์",
+  uiPromptPayGeneratingQr: "กำลังสร้าง QR…",
+  uiPromptPayAmountDue: "ยอดที่ต้องชำระ {amount}",
+  uiPromptPayQrAlt: "QR พร้อมเพย์สำหรับยอด {amount} บาท",
+  uiPromptPayQrServerTotalNote:
+    "ยอดนี้คำนวณโดยเซิร์ฟเวอร์สำหรับตะกร้าปัจจุบัน และจะยืนยันอีกครั้งเมื่อกดยืนยันรับเงิน ยอดในตะกร้าเป็นเพียงการประมาณ",
+  uiPromptPaySlipOptional:
+    "แนบสลิป (ไม่บังคับ — แสดงตัวอย่างในเครื่องนี้เท่านั้น ไม่อัปโหลดและไม่บันทึก)",
+  uiPromptPaySlipPreviewAlt: "ตัวอย่างสลิปที่เลือก",
+  uiPromptPaySlipMustBeAnImage: "เลือกไฟล์รูปภาพสำหรับตัวอย่างสลิป",
+  uiPromptPayRemoveSlip: "นำสลิปออก",
+  uiConfirmPaymentReceived: "ยืนยันรับเงินแล้ว",
+  uiPromptPayGenerateFirst:
+    "สร้าง QR พร้อมเพย์สำหรับตะกร้าปัจจุบันก่อนยืนยันรับเงิน",
+  uiPromptPayIsNotAvailableChooseCashOrTransfer:
+    "สาขานี้ไม่รองรับพร้อมเพย์ กรุณาเลือกเงินสดหรือโอนเงิน",
+  uiTheTotalChangedGenerateANewPromptPayQr:
+    "ยอดเงินเปลี่ยนไปหลังสร้าง QR นี้ กรุณาสร้าง QR ใหม่ก่อนยืนยัน",
   uiLoadingSalesVATProfile: "กำลังโหลดข้อมูล VAT การขาย…",
   uiSalesVATProfile: "ข้อมูล VAT การขาย",
   uiEnterAValidVATRateBeforeSaving: "ใส่อัตรา VAT ที่ถูกต้องก่อนบันทึก",

@@ -73,11 +73,18 @@ const checkoutPaymentSchema = z.discriminatedUnion("method", [
   z.object({ amountTendered: z.string(), method: z.literal("CASH") }).strict(),
   z
     .object({
+      expectedTotalAmount: z.string().nullable().optional(),
       method: z.literal("TRANSFER"),
       reference: z.string().nullable().optional(),
     })
     .strict()
-    .transform((value) => ({ ...value, reference: value.reference ?? null })),
+    .transform(({ expectedTotalAmount, ...value }) => ({
+      ...value,
+      ...(expectedTotalAmount === undefined || expectedTotalAmount === null
+        ? {}
+        : { expectedTotalAmount }),
+      reference: value.reference ?? null,
+    })),
 ]);
 
 const refundLineSchema = z
@@ -148,6 +155,14 @@ export const checkoutRequestSchema = z
     discount: checkoutDiscountSchema.nullable().optional(),
     items: z.array(checkoutLineSchema).min(1),
     payment: checkoutPaymentSchema,
+  })
+  .strict()
+  .transform((value) => ({ ...value, discount: value.discount ?? null }));
+
+export const promptPayQuoteRequestSchema = z
+  .object({
+    discount: checkoutDiscountSchema.nullable().optional(),
+    items: z.array(checkoutLineSchema).min(1),
   })
   .strict()
   .transform((value) => ({ ...value, discount: value.discount ?? null }));

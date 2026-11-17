@@ -29,7 +29,15 @@ export type CheckoutDiscountInput =
 
 export type CheckoutPaymentInput =
   | { amountTendered: string; method: "CASH" }
-  | { method: "TRANSFER"; reference?: string | null };
+  | {
+      /**
+       * Optional amount the payer was shown (for example a PromptPay QR). The
+       * server still recomputes the total and rejects the sale when it differs.
+       */
+      expectedTotalAmount?: string | null;
+      method: "TRANSFER";
+      reference?: string | null;
+    };
 
 export interface CheckoutIntentInput {
   discount: CheckoutDiscountInput;
@@ -58,7 +66,12 @@ export type CanonicalCheckoutDiscount =
 
 export type CanonicalCheckoutPayment =
   | { amountTendered: Prisma.Decimal; method: "CASH" }
-  | { method: "TRANSFER"; reference: string | null };
+  | {
+      /** Present only when the request carried one, so older request hashes stay valid. */
+      expectedTotalAmount?: Prisma.Decimal;
+      method: "TRANSFER";
+      reference: string | null;
+    };
 
 export interface CanonicalCheckoutIntent {
   discount: CanonicalCheckoutDiscount;
@@ -208,7 +221,14 @@ export function canonicalizeCheckoutIntent(
   } else if (input.payment.method === "TRANSFER") {
     const reference = canonicalTransferReference(input.payment.reference);
     if (reference === undefined) return { kind: "invalid_payment" };
-    payment = { method: "TRANSFER", reference };
+    const expected = input.payment.expectedTotalAmount;
+    if (expected === undefined || expected === null) {
+      payment = { method: "TRANSFER", reference };
+    } else {
+      const expectedTotalAmount = parseUnsignedDecimal(expected, 36, 2);
+      if (expectedTotalAmount === null) return { kind: "invalid_payment" };
+      payment = { expectedTotalAmount, method: "TRANSFER", reference };
+    }
   } else {
     return { kind: "invalid_payment" };
   }
@@ -417,7 +437,16 @@ export function checkoutCanonicalRequestHash(input: {
           amountTendered: input.intent.payment.amountTendered.toString(),
           method: input.intent.payment.method,
         }
-      : input.intent.payment;
+      : {
+          ...(input.intent.payment.expectedTotalAmount === undefined
+            ? {}
+            : {
+                expectedTotalAmount:
+                  input.intent.payment.expectedTotalAmount.toFixed(2),
+              }),
+          method: input.intent.payment.method,
+          reference: input.intent.payment.reference,
+        };
   return createHash("sha256")
     .update(
       JSON.stringify({

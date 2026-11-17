@@ -174,6 +174,11 @@ const PERMISSION_MATRIX = [
     scope: "organization",
   },
   {
+    permission: PERMISSIONS.BILLING_MANAGE,
+    allowedRoles: OWNER_ONLY,
+    scope: "organization",
+  },
+  {
     permission: PERMISSIONS.BRANCH_MANAGE,
     allowedRoles: ORGANIZATION_ADMINISTRATION_ROLES,
     scope: "organization",

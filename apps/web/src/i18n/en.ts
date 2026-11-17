@@ -84,6 +84,38 @@ export const en = {
   organizationSettingsRetry: "Try again",
   organizationSettingsDenied:
     "You do not have permission to manage this organization.",
+  billing: "Billing",
+  billingDescription: "Manage your organization's monthly subscription.",
+  billingLoading: "Loading billing…",
+  billingLoadError: "Billing could not be loaded. Please try again.",
+  billingRetry: "Try again",
+  billingDenied: "Only the organization owner can manage billing.",
+  billingUnavailable: "Billing is not available right now.",
+  billingPerMonth: "per month",
+  billingSubscribe: "Subscribe",
+  billingSubscribing: "Opening secure checkout…",
+  billingCurrentPlan: "Current plan: {plan} ({status})",
+  billingPlanStarter: "Starter",
+  billingPlanGrowth: "Growth",
+  billingPlanBusiness: "Business",
+  billingStatusActive: "Active",
+  billingStatusPastDue: "Past due",
+  billingStatusCanceled: "Canceled",
+  billingCanceledNote: "Checkout was canceled. Nothing was charged.",
+  billingConfirming: "Confirming your subscription…",
+  billingConfirmed: "Subscription active: {plan}",
+  billingErrCheckout: "Checkout could not be started. Please try again.",
+  billingErrUntrustedRedirect:
+    "The checkout address was not recognized, so the payment page was not opened.",
+  billingErrConfirmForbidden:
+    "This checkout does not belong to your organization.",
+  billingErrConflict: "This organization already has a subscription.",
+  billingErrNotComplete:
+    "The payment is not complete yet. Finish checkout and try again.",
+  billingErrProvider:
+    "The payment provider is unavailable right now. Please try again later.",
+  billingErrConfirm:
+    "The subscription could not be confirmed. Please try again.",
   organizationSettingsUnsavedConfirm:
     "You have unsaved changes. Leave this page?",
   organizationSettingsSaved: "Organization name saved.",
@@ -552,6 +584,19 @@ export const en = {
   aiErrAccess: "AI insights are not available for your current access.",
   aiErrInvalid: "This insight selection is invalid.",
   aiErrLoad: "AI insights could not be loaded. Try again later.",
+  aiAnalyze: "Analyze",
+  aiAnalyzeTitle: "On-demand analysis (last 7 days)",
+  aiAnalyzeLoading: "Analyzing…",
+  aiAnalyzeMockBadge: "Sample (Mock)",
+  aiAnalyzeMockNote:
+    "No AI key is configured, so this is a deterministic sample built from the calculated data.",
+  aiAnalyzePeriod: "Period: {period}",
+  aiAnalyzeErrRate:
+    "Please wait a moment and try again (one request per minute).",
+  aiAnalyzeErrAccess: "AI analysis is not available for your current access.",
+  aiAnalyzeErrProvider:
+    "The AI system is unavailable or its output failed validation. Try again.",
+  aiAnalyzeErrLoad: "The analysis could not be completed. Try again later.",
   aiTitle: "AI insights",
   aiIntroBefore:
     "AI generated summaries of persisted data. Check the deterministic",
@@ -737,6 +782,26 @@ export const en = {
   uiEnterTenderedCashAtOrAboveTheCurrentPrice:
     "Enter tendered cash at or above the current-price subtotal.",
   uiTransferReferenceOptional: "Transfer reference (optional)",
+  paymentPromptPay: "PromptPay",
+  uiPromptPay: "PromptPay QR payment",
+  uiGeneratePromptPayQr: "Generate PromptPay QR",
+  uiPromptPayGeneratingQr: "Generating QR…",
+  uiPromptPayAmountDue: "Amount due {amount}",
+  uiPromptPayQrAlt: "PromptPay QR for the amount {amount} THB",
+  uiPromptPayQrServerTotalNote:
+    "The server computed this amount for the current cart; it is confirmed again when you press confirm. The cart amounts are estimates only.",
+  uiPromptPaySlipOptional:
+    "Attach slip (optional — previewed on this device only, not uploaded or stored)",
+  uiPromptPaySlipPreviewAlt: "Selected slip preview",
+  uiPromptPaySlipMustBeAnImage: "Choose an image file for the slip preview.",
+  uiPromptPayRemoveSlip: "Remove slip",
+  uiConfirmPaymentReceived: "Confirm payment received",
+  uiPromptPayGenerateFirst:
+    "Generate a PromptPay QR for the current cart before confirming payment.",
+  uiPromptPayIsNotAvailableChooseCashOrTransfer:
+    "PromptPay is not available for this branch. Choose cash or transfer.",
+  uiTheTotalChangedGenerateANewPromptPayQr:
+    "The total changed after this QR was generated. Generate a new QR before confirming.",
   uiLoadingSalesVATProfile: "Loading sales VAT profile…",
   uiSalesVATProfile: "Sales VAT profile",
   uiEnterAValidVATRateBeforeSaving: "Enter a valid VAT rate before saving.",

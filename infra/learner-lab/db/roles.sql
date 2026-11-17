@@ -3,8 +3,8 @@
 -- (ops/ops-task.sh bootstrap-roles); idempotent.
 -- Passwords arrive through psql \getenv from the process environment and are
 -- never on a command line, in this file, in Terraform state or in Git.
---   stockwise_migrator  owns the public schema; migrations, grants, optional
---                       demo seeding.
+--   stockwise_migrator  owns the public and stockwise_demo schemas; migrations,
+--                       grants, optional demo seeding.
 --   stockwise_app       runtime role: DML only; cannot own, alter, truncate or
 --                       disable triggers on any table, and only reads the
 --                       migration history and demo provenance (see grants.sql).
@@ -43,6 +43,13 @@ SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', current_database()) \gexe
 ALTER SCHEMA public OWNER TO stockwise_migrator;
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO stockwise_app;
+
+-- Provenance of the optional demo seeder (apps/api/src/demo) lives in its own
+-- schema. The migrator holds no database-level CREATE, so the master creates the
+-- schema once and hands it over; the runtime role gets nothing on it.
+SELECT 'CREATE SCHEMA stockwise_demo' WHERE to_regnamespace('stockwise_demo') IS NULL \gexec
+ALTER SCHEMA stockwise_demo OWNER TO stockwise_migrator;
+REVOKE ALL ON SCHEMA stockwise_demo FROM PUBLIC;
 
 -- Tables the migrator creates later inherit runtime DML grants.
 ALTER DEFAULT PRIVILEGES FOR ROLE stockwise_migrator IN SCHEMA public

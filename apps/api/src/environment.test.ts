@@ -338,6 +338,79 @@ describe("API environment boundary", () => {
     expect(String(error)).not.toContain("secret\nvalue");
   });
 
+  it("keeps the optional OpenCode Go key and model server-only", () => {
+    const base = {
+      DATABASE_URL:
+        "postgresql://local-user:local-password@127.0.0.1:5432/local-database",
+      STOCKWISE_API_PORT: "3001",
+      STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: analyticsKey,
+      STOCKWISE_PUBLIC_WEB_ORIGIN: "http://localhost:3000",
+      STOCKWISE_RUNTIME_ENV: "development",
+      ...verificationKeys,
+    };
+    const parsed = loadApiEnvironment(base);
+    expect(parsed.OPENCODE_GO_API_KEY).toBeUndefined();
+    expect(parsed.OPENCODE_GO_MODEL).toBeUndefined();
+    expect(
+      loadApiEnvironment({
+        ...base,
+        OPENCODE_GO_API_KEY: "server-only-key",
+        OPENCODE_GO_MODEL: "deepseek-v4.1-flash",
+      }),
+    ).toMatchObject({
+      OPENCODE_GO_API_KEY: "server-only-key",
+      OPENCODE_GO_MODEL: "deepseek-v4.1-flash",
+    });
+    for (const key of ["", " ", "key\nsecret"]) {
+      expect(() =>
+        loadApiEnvironment({ ...base, OPENCODE_GO_API_KEY: key }),
+      ).toThrow();
+    }
+    for (const model of ["", "bad model", "a".repeat(129)]) {
+      expect(() =>
+        loadApiEnvironment({ ...base, OPENCODE_GO_MODEL: model }),
+      ).toThrow();
+    }
+  });
+
+  it("keeps the optional PromptPay merchant number server-only", () => {
+    const base = {
+      DATABASE_URL:
+        "postgresql://local-user:local-password@127.0.0.1:5432/local-database",
+      STOCKWISE_API_PORT: "3001",
+      STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: analyticsKey,
+      STOCKWISE_PUBLIC_WEB_ORIGIN: "http://localhost:3000",
+      STOCKWISE_RUNTIME_ENV: "development",
+      ...verificationKeys,
+    };
+    expect(loadApiEnvironment(base).STOCKWISE_PROMPTPAY_ID).toBeUndefined();
+    expect(
+      loadApiEnvironment({ ...base, STOCKWISE_PROMPTPAY_ID: "0812345678" })
+        .STOCKWISE_PROMPTPAY_ID,
+    ).toBe("0812345678");
+    // Empty means not configured (the option stays hidden), never a crash.
+    expect(
+      loadApiEnvironment({ ...base, STOCKWISE_PROMPTPAY_ID: "" })
+        .STOCKWISE_PROMPTPAY_ID,
+    ).toBeUndefined();
+    for (const value of [" 0812345678", "812345678", "08123456789"]) {
+      expect(() =>
+        loadApiEnvironment({ ...base, STOCKWISE_PROMPTPAY_ID: value }),
+      ).toThrow();
+    }
+
+    // A malformed merchant number must never appear in the error text.
+    const malformed = "08123456789";
+    let error: unknown;
+    try {
+      loadApiEnvironment({ ...base, STOCKWISE_PROMPTPAY_ID: malformed });
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeDefined();
+    expect(String(error)).not.toContain(malformed);
+  });
+
   it("requires distinct dedicated canonical verification keys", () => {
     const base = {
       DATABASE_URL:
@@ -486,6 +559,12 @@ describe("API environment boundary", () => {
     expect(() =>
       loadApiEnvironment({
         ...base,
+        OPENCODE_GO_API_KEY: verificationProofKey,
+      }),
+    ).toThrow();
+    expect(() =>
+      loadApiEnvironment({
+        ...base,
         STOCKWISE_VERIFICATION_OTP_KEY: "sk-placeholder-key",
         RESEND_API_KEY: "sk-placeholder-key",
       }),
@@ -503,5 +582,41 @@ describe("API environment boundary", () => {
     }
     expect(error).toBeDefined();
     expect(String(error)).not.toContain(verificationOtpKey);
+  });
+
+  it("accepts only a Stripe test-mode secret key without echoing it", () => {
+    const base = {
+      DATABASE_URL:
+        "postgresql://local-user:local-password@127.0.0.1:5432/local-database",
+      STOCKWISE_API_PORT: "3001",
+      STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: analyticsKey,
+      STOCKWISE_PUBLIC_WEB_ORIGIN: "http://localhost:3000/",
+      STOCKWISE_RUNTIME_ENV: "development",
+      ...verificationKeys,
+    };
+    expect(
+      loadApiEnvironment({ ...base, STRIPE_SECRET_KEY: "sk_test_abc123" })
+        .STRIPE_SECRET_KEY,
+    ).toBe("sk_test_abc123");
+    // Absent is fine: billing is then hidden rather than fatal.
+    expect(loadApiEnvironment(base).STRIPE_SECRET_KEY).toBeUndefined();
+
+    for (const secretKey of [
+      "sk_live_abc123",
+      "pk_test_abc123",
+      "rk_test_abc123",
+      "sk_test_abc-123",
+      "",
+    ]) {
+      let error: unknown;
+      try {
+        loadApiEnvironment({ ...base, STRIPE_SECRET_KEY: secretKey });
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).toBeDefined();
+      // An empty value has nothing to leak; every rejected key stays hidden.
+      if (secretKey !== "") expect(String(error)).not.toContain(secretKey);
+    }
   });
 });

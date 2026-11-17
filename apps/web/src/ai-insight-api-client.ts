@@ -73,6 +73,61 @@ const demoInsightSchema = z.object({
   }),
 });
 
+const analyzeResponseSchema = z.object({
+  data: z.object({
+    language: z.enum(["en", "th"]),
+    mock: z.boolean(),
+    period: z.object({
+      days: z.number().int().positive(),
+      from: z.string(),
+      scope: z.enum(["organization", "branch"]),
+      timezone: z.string(),
+      to: z.string(),
+    }),
+    sections: z.array(z.object({ body: z.string(), heading: z.string() })),
+    text: z.string(),
+  }),
+});
+
+export type AnalyzeResult = z.infer<typeof analyzeResponseSchema>["data"];
+
+/** On-demand analysis: no persisted row is created or read. */
+export async function postAnalyze(
+  organizationId: string,
+  scope: InsightScope,
+  language: "en" | "th",
+  days?: 7 | 14 | 30,
+): Promise<AnalyzeResult> {
+  const params = new URLSearchParams({ scope: scope.scope });
+  if (scope.scope === "branch") params.set("branchId", scope.branchId);
+  let response: Response;
+  try {
+    response = await privateFetch(
+      `/api/v1/organizations/${organizationId}/ai-insights/analyze?${params}`,
+      {
+        body: JSON.stringify({
+          ...(days === undefined ? {} : { days }),
+          language,
+        }),
+        credentials: "same-origin",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+  } catch {
+    throw new InsightApiError(0);
+  }
+  if (!response.ok) throw new InsightApiError(response.status);
+  try {
+    return analyzeResponseSchema.parse(await readPrivateJson(response)).data;
+  } catch {
+    throw new InsightApiError(0);
+  }
+}
+
 export async function getDemoInsight(
   organizationId: string,
   scope: InsightScope,

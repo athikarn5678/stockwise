@@ -63,7 +63,23 @@ export const apiEnvironmentSchema = z
       .string()
       .regex(/^[\x21-\x7e]+$/)
       .optional(),
+    OPENCODE_GO_API_KEY: z
+      .string()
+      .regex(/^[\x21-\x7e]+$/)
+      .optional(),
+    OPENCODE_GO_MODEL: z
+      .string()
+      .regex(/^[A-Za-z0-9_./:-]{1,128}$/)
+      .optional(),
     RESEND_API_KEY: z.string().min(1).optional(),
+    // Stripe is test mode only (ADR-047): any other key fails startup. The
+    // message never echoes the value.
+    STRIPE_SECRET_KEY: z
+      .string()
+      .regex(/^sk_test_[A-Za-z0-9]+$/, {
+        message: "STRIPE_SECRET_KEY must be a Stripe test-mode secret key",
+      })
+      .optional(),
     STOCKWISE_BETTER_AUTH_SECRET: z.string().min(1),
     STOCKWISE_INVITATION_CONTINUATION_KEY: z
       .string()
@@ -89,6 +105,18 @@ export const apiEnvironmentSchema = z
     STOCKWISE_RUNTIME_ENV: z.enum(["development", "test", "production"]),
     STOCKWISE_API_PORT: z.coerce.number().int().min(1).max(65_535),
     STOCKWISE_EMAIL_FROM: z.string().min(1).max(320).optional(),
+    // Optional merchant PromptPay mobile number. Invalid values must never
+    // appear in the validation error text, so the message is fixed.
+    // An empty value (blank container variable, copied example) means "not configured".
+    STOCKWISE_PROMPTPAY_ID: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z
+        .string()
+        .regex(/^0\d{9}$/, {
+          message: "must be a 10-digit Thai mobile number",
+        })
+        .optional(),
+    ),
     STOCKWISE_PUBLIC_WEB_ORIGIN: z
       .string()
       .url()
@@ -209,6 +237,7 @@ export const apiEnvironmentSchema = z
     );
     const providerKeyValues = [
       environment.OPENROUTER_API_KEY,
+      environment.OPENCODE_GO_API_KEY,
       environment.RESEND_API_KEY,
     ].filter((value): value is string => value !== undefined);
     const rejectReusedVerificationMaterial = (
@@ -340,7 +369,10 @@ export function loadApiEnvironment(
   return apiEnvironmentSchema.parse({
     DATABASE_URL: environment.DATABASE_URL,
     OPENROUTER_API_KEY: environment.OPENROUTER_API_KEY,
+    OPENCODE_GO_API_KEY: environment.OPENCODE_GO_API_KEY,
+    OPENCODE_GO_MODEL: environment.OPENCODE_GO_MODEL,
     RESEND_API_KEY: environment.RESEND_API_KEY,
+    STRIPE_SECRET_KEY: environment.STRIPE_SECRET_KEY,
     STOCKWISE_BETTER_AUTH_SECRET: environment.STOCKWISE_BETTER_AUTH_SECRET,
     STOCKWISE_INVITATION_CONTINUATION_KEY:
       environment.STOCKWISE_INVITATION_CONTINUATION_KEY,
@@ -365,6 +397,7 @@ export function loadApiEnvironment(
     STOCKWISE_RUNTIME_ENV: environment.STOCKWISE_RUNTIME_ENV,
     STOCKWISE_API_PORT: environment.STOCKWISE_API_PORT,
     STOCKWISE_EMAIL_FROM: environment.STOCKWISE_EMAIL_FROM,
+    STOCKWISE_PROMPTPAY_ID: environment.STOCKWISE_PROMPTPAY_ID,
     STOCKWISE_PUBLIC_WEB_ORIGIN: environment.STOCKWISE_PUBLIC_WEB_ORIGIN,
     STOCKWISE_SESSION_ABSOLUTE_TIMEOUT_MINUTES:
       environment.STOCKWISE_SESSION_ABSOLUTE_TIMEOUT_MINUTES,

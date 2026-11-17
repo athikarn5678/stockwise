@@ -3,8 +3,12 @@ import { Router, type RequestHandler, type Response } from "express";
 import { getTrustedAuthenticationContext } from "../identity/authentication-context.ts";
 import { createCrossSiteRequestProtection } from "../identity/credential-lifecycle-router.ts";
 import { idempotencyKeySchema } from "../inventory/inventory-schemas.ts";
-import type { CheckoutOutcome } from "./checkout-repository.ts";
+import type {
+  CheckoutOutcome,
+  CheckoutQuoteOutcome,
+} from "./checkout-repository.ts";
 import type { CheckoutService } from "./checkout-service.ts";
+import { buildPromptPayPayload } from "./promptpay-payload.ts";
 import type { RefundOutcome } from "./refund-repository.ts";
 import type { RefundService } from "./refund-service.ts";
 import type {
@@ -20,6 +24,7 @@ import {
   checkoutRequestSchema,
   organizationSalesParamsSchema,
   posProductSearchQuerySchema,
+  promptPayQuoteRequestSchema,
   refundRequestSchema,
   saleDetailParamsSchema,
   salesHistoryQuerySchema,
@@ -147,6 +152,58 @@ function sendPosProducts(
   error(response, 400, "INVALID_CURSOR", "The cursor is invalid.");
 }
 
+type CheckoutFailureKind = Exclude<
+  CheckoutOutcome,
+  { kind: "success" } | { kind: "replay" }
+>["kind"];
+
+/** Checkout and PromptPay quote outcomes share one canonical error mapping. */
+const CHECKOUT_FAILURES = {
+  branch_inactive: [409, "BRANCH_INACTIVE", "The branch is inactive."],
+  duplicate_product: [400, "VALIDATION_ERROR", "The request is invalid."],
+  forbidden: [403, "FORBIDDEN", "The operation is not permitted."],
+  idempotency_conflict: [
+    409,
+    "IDEMPOTENCY_CONFLICT",
+    "The idempotency key was already used for another request.",
+  ],
+  insufficient_stock: [
+    409,
+    "INSUFFICIENT_STOCK",
+    "There is insufficient stock to complete checkout.",
+  ],
+  invalid_amounts: [400, "VALIDATION_ERROR", "The request is invalid."],
+  invalid_discount: [400, "VALIDATION_ERROR", "The discount is invalid."],
+  invalid_idempotency_key: [
+    400,
+    "VALIDATION_ERROR",
+    "The idempotency key is invalid.",
+  ],
+  invalid_payment: [400, "VALIDATION_ERROR", "The payment is invalid."],
+  invalid_price: [400, "VALIDATION_ERROR", "The price is invalid."],
+  invalid_quantity: [400, "VALIDATION_ERROR", "The quantity is invalid."],
+  not_found: [404, "PRODUCT_NOT_FOUND", "A product was not found."],
+  price_changed: [
+    409,
+    "PRICE_CHANGED",
+    "A product price changed. Refresh and try again.",
+  ],
+  product_inactive: [409, "PRODUCT_INACTIVE", "A product is inactive."],
+  total_mismatch: [
+    409,
+    "CHECKOUT_TOTAL_MISMATCH",
+    "The total differs from the amount that was shown. Refresh and try again.",
+  ],
+  vat_configuration_required: [
+    409,
+    "VAT_CONFIGURATION_REQUIRED",
+    "Sales VAT configuration is required before checkout.",
+  ],
+} as const satisfies Record<
+  CheckoutFailureKind,
+  readonly [number, string, string]
+>;
+
 function sendCheckout(response: Response, outcome: CheckoutOutcome): void {
   if (outcome.kind === "success" || outcome.kind === "replay") {
     response.status(outcome.kind === "success" ? 201 : 200).json({
@@ -155,44 +212,39 @@ function sendCheckout(response: Response, outcome: CheckoutOutcome): void {
     });
     return;
   }
-  const failures = {
-    branch_inactive: [409, "BRANCH_INACTIVE", "The branch is inactive."],
-    duplicate_product: [400, "VALIDATION_ERROR", "The request is invalid."],
-    forbidden: [403, "FORBIDDEN", "The operation is not permitted."],
-    idempotency_conflict: [
-      409,
-      "IDEMPOTENCY_CONFLICT",
-      "The idempotency key was already used for another request.",
-    ],
-    insufficient_stock: [
-      409,
-      "INSUFFICIENT_STOCK",
-      "There is insufficient stock to complete checkout.",
-    ],
-    invalid_amounts: [400, "VALIDATION_ERROR", "The request is invalid."],
-    invalid_discount: [400, "VALIDATION_ERROR", "The discount is invalid."],
-    invalid_idempotency_key: [
-      400,
-      "VALIDATION_ERROR",
-      "The idempotency key is invalid.",
-    ],
-    invalid_payment: [400, "VALIDATION_ERROR", "The payment is invalid."],
-    invalid_price: [400, "VALIDATION_ERROR", "The price is invalid."],
-    invalid_quantity: [400, "VALIDATION_ERROR", "The quantity is invalid."],
-    not_found: [404, "PRODUCT_NOT_FOUND", "A product was not found."],
-    price_changed: [
-      409,
-      "PRICE_CHANGED",
-      "A product price changed. Refresh and try again.",
-    ],
-    product_inactive: [409, "PRODUCT_INACTIVE", "A product is inactive."],
-    vat_configuration_required: [
-      409,
-      "VAT_CONFIGURATION_REQUIRED",
-      "Sales VAT configuration is required before checkout.",
-    ],
-  } as const;
-  const [status, code, message] = failures[outcome.kind];
+  const [status, code, message] = CHECKOUT_FAILURES[outcome.kind];
+  error(response, status, code, message);
+}
+
+function isPositiveMoneyAmount(amount: string): boolean {
+  // Mirrors the payload builder's accepted shape so a bad total is a 400, not a crash.
+  return /^\d{1,10}\.\d{2}$/.test(amount) && /[1-9]/.test(amount);
+}
+
+function sendPromptPayQuote(
+  response: Response,
+  outcome: CheckoutQuoteOutcome,
+  promptPayId: string,
+): void {
+  if (outcome.kind === "success") {
+    if (!isPositiveMoneyAmount(outcome.totalAmount)) {
+      invalidRequest(response);
+      return;
+    }
+    response.status(200).json({
+      data: {
+        amount: outcome.totalAmount,
+        currency: "THB",
+        payload: buildPromptPayPayload({
+          amount: outcome.totalAmount,
+          mobileNumber: promptPayId,
+        }),
+      },
+      meta: { requestId: requestId(response) },
+    });
+    return;
+  }
+  const [status, code, message] = CHECKOUT_FAILURES[outcome.kind];
   error(response, status, code, message);
 }
 
@@ -255,12 +307,14 @@ function sendRefund(response: Response, outcome: RefundOutcome): void {
 export function createSalesRouter({
   authenticationMiddleware,
   checkoutService,
+  promptPayId,
   publicWebOrigin,
   refundService,
   salesApiService,
 }: {
   authenticationMiddleware: RequestHandler;
   checkoutService: CheckoutService;
+  promptPayId?: string | undefined;
   publicWebOrigin: string;
   refundService: RefundService;
   salesApiService: SalesApiService;
@@ -286,6 +340,59 @@ export function createSalesRouter({
             organizationId: params.data.organizationId,
             query: query.data,
           }),
+        );
+      } catch (cause: unknown) {
+        next(cause);
+      }
+    },
+  );
+
+  // Reports one deployment-wide boolean (is a PromptPay receiver configured); it
+  // carries nothing tenant-specific, so authentication alone is enough.
+  router.get(
+    "/organizations/:organizationId/branches/:branchId/sales/payment-options",
+    authenticationMiddleware,
+    (request, response) => {
+      const id = actorId(response);
+      const params = branchSalesParamsSchema.safeParse(request.params);
+      if (id === null) return authenticationRequired(response);
+      if (!params.success) return invalidRequest(response);
+      response.status(200).json({
+        data: { promptPay: promptPayId !== undefined },
+        meta: { requestId: requestId(response) },
+      });
+    },
+  );
+
+  router.post(
+    "/organizations/:organizationId/branches/:branchId/sales/promptpay-qr",
+    protectMutation,
+    authenticationMiddleware,
+    async (request, response, next) => {
+      const id = actorId(response);
+      const params = branchSalesParamsSchema.safeParse(request.params);
+      const body = promptPayQuoteRequestSchema.safeParse(request.body);
+      if (id === null) return authenticationRequired(response);
+      if (!params.success || !body.success) return invalidRequest(response);
+      if (promptPayId === undefined) {
+        return error(
+          response,
+          404,
+          "PROMPTPAY_NOT_CONFIGURED",
+          "PromptPay is not configured.",
+        );
+      }
+      try {
+        sendPromptPayQuote(
+          response,
+          await checkoutService.quote({
+            actorUserId: id,
+            branchId: params.data.branchId,
+            discount: body.data.discount,
+            items: body.data.items,
+            organizationId: params.data.organizationId,
+          }),
+          promptPayId,
         );
       } catch (cause: unknown) {
         next(cause);

@@ -1558,7 +1558,8 @@ Rules:
 - CASH requires `amountTendered` with scale at most two and at least the server total.
   TRANSFER has no tender/change and may carry one trimmed reference up to 100
   characters. Payment amount is not client-authored; it equals the Sale total. No
-  CARD, split, gateway, pending, offline, slip, OCR, or Payment-status input exists.
+  CARD, split, gateway, pending, offline, slip, OCR, or Payment-status input exists
+  (PromptPay below is a TRANSFER).
 - Server applies optional discount before registered document-level VAT extraction.
   It uses exact Decimal arithmetic, `ROUND_HALF_UP` at accepted document/cost
   boundaries, and deterministic Product-ID-tied largest-remainder line allocation.
@@ -1577,6 +1578,30 @@ Rules:
   receipt representation. Internal cost fields require a separate authorized history
   view later.
 - OpenRouter is never called in checkout.
+
+#### PromptPay QR at POS (M7-S1; no gateway, no migration)
+
+PromptPay is a POS presentation of a manually confirmed TRANSFER; no Payment status,
+pending sale, webhook or slip storage exists. It needs the optional server-only
+`STOCKWISE_PROMPTPAY_ID` (a 10-digit mobile number); when absent the option is hidden
+and the QR endpoint answers `404 PROMPTPAY_NOT_CONFIGURED`. The number is never logged
+and appears only inside the QR payload.
+
+- `GET /organizations/{organizationId}/branches/{branchId}/sales/payment-options`
+  (authenticated) returns `{ "data": { "promptPay": true|false } }`.
+- `POST /organizations/{organizationId}/branches/{branchId}/sales/promptpay-qr`
+  (same-origin protected, checkout authority) takes `{ items, discount }` exactly like
+  checkout and writes nothing: no Sale, Payment, ledger row or stock change. The
+  server applies the same authorization, price, quantity, discount, VAT and stock
+  rules as checkout and returns `{ "data": { "amount": "123.45", "currency": "THB",
+  "payload": "<EMVCo string>" } }` (dynamic initiation `01=12`, merchant tag `29`
+  with AID `A000000677010111` and the mobile number in `0066` format, `53=764`,
+  `54=amount`, `58=TH`, CRC-16/CCITT-FALSE). Failures reuse the checkout error codes.
+- Checkout accepts an optional `payment.expectedTotalAmount` (scale at most two) on
+  `TRANSFER`. After recomputing the total the server rejects the sale with
+  `409 CHECKOUT_TOTAL_MISMATCH` when it differs, before any write. The amount is part
+  of the idempotency request hash only when present (older hashes are unchanged).
+  The slip image is previewed in the browser only and is never sent.
 
 ### Refund contract
 
@@ -1775,6 +1800,7 @@ Analytics error/null semantics:
 | `GET /organizations/{organizationId}/ai-insights` | Authenticated, three permissions below | `scope`, `cadence`, optional `branchId`, `limit`, `cursor` | `{data: Insight[], meta: {nextCursor}}` | `400` invalid selector/cursor, `403` forbidden | Implemented P7-M3-T02 |
 | `GET /organizations/{organizationId}/ai-insights/latest` | Authenticated, three permissions below | `scope`, `cadence`, optional `branchId` | `{data: {latest, lastSuccess, stale}}` | Explicit nulls when no report exists; `403` forbidden | Implemented P7-M3-T02 |
 | `GET /organizations/{organizationId}/ai-insights/{insightId}` | Authenticated, three permissions below | UUID path ID; no query | `{data: Insight}` | `404` missing or inaccessible; provenance mismatch fails closed | Implemented P7-M3-T02 |
+| `POST /organizations/{organizationId}/ai-insights/analyze` | Authenticated, same three permissions below | Query `scope` + optional `branchId`; JSON body `{language: "en"\|"th", days?: 7\|14\|30}` | `{data: {mock, language, period, text, sections}}` | `400` invalid query/body, `403` forbidden, `404` snapshot unavailable, `429` + `Retry-After`, `502 AI_PROVIDER_FAILED`/`AI_RESPONSE_REJECTED`; `Cache-Control: no-store`; never persisted | Implemented M5-T1 (`ADR-046`) |
 
 All paths above are under `/api/v1`. `scope` is exactly `organization` or `branch`; Branch scope requires a UUID `branchId`, while Organization scope rejects it. `cadence` is exactly `DAILY`, `WEEKLY`, `MONTHLY`, or `YEARLY`. List `limit` is 1–100 (default 20); `cursor` is the UUID `nextCursor` from the preceding page. Unknown parameters are rejected. List order is descending `(periodEndExclusive, periodStartInclusive, id)`, separately for each scope and cadence. A cursor from another scope or cadence is invalid. A detail ID is scoped to the authenticated Organization before lookup.
 
@@ -1784,7 +1810,9 @@ Every read requires `AI_BUSINESS_SUMMARY_VIEW` **and** `BUSINESS_ANALYTICS_VIEW`
 
 `latest` compares persisted reports only within the selected scope and cadence using the same business-period order. `latest` is the newest persisted state; `lastSuccess` is the newest successful report, which remains available when a newer period failed or was insufficient. `stale` is true when a persisted newest state exists but is not that last success; it is false when no reports exist. It does not claim an external freshness deadline or invent an expected period. The two reads share a repeatable-read database snapshot, so concurrent completion cannot combine incompatible states. List and detail also read persisted rows only. GET does not create snapshots, claim jobs, contact OpenRouter, or update report state.
 
-There is deliberately **no end-user `POST .../generate` endpoint**. Reports are daily/weekly/monthly/yearly scheduled work. Any operational replay mechanism is internal/admin-only, auditable, and subject to `ADR-033` bounds.
+There is deliberately **no persisted-report generation endpoint**. Reports are daily/weekly/monthly/yearly scheduled work. Any operational replay mechanism is internal/admin-only, auditable, and subject to `ADR-033` bounds.
+
+`ADR-046` adds exactly one non-persisted exception: `POST .../ai-insights/analyze` runs on demand for the last 7, 14, or 30 completed Organization-timezone days, returns `{mock, language, period, text, sections}`, writes nothing, and is limited to one request per user per process per 60 seconds. Scope is taken from the query only; the body carries language and an optional day count. The five-section contract (exactly five `##` headings in fixed order) and the rule that every numeric token must appear in the deterministic snapshot are enforced server-side; a violation returns `502 AI_RESPONSE_REJECTED` and no text. Without `OPENCODE_GO_API_KEY`, deterministic sample text is returned with `mock: true`.
 
 AI read responses:
 
@@ -1793,6 +1821,16 @@ AI read responses:
 - Indicate `success`, `stale`, `failed`, `insufficient`, or equivalent accepted status.
 - Treat content as untrusted display text: escape it and never render provider-supplied active HTML.
 - Do not expose raw prompts, secrets, provider errors, or prohibited data.
+
+### Billing (ADR-047, test mode)
+
+| Endpoint | Auth | Request | Success | Errors |
+| --- | --- | --- | --- | --- |
+| `GET /organizations/{organizationId}/billing` | Any active verified member | none | `{data: {enabled, canManage, subscription: {plan, status} \| null}}`; `enabled:false` and no subscription when `STRIPE_SECRET_KEY` is absent | `400`, `401`, `403` |
+| `POST /organizations/{organizationId}/billing/checkout` | OWNER (`billing.manage`) | `{plan: "STARTER" \| "GROWTH" \| "BUSINESS"}` | `{data: {url}}` (Stripe-hosted Checkout URL) | `400`, `403`, `404` disabled, `409 SUBSCRIPTION_EXISTS`, `502 BILLING_PROVIDER_FAILED` |
+| `POST /organizations/{organizationId}/billing/confirm` | OWNER (`billing.manage`) | `{sessionId: "cs_test_…"}` | `{data: {subscription: {plan, status}}}` (idempotent for the same session) | `400`, `403` (including another Organization's session), `404` disabled, `409 CHECKOUT_NOT_COMPLETE` / `SUBSCRIPTION_EXISTS`, `502` |
+
+Strict bodies; responses carry `Cache-Control: no-store` on success. Prices are server-owned. No webhook, limit enforcement, Customer Portal or plan change in this slice. Implemented M6-S1.
 
 ## 14. S3/object endpoints
 

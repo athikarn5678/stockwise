@@ -14,6 +14,9 @@ import { createRefundService } from "./refund-service.ts";
 import type { SalesApiRepository } from "./sales-api-repository.ts";
 import { createSalesApiService } from "./sales-api-service.ts";
 import { createSalesRouter } from "./sales-router.ts";
+import { buildPromptPayPayload } from "./promptpay-payload.ts";
+
+const PROMPTPAY_ID = "0812345678";
 
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const BRANCH_ID = "20000000-0000-4000-8000-000000000001";
@@ -119,6 +122,10 @@ describe("sales router", () => {
     createRefund = vi
       .fn<RefundRepository["createRefund"]>()
       .mockResolvedValue({ kind: "not_found" }),
+    promptPayId,
+    quote = vi
+      .fn<CheckoutRepository["quote"]>()
+      .mockResolvedValue({ kind: "forbidden" }),
     getSalesVatProfile = vi
       .fn<SalesApiRepository["getSalesVatProfile"]>()
       .mockResolvedValue({
@@ -167,6 +174,8 @@ describe("sales router", () => {
     authenticated?: boolean;
     checkout?: CheckoutRepository["checkout"];
     createRefund?: RefundRepository["createRefund"];
+    promptPayId?: string | undefined;
+    quote?: CheckoutRepository["quote"];
     getSalesVatProfile?: SalesApiRepository["getSalesVatProfile"];
     getSalesHistoryDetail?: SalesApiRepository["getSalesHistoryDetail"];
     listSalesHistory?: SalesApiRepository["listSalesHistory"];
@@ -196,7 +205,13 @@ describe("sales router", () => {
     };
     const router = createSalesRouter({
       authenticationMiddleware,
-      checkoutService: createCheckoutService({ repository: { checkout } }),
+      checkoutService: createCheckoutService({
+        repository: {
+          checkout,
+          quote,
+        },
+      }),
+      promptPayId,
       publicWebOrigin: "http://localhost:3000",
       refundService: createRefundService({ repository: { createRefund } }),
       salesApiService: createSalesApiService({ repository: salesRepository }),
@@ -214,6 +229,7 @@ describe("sales router", () => {
       listSalesHistory,
       searchPosProducts,
       updateSalesVatProfile,
+      quote,
     };
   }
 
@@ -237,6 +253,10 @@ describe("sales router", () => {
       ],
       payment: { amountTendered: "100.00", method: "CASH" },
     };
+  }
+
+  function promptPayBody() {
+    return { items: checkoutBody().items };
   }
 
   function refundBody() {
@@ -603,5 +623,234 @@ describe("sales router", () => {
     );
     expect(response.status).toBe(status);
     expect(JSON.stringify(await response.json())).toContain(code);
+  });
+
+  it("reports whether PromptPay is enabled without exposing the number", async () => {
+    const configured = await start({ promptPayId: PROMPTPAY_ID });
+    const enabled = await fetch(
+      `${configured.base}/organizations/${ORGANIZATION_ID}/branches/${BRANCH_ID}/sales/payment-options`,
+      { headers: { cookie: `${TEST_COOKIE_NAME}=${TOKEN}` } },
+    );
+    expect(enabled.status).toBe(200);
+    const enabledText = await enabled.text();
+    expect(JSON.parse(enabledText)).toMatchObject({
+      data: { promptPay: true },
+    });
+    expect(enabledText).not.toContain(PROMPTPAY_ID);
+    await server?.stop();
+    server = undefined;
+
+    const unconfigured = await start();
+    const disabled = await fetch(
+      `${unconfigured.base}/organizations/${ORGANIZATION_ID}/branches/${BRANCH_ID}/sales/payment-options`,
+      { headers: { cookie: `${TEST_COOKIE_NAME}=${TOKEN}` } },
+    );
+    expect(disabled.status).toBe(200);
+    expect(JSON.parse(await disabled.text())).toMatchObject({
+      data: { promptPay: false },
+    });
+  });
+
+  it("returns a PromptPay payload for the server-computed total", async () => {
+    const quote = vi
+      .fn<CheckoutRepository["quote"]>()
+      .mockResolvedValue({ kind: "success", totalAmount: "125.50" });
+    const value = await start({ promptPayId: PROMPTPAY_ID, quote });
+    const response = await fetch(
+      `${value.base}/organizations/${ORGANIZATION_ID}/branches/${BRANCH_ID}/sales/promptpay-qr`,
+      {
+        body: JSON.stringify(promptPayBody()),
+        headers: headers(),
+        method: "POST",
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(value.quote).toHaveBeenCalledWith({
+      actorUserId: "trusted-user-id",
+      branchId: BRANCH_ID,
+      discount: null,
+      items: checkoutBody().items,
+      organizationId: ORGANIZATION_ID,
+    });
+    const payload = buildPromptPayPayload({
+      amount: "125.50",
+      mobileNumber: PROMPTPAY_ID,
+    });
+    const bodyText = await response.text();
+    expect(JSON.parse(bodyText)).toMatchObject({
+      data: { amount: "125.50", currency: "THB", payload },
+    });
+    expect(bodyText).not.toContain(PROMPTPAY_ID);
+    expect(bodyText).not.toMatch(/Prisma|SQL|constraint|stack/i);
+  });
+
+  it("returns 404 without touching the quote when PromptPay is not configured", async () => {
+    const value = await start();
+    const response = await fetch(
+      `${value.base}/organizations/${ORGANIZATION_ID}/branches/${BRANCH_ID}/sales/promptpay-qr`,
+      {
+        body: JSON.stringify(promptPayBody()),
+        headers: headers(),
+        method: "POST",
+      },
+    );
+    expect(response.status).toBe(404);
+    expect(JSON.stringify(await response.json())).toContain(
+      "PROMPTPAY_NOT_CONFIGURED",
+    );
+    expect(value.quote).not.toHaveBeenCalled();
+  });
+
+  it("rejects unauthenticated, cross-site, and malformed PromptPay requests", async () => {
+    const unauthenticated = await start({
+      authenticated: false,
+      promptPayId: PROMPTPAY_ID,
+    });
+    expect(
+      (
+        await fetch(
+          `${unauthenticated.base}/organizations/${ORGANIZATION_ID}/branches/${BRANCH_ID}/sales/promptpay-qr`,
+          {
+            body: JSON.stringify(promptPayBody()),
+            headers: headers(),
+            method: "POST",
+          },
+        )
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await fetch(
+          `${unauthenticated.base}/organizations/${ORGANIZATION_ID}/branches/${BRANCH_ID}/sales/payment-options`,
+          { headers: { cookie: "none" } },
+        )
+      ).status,
+    ).toBe(401);
+    await server?.stop();
+    server = undefined;
+
+    const value = await start({ promptPayId: PROMPTPAY_ID });
+    const endpoint = `${value.base}/organizations/${ORGANIZATION_ID}/branches/${BRANCH_ID}/sales/promptpay-qr`;
+    for (const [body, extraHeaders, expected] of [
+      [
+        promptPayBody(),
+        { origin: "https://evil.example" } as Record<string, string>,
+        403,
+      ],
+      [{ ...promptPayBody(), unexpected: true }, {}, 400],
+      [{ items: [] }, {}, 400],
+      [
+        {
+          items: checkoutBody().items,
+          payment: { amountTendered: "100.00", method: "CASH" },
+        },
+        {},
+        400,
+      ],
+    ] as const) {
+      expect(
+        (
+          await fetch(endpoint, {
+            body: JSON.stringify(body),
+            headers: headers(extraHeaders),
+            method: "POST",
+          })
+        ).status,
+      ).toBe(expected);
+    }
+    expect(value.quote).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["price_changed", 409, "PRICE_CHANGED"],
+    ["forbidden", 403, "FORBIDDEN"],
+    ["not_found", 404, "PRODUCT_NOT_FOUND"],
+    ["insufficient_stock", 409, "INSUFFICIENT_STOCK"],
+    ["invalid_quantity", 400, "VALIDATION_ERROR"],
+    ["vat_configuration_required", 409, "VAT_CONFIGURATION_REQUIRED"],
+  ] as const)("maps quote %s safely", async (kind, status, code) => {
+    const quote = vi
+      .fn<CheckoutRepository["quote"]>()
+      .mockResolvedValue({ kind });
+    const value = await start({ promptPayId: PROMPTPAY_ID, quote });
+    const response = await fetch(
+      `${value.base}/organizations/${ORGANIZATION_ID}/branches/${BRANCH_ID}/sales/promptpay-qr`,
+      {
+        body: JSON.stringify(promptPayBody()),
+        headers: headers(),
+        method: "POST",
+      },
+    );
+    expect(response.status).toBe(status);
+    const text = JSON.stringify(await response.json());
+    expect(text).toContain(code);
+    expect(text).not.toMatch(/Prisma|SQL|constraint|stack/i);
+  });
+
+  it("rejects a non-positive quoted total", async () => {
+    const quote = vi
+      .fn<CheckoutRepository["quote"]>()
+      .mockResolvedValue({ kind: "success", totalAmount: "0.00" });
+    const value = await start({ promptPayId: PROMPTPAY_ID, quote });
+    const response = await fetch(
+      `${value.base}/organizations/${ORGANIZATION_ID}/branches/${BRANCH_ID}/sales/promptpay-qr`,
+      {
+        body: JSON.stringify(promptPayBody()),
+        headers: headers(),
+        method: "POST",
+      },
+    );
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(await response.json())).toContain("VALIDATION_ERROR");
+  });
+
+  it("forwards an expected transfer total and maps a total mismatch", async () => {
+    const value = await start();
+    await fetch(
+      `${value.base}/organizations/${ORGANIZATION_ID}/branches/${BRANCH_ID}/sales`,
+      {
+        body: JSON.stringify({
+          items: checkoutBody().items,
+          payment: { expectedTotalAmount: "10.00", method: "TRANSFER" },
+        }),
+        headers: headers({ "idempotency-key": "checkout-key" }),
+        method: "POST",
+      },
+    );
+    expect(value.checkout).toHaveBeenCalledWith({
+      actorUserId: "trusted-user-id",
+      branchId: BRANCH_ID,
+      discount: null,
+      idempotencyKey: "checkout-key",
+      items: checkoutBody().items,
+      organizationId: ORGANIZATION_ID,
+      payment: {
+        expectedTotalAmount: "10.00",
+        method: "TRANSFER",
+        reference: null,
+      },
+    });
+    await server?.stop();
+    server = undefined;
+
+    const checkout = vi
+      .fn<CheckoutRepository["checkout"]>()
+      .mockResolvedValue({ kind: "total_mismatch" });
+    const mismatched = await start({ checkout });
+    const response = await fetch(
+      `${mismatched.base}/organizations/${ORGANIZATION_ID}/branches/${BRANCH_ID}/sales`,
+      {
+        body: JSON.stringify({
+          items: checkoutBody().items,
+          payment: { expectedTotalAmount: "10.00", method: "TRANSFER" },
+        }),
+        headers: headers({ "idempotency-key": "checkout-key" }),
+        method: "POST",
+      },
+    );
+    expect(response.status).toBe(409);
+    expect(JSON.stringify(await response.json())).toContain(
+      "CHECKOUT_TOTAL_MISMATCH",
+    );
   });
 });

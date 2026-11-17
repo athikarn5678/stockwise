@@ -176,7 +176,7 @@ Real teardown needs the owner's separate authorization. It **fails closed (F2)**
 4. Pinned `pg_restore` 16 lists it as an archive of the expected database, containing `users`, `better_auth_accounts` and `_prisma_migrations`.
 5. Every other stored export also downloads.
 
-There is no flag that skips the export. Only then does it lift deletion protection, run `terraform destroy` and check for residual resources. **It must end with `STOCKWISE_TEARDOWN_VERIFIED`.** Remove the DNS records afterwards (G5).
+There is no flag that skips the export. Only then does it lift deletion protection, run `terraform destroy`, empty and delete the exports bucket (created outside Terraform by `ensure-exports-bucket.sh`; it must still exist when `terraform destroy` runs, because Terraform reads it as a data source) and check for residual resources. **It must end with `STOCKWISE_TEARDOWN_VERIFIED`.** Remove the DNS records afterwards (G5).
 
 ## Email (Resend, D-09)
 

@@ -13,8 +13,11 @@
 #      database with its core tables;
 #   3. every other stored export is downloaded as well.
 # Only then: lift RDS deletion protection (targeted apply), terraform destroy
-# (shows the plan and asks for confirmation), and the residual check, which
-# prints TEARDOWN_VERIFIED or every residual.
+# (shows the plan and asks for confirmation), empty and delete the exports
+# bucket (created by ensure-exports-bucket.sh, so Terraform does not own it;
+# it must still exist when destroy runs, because storage.tf reads it as a data
+# source), and the residual check, which prints TEARDOWN_VERIFIED or every
+# residual.
 # shellcheck source-path=SCRIPTDIR source=common.sh
 source "$(dirname "$0")/common.sh"
 require_tools aws terraform docker openssl
@@ -82,16 +85,25 @@ tf destroy -var-file="$var_file" "${release_vars[@]}" -var app_desired_count=0 \
 # empty it (all versions and delete markers) and delete it now.
 step "5b: emptying and deleting the exports bucket ${bucket}"
 if aws s3api head-bucket --bucket "$bucket" >/dev/null 2>&1; then
+  passes=0
   while :; do
+    passes=$((passes + 1))
+    [[ "$passes" -le 200 ]] || die "the exports bucket still holds versions after ${passes} passes; empty it in the console, then delete it"
     batch="$(aws s3api list-object-versions --bucket "$bucket" --max-items 500 \
       --query '{Objects: [Versions, DeleteMarkers][].{Key: Key, VersionId: VersionId}}' --output json)" ||
       die "cannot list the exports bucket versions"
     # Nothing left to delete (null, [] or an empty answer): stop.
     [[ "$batch" == *'"VersionId"'* ]] || break
-    aws s3api delete-objects --bucket "$bucket" --delete "$batch" --query 'length(Deleted)' --output text >/dev/null ||
-      die "cannot delete exports bucket versions"
+    # delete-objects exits 0 even when single keys fail (for example AccessDenied
+    # from the lab policy), so the Errors count is checked explicitly.
+    # shellcheck disable=SC2016 # JMESPath literal, not shell
+    errors="$(aws s3api delete-objects --bucket "$bucket" --delete "$batch" \
+      --query 'length(Errors || `[]`)' --output text)" || die "cannot delete exports bucket versions"
+    [[ "$errors" == 0 ]] || die "${errors} exports bucket versions could not be deleted (access denied?); empty the bucket in the console, then delete it"
   done
   aws s3api delete-bucket --bucket "$bucket" || die "cannot delete the exports bucket"
+else
+  step "exports bucket ${bucket} not found or not readable; nothing to delete here (step 6 checks for it)"
 fi
 
 step "6: residual check"
@@ -110,6 +122,7 @@ report ec2-instances "$(aws ec2 describe-instances --filters "Name=tag:Name,Valu
 # shellcheck disable=SC2016 # JMESPath literal, not shell
 report ecs-cluster "$(aws ecs describe-clusters --clusters "$cluster" --query 'clusters[?status==`ACTIVE`] | length(@)' --output text)"
 report ecr "$(aws ecr describe-repositories --query "repositories[?starts_with(repositoryName, '${prefix}/')] | length(@)" --output text)"
+report exports-bucket "$(aws s3api head-bucket --bucket "$bucket" >/dev/null 2>&1 && echo 1 || true)"
 report log-groups "$(aws logs describe-log-groups --log-group-name-prefix "/stockwise/${prefix}/" --query 'length(logGroups)' --output text)"
 report rds-log-group "$(aws logs describe-log-groups --log-group-name-prefix "/aws/rds/instance/${db}/" --query 'length(logGroups)' --output text)"
 report tagged-resources "$(aws resourcegroupstaggingapi get-resources --tag-filters Key=Project,Values=stockwise \

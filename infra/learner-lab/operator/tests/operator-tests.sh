@@ -440,6 +440,18 @@ expect F2_VERIFIED_EXPORT_ALLOWS_TEARDOWN bash -c "[[ $rc == 0 ]] &&
 expect F7_TEARDOWN_RELATIVE_PATH_RESOLVED grep -qF -- "-var-file=$(native "${case_dir}/demo.tfvars")" "${case_dir}/terraform.log"
 expect F2_PROTECTION_LIFTED_ONLY_AFTER_VERIFICATION bash -c "grep -q 'STOCKWISE_EXPORT_VERIFIED' '${case_dir}/teardown.out' &&
   [[ \$(grep -n 'STOCKWISE_EXPORT_VERIFIED' '${case_dir}/teardown.out' | head -1 | cut -d: -f1) -lt \$(grep -n 'lifting RDS deletion protection' '${case_dir}/teardown.out' | head -1 | cut -d: -f1) ]]"
+expect M9_TEARDOWN_DELETES_EXPORTS_BUCKET_AFTER_DESTROY bash -c "grep -q '^s3api delete-bucket' '${case_dir}/aws.log' &&
+  [[ \$(grep -n '^destroy' '${case_dir}/terraform.log' | head -1 | cut -d: -f1) -ge 1 ]] &&
+  grep -q 'STOCKWISE_TEARDOWN_VERIFIED' '${case_dir}/teardown.out'"
+# Step 5b: a stored version is deleted before the bucket; a per-key delete error
+# (delete-objects exits 0) is fatal and the loop never spins.
+STUB_S3_VERSIONS=1 f2_case versions valid.dump good 0
+expect M9_TEARDOWN_EMPTIES_VERSIONS_THEN_DELETES_BUCKET bash -c "[[ $rc == 0 ]] && grep -q '^s3api delete-objects' '${case_dir}/aws.log' &&
+  [[ \$(grep -c '^s3api delete-objects' '${case_dir}/aws.log') == 1 ]] && grep -q '^s3api delete-bucket' '${case_dir}/aws.log' &&
+  grep -q 'STOCKWISE_TEARDOWN_VERIFIED' '${case_dir}/teardown.out'"
+STUB_S3_VERSIONS=1 STUB_S3_DELETE_ERRORS=1 f2_case delete-errors valid.dump good 0
+expect M9_TEARDOWN_DELETE_ERRORS_FATAL_NO_LOOP bash -c "[[ $rc != 0 ]] && [[ \$(grep -c '^s3api delete-objects' '${case_dir}/aws.log') == 1 ]] &&
+  ! grep -q '^s3api delete-bucket' '${case_dir}/aws.log' && ! grep -q 'STOCKWISE_TEARDOWN_VERIFIED' '${case_dir}/teardown.out'"
 
 # R3-F2 final: shell-to-Node invocation through a symlink/junction, write-only
 # master credentials, and a successful validator process that does no work.

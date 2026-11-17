@@ -218,7 +218,7 @@ resource "aws_ecs_task_definition" "ops" {
   container_definitions = templatefile("${path.module}/templates/ops-container.json.tftpl", merge(local.common_template_vars, {
     ops_image     = coalesce(var.ops_image, "unset")
     ops_role      = each.key
-    export_bucket = aws_s3_bucket.exports.id
+    export_bucket = data.aws_s3_bucket.exports.id
     ops_log_group = aws_cloudwatch_log_group.container["ops"].name
     secrets       = jsonencode(each.value.secrets)
   }))

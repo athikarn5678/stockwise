@@ -312,7 +312,7 @@ variable "db_deletion_protection" {
 # ---- storage, observability and budget guard -------------------------------------
 
 variable "exports_force_destroy" {
-  description = "Allow terraform destroy to delete stored database exports. operator/teardown.sh sets true only after downloading them."
+  description = "Unused since the exports bucket is created outside Terraform (see storage.tf); kept so older operator command lines stay valid. teardown.sh deletes the bucket itself after downloading every export."
   type        = bool
   default     = false
 }

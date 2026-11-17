@@ -58,6 +58,17 @@ test("fails closed on non-object, non-string and oversized input", () => {
   );
 });
 
+test("refuses duplicate keys, plain or escaped, instead of collapsing them", () => {
+  for (const text of [
+    '{"A_KEY_1":"one","A_KEY_1":"two"}',
+    '{"A_KEY_1":"one","\\u0041_KEY_1":"two"}',
+  ])
+    assert.equal(
+      mergeSecretJson(text, ["C_KEY_3"], environment).status,
+      "error",
+    );
+});
+
 test("rejects unsafe names and an empty name list", () => {
   assert.equal(mergeSecretJson(stored, [], environment).status, "error");
   assert.equal(

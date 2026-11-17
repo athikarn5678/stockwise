@@ -70,8 +70,8 @@ Each step's completion check is in **bold**. Each gate (G3–G7) is a separate o
 
 1. **Images (G3).** Build and publish the three images for one commit of `main` whose CI `Quality gates` check is green. The workflow refuses any other commit.
    ```bash
-   sha=$(git rev-parse origin/main)                      # the commit to deploy; CI must be green on it
-   gh workflow run learner-lab-images.yml --ref main     # workflow_dispatch; builds web, api, ops (linux/amd64) and pushes to GHCR
+   git fetch origin && sha=$(git rev-parse origin/main)  # the commit to deploy; CI must be green on it
+   gh workflow run learner-lab-images.yml --ref main     # (re-check that origin/main still equals $sha) workflow_dispatch; builds web, api, ops (linux/amd64) and pushes to GHCR
    gh run list --workflow learner-lab-images.yml --limit 1   # note the run id, then: gh run watch <id> --exit-status
    for t in web api ops; do                              # the packages are public: no login needed to read the digests
      echo "ghcr.io/athikarn5678/stockwise-$t@$(docker buildx imagetools inspect ghcr.io/athikarn5678/stockwise-$t:sha-$sha --format '{{json .Manifest.Digest}}' | tr -d '"')"

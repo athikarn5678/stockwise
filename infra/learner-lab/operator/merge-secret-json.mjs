@@ -12,6 +12,8 @@ import { readFileSync, realpathSync } from "node:fs";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { hasDuplicateKeyNames } from "./validate-secret-json.mjs";
+
 export const NOTHING_TO_ADD = 3;
 
 /** @returns {{status: "merged", json: string} | {status: "nothing"} | {status: "error"}} */
@@ -19,6 +21,9 @@ export function mergeSecretJson(text, names, environment) {
   try {
     if (Buffer.byteLength(text, "utf8") > 65_536 || names.length === 0)
       return { status: "error" };
+    // A duplicate key (plain or escaped) would be collapsed silently by
+    // JSON.parse and drop a stored value: refuse instead of rewriting it.
+    if (hasDuplicateKeyNames(text)) return { status: "error" };
     const stored = JSON.parse(text);
     if (!stored || typeof stored !== "object" || Array.isArray(stored))
       return { status: "error" };

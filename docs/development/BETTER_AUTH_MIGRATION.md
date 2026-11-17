@@ -1,6 +1,6 @@
 PREPARED Migration historical source review status PREPARED Migration owner scope notice # Better Auth migration
 
-> **Status update 2026-11-17 (ADR-045).** [`ADR-045`](../decisions/0045-native-only-authentication.md) makes Better Auth Native the only authentication authority in every runtime (development, test, production); Legacy, `STOCKWISE_AUTHENTICATION_AUTHORITY`, the cutover fence and `native:cutover` were removed by milestone M3-T5/T6 (the sections below are historical). ADR-040 Learner Lab deployment: implemented in source, never provisioned; container images built to GHCR (2026-10-29/30); deployment planned as M9. D0–D5-P4 acceptance evidence below is history and is not restated by this update.
+> **Status update 2026-11-17 (ADR-045).** [`ADR-045`](../decisions/0045-native-only-authentication.md) makes Better Auth Native the only authentication authority in every runtime (development, test, production); Legacy, `STOCKWISE_AUTHENTICATION_AUTHORITY`, the cutover fence and `native:cutover` were removed by milestone M3-T5/T6 (the sections below are historical). ADR-040 Learner Lab deployment: implemented in source and deployed by the owner to AWS Learner Lab before, from the container images built to GHCR (2026-10-29/30); the lab environment is time-limited, so the current deployment is redone as M9 (24h sprint 2026-11-17/18). D0–D5-P4 acceptance evidence below is history and is not restated by this update.
 
 ## Authority and status
 

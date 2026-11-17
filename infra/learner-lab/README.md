@@ -11,9 +11,9 @@ The topology, its constraints and the owner decisions are in
 [`docs/architecture/DECISIONS.md`](../../docs/architecture/DECISIONS.md) (`ADR-040`). The diagram and a
 service-by-service explanation are in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-**Status:** ADR-040 Learner Lab deployment: implemented in source, never provisioned; container images built to GHCR (2026-10-29/30); deployment planned as M9. The source is verified locally (mocked Terraform tests, image builds, local ECS rehearsal). The earlier planning deadline `2026-10-31T16:59:00Z` (23:59
+**Status:** ADR-040 Learner Lab deployment: implemented in source and deployed by the owner to AWS Learner Lab before, from the container images built to GHCR (2026-10-29/30); the lab environment is time-limited, so the current deployment is redone as M9 (24h sprint 2026-11-17/18). The source is verified locally (mocked Terraform tests, image builds, local ECS rehearsal). The earlier planning deadline `2026-10-31T16:59:00Z` (23:59
 Asia/Bangkok) is historical and no longer applies; new dates are decided in M9.
-No Learner Lab create permission has been exercised.
+The owner has deployed this topology to Learner Lab before (from the GHCR images), so the create permissions it needs have been exercised. Terraform state lives on the operator machine and is not in Git: on a new machine or a reset lab account, expect to provision from scratch.
 
 | Path | Purpose |
 | --- | --- |
@@ -57,7 +57,7 @@ No Learner Lab create permission has been exercised.
 
 - Tools: Node.js 24 (the repository runtime, also used by the secret validator), AWS CLI v2, Terraform ≥ 1.11, Docker with buildx, bash (Linux, macOS or Git Bash), curl and OpenSSL.
 - Learner Lab session credentials from **AWS Details**, exported in the operator's own shell only. Never write them to a file. The scripts check that the identity is a Learner Lab role, and that its account matches the Terraform state.
-- `terraform/demo.tfvars`, copied from `example.tfvars` (ignored by Git), holding the hostname and `email_from`.
+- `terraform/demo.tfvars`, copied from `example.tfvars` (ignored by Git), holding the hostname, `email_from` and `demo_end_time` (must be in the future at apply time; `deploy.sh`, `rollback.sh` and `capacity.sh resume` refuse after it). The API receives `STOCKWISE_EMAIL_PROVIDER=resend` from the task definition and `STOCKWISE_EMAIL_FROM` from `email_from`.
 - **CloudFront is gated off (F4).** Its origin-protection header secret would be stored in plaintext in the operator's Terraform state (`sensitive` only hides it from output). Terraform refuses `enable_cloudfront = true` unless `cloudfront_secret_in_state_approved = true`. Set that only after:
   - the owner explicitly approves that limitation (or a secret-free design such as CloudFront VPC origins with an internal ALB, which needs its own review);
   - CloudFront access is verified (see "AWS capability checks").
@@ -68,7 +68,16 @@ No Learner Lab create permission has been exercised.
 
 Each step's completion check is in **bold**. Each gate (G3–G7) is a separate owner approval. Approving this source does not authorize any of them, DNS changes (G5) included.
 
-1. **Images (G3).** Run the `Learner Lab images` workflow for a commit with green Quality gates. Its summary lists three GHCR digests. **Three `ghcr.io/...@sha256:` references.**
+1. **Images (G3).** Build and publish the three images for one commit of `main` whose CI `Quality gates` check is green. The workflow refuses any other commit.
+   ```bash
+   sha=$(git rev-parse origin/main)                      # the commit to deploy; CI must be green on it
+   gh workflow run learner-lab-images.yml --ref main     # workflow_dispatch; builds web, api, ops (linux/amd64) and pushes to GHCR
+   gh run list --workflow learner-lab-images.yml --limit 1   # note the run id, then: gh run watch <id> --exit-status
+   for t in web api ops; do                              # the packages are public: no login needed to read the digests
+     echo "ghcr.io/athikarn5678/stockwise-$t@$(docker buildx imagetools inspect ghcr.io/athikarn5678/stockwise-$t:sha-$sha --format '{{json .Manifest.Digest}}' | tr -d '"')"
+   done
+   ```
+   The run's job summary lists the same three digests. **Three `ghcr.io/...@sha256:` references for the 40-character `$sha`.** The workflow needs no AWS credentials: Learner Lab cannot create an OIDC role, so ECR gets the images in step 4.
 2. **ACM certificate and ECR repositories (G4).**
    ```bash
    cd infra/learner-lab/terraform && terraform init
@@ -88,16 +97,17 @@ Each step's completion check is in **bold**. Each gate (G3–G7) is a separate o
    terraform apply -var-file=demo.tfvars -var web_image=<WEB_IMAGE> -var api_image=<API_IMAGE> -var ops_image=<OPS_IMAGE> -var app_desired_count=0
    ```
    **Apply complete: two `RUNNING` container instances in the cluster, and RDS `available` with Multi-AZ.**
-6. **Public hostname DNS (G5).** Create the `public_dns_record` output (a DNS-only CNAME to the ALB) and wait until it resolves.
+6. **Public hostname DNS (G5).** Create the `public_dns_record` output and wait until it resolves. For `stockwise.hcn920.com` the record is set in Cloudflare (see "Cloudflare proxy" below): type `CNAME`, name `stockwise`, target = the ALB DNS name (`terraform output alb_dns_name`), **proxied (orange cloud) = yes**. Change it by hand in the Cloudflare dashboard; it is not in Terraform. A new ALB has a new DNS name, so the target must be updated after every re-provision.
    ```bash
    curl -sS -o /dev/null -w '%{http_code}\n' "$(terraform output -raw public_origin)/api/health"
    ```
    **`503`: valid HTTPS for the hostname, no task yet. `000` means DNS or TLS is not ready.** `deploy.sh` repeats this check and refuses to migrate or cut over until it passes.
-7. **Secrets.**
+7. **Secrets.** Provider values come from the environment of the operator's own shell (never from Git or a file in the repository, never printed):
    ```bash
-   operator/put-secrets.sh --resend-key-file <file>
+   export RESEND_API_KEY=… OPENCODE_GO_API_KEY=… STRIPE_SECRET_KEY=sk_test_… STOCKWISE_PROMPTPAY_ID=…   # PromptPay ID: 10-digit phone, 13-digit national ID or 15-digit e-wallet ID, digits only
+   operator/put-secrets.sh                      # or: --resend-key-file <file> instead of RESEND_API_KEY
    ```
-   With `db_master_password_mode = write_only`, add `--master-password-from-env`. **`STOCKWISE_SECRETS:READY`.**
+   Stripe is test mode only: a `sk_live_` key is refused. The five generated application keys and the database passwords are created once; an already stored secret keeps every stored value, and only provider keys missing from it are merged in (`merge-secret-json.mjs`), so re-running never rotates a key. With `db_master_password_mode = write_only`, add `--master-password-from-env`. **`STOCKWISE_SECRETS:READY`.**
 8. **Database roles.**
    ```bash
    operator/run-ops-task.sh bootstrap-roles
@@ -169,7 +179,9 @@ There is no flag that skips the export. Only then does it lift deletion protecti
 Production always uses Resend. Before G7:
 1. Verify a sending domain (SPF/DKIM and DMARC `p=none`).
 2. `email_from` must use that domain.
-3. Create a sending-only API key for it, then store it with `put-secrets.sh --resend-key-file`.
+3. Create a sending-only API key for it, then store it with `put-secrets.sh` (`RESEND_API_KEY` in the environment, or `--resend-key-file`).
+
+For `stockwise.hcn920.com` the verified domain is `hcn920.com` and `email_from` is `StockWise <no-reply@hcn920.com>`.
 
 The first test goes to `delivered@resend.dev`, then to one owner-controlled mailbox only.
 
@@ -200,6 +212,8 @@ node --test infra/learner-lab/ops/verified-postgres-forwarder.test.mjs
 node --test infra/learner-lab/docker/redacting-log-pipe.test.mjs
 # Complete JSON syntax, duplicate decoded keys, value types and quiet stdin CLI
 node --test infra/learner-lab/operator/validate-secret-json.test.mjs
+# Merge of missing provider keys into an existing secret (never overwrites)
+node --test infra/learner-lab/operator/merge-secret-json.test.mjs
 # Outage-alarm scenario model (pause/resume; reads terraform/monitoring.tf)
 node --test infra/learner-lab/operator/tests/outage-alarm-model.test.mjs
 ```

@@ -72,6 +72,14 @@ export const apiEnvironmentSchema = z
       .regex(/^[A-Za-z0-9_./:-]{1,128}$/)
       .optional(),
     RESEND_API_KEY: z.string().min(1).optional(),
+    // Stripe is test mode only (ADR-047): any other key fails startup. The
+    // message never echoes the value.
+    STRIPE_SECRET_KEY: z
+      .string()
+      .regex(/^sk_test_[A-Za-z0-9]+$/, {
+        message: "STRIPE_SECRET_KEY must be a Stripe test-mode secret key",
+      })
+      .optional(),
     STOCKWISE_BETTER_AUTH_SECRET: z.string().min(1),
     STOCKWISE_INVITATION_CONTINUATION_KEY: z
       .string()
@@ -364,6 +372,7 @@ export function loadApiEnvironment(
     OPENCODE_GO_API_KEY: environment.OPENCODE_GO_API_KEY,
     OPENCODE_GO_MODEL: environment.OPENCODE_GO_MODEL,
     RESEND_API_KEY: environment.RESEND_API_KEY,
+    STRIPE_SECRET_KEY: environment.STRIPE_SECRET_KEY,
     STOCKWISE_BETTER_AUTH_SECRET: environment.STOCKWISE_BETTER_AUTH_SECRET,
     STOCKWISE_INVITATION_CONTINUATION_KEY:
       environment.STOCKWISE_INVITATION_CONTINUATION_KEY,

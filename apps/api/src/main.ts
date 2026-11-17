@@ -16,6 +16,10 @@ import { createPrismaReorderRepository } from "./modules/analytics/analytics-reo
 import { createReorderService } from "./modules/analytics/analytics-reorder-service.ts";
 import { createAnalyticsInventoryService } from "./modules/analytics/analytics-inventory-service.ts";
 import { createAnalyticsRouter } from "./modules/analytics/analytics-router.ts";
+import { createBillingRouter } from "./modules/billing/billing-router.ts";
+import { createPrismaBillingRepository } from "./modules/billing/billing-repository.ts";
+import { createBillingService } from "./modules/billing/billing-service.ts";
+import { createStripeClient } from "./modules/billing/stripe-client.ts";
 import { createAiInsightRouter } from "./modules/ai-insights/ai-insight-router.ts";
 import { createAiAnalyzeService } from "./modules/ai-insights/ai-analyze-service.ts";
 import { createAiAnalyzeSnapshotBuilder } from "./modules/ai-insights/ai-analyze-snapshot.ts";
@@ -292,6 +296,23 @@ async function main(): Promise<void> {
       salesService: analyticsSalesService,
     }),
   });
+  // Billing is hidden (no stripe client) unless a test-mode key is configured.
+  apiRouter.use(
+    createBillingRouter({
+      authenticationMiddleware,
+      service: createBillingService({
+        publicWebOrigin: environment.STOCKWISE_PUBLIC_WEB_ORIGIN,
+        repository: createPrismaBillingRepository(prisma),
+        ...(environment.STRIPE_SECRET_KEY === undefined
+          ? {}
+          : {
+              stripe: createStripeClient({
+                secretKey: environment.STRIPE_SECRET_KEY,
+              }),
+            }),
+      }),
+    }),
+  );
   apiRouter.use(
     createAiInsightRouter({
       analyzeService: aiAnalyzeService,

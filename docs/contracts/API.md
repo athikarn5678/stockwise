@@ -1822,6 +1822,16 @@ AI read responses:
 - Treat content as untrusted display text: escape it and never render provider-supplied active HTML.
 - Do not expose raw prompts, secrets, provider errors, or prohibited data.
 
+### Billing (ADR-047, test mode)
+
+| Endpoint | Auth | Request | Success | Errors |
+| --- | --- | --- | --- | --- |
+| `GET /organizations/{organizationId}/billing` | Any active verified member | none | `{data: {enabled, canManage, subscription: {plan, status} \| null}}`; `enabled:false` and no subscription when `STRIPE_SECRET_KEY` is absent | `400`, `401`, `403` |
+| `POST /organizations/{organizationId}/billing/checkout` | OWNER (`billing.manage`) | `{plan: "STARTER" \| "GROWTH" \| "BUSINESS"}` | `{data: {url}}` (Stripe-hosted Checkout URL) | `400`, `403`, `404` disabled, `409 SUBSCRIPTION_EXISTS`, `502 BILLING_PROVIDER_FAILED` |
+| `POST /organizations/{organizationId}/billing/confirm` | OWNER (`billing.manage`) | `{sessionId: "cs_test_…"}` | `{data: {subscription: {plan, status}}}` (idempotent for the same session) | `400`, `403` (including another Organization's session), `404` disabled, `409 CHECKOUT_NOT_COMPLETE` / `SUBSCRIPTION_EXISTS`, `502` |
+
+Strict bodies; responses carry `Cache-Control: no-store` on success. Prices are server-owned. No webhook, limit enforcement, Customer Portal or plan change in this slice. Implemented M6-S1.
+
 ## 14. S3/object endpoints
 
 S3 is an accepted cloud service, but no asset upload product requirement is sufficiently defined. Do not add generic upload or presigned-URL endpoints until asset type, authorization, MIME/size limits, malware/content handling, naming, ownership, lifecycle, and retention are accepted under `OQ-015`/`OQ-020` or a new product decision.

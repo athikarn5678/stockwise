@@ -4,6 +4,19 @@ import { readFileSync, realpathSync } from "node:fs";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+// JSON.parse discards duplicate keys. Scan whole string tokens separately,
+// decoding names so app_password and \u0061pp_password are the same key.
+export function hasDuplicateKeyNames(text) {
+  const names = new Set();
+  for (const token of text.matchAll(/"(?:\\.|[^"\\])*"/g)) {
+    if (!/^\s*:/.test(text.slice(token.index + token[0].length))) continue;
+    const name = JSON.parse(token[0]);
+    if (names.has(name)) return true;
+    names.add(name);
+  }
+  return false;
+}
+
 export function validateSecretJson(text, fields) {
   try {
     if (Buffer.byteLength(text, "utf8") > 65_536) return false;
@@ -19,15 +32,7 @@ export function validateSecretJson(text, fields) {
         return false;
     }
 
-    // JSON.parse discards duplicate keys. Scan whole string tokens separately,
-    // decoding names so app_password and \u0061pp_password are the same key.
-    const names = new Set();
-    for (const token of text.matchAll(/"(?:\\.|[^"\\])*"/g)) {
-      if (!/^\s*:/.test(text.slice(token.index + token[0].length))) continue;
-      const name = JSON.parse(token[0]);
-      if (names.has(name)) return false;
-      names.add(name);
-    }
+    if (hasDuplicateKeyNames(text)) return false;
     return true;
   } catch {
     return false;

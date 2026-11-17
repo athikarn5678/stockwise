@@ -329,9 +329,9 @@ variable "alarm_email" {
 }
 
 variable "demo_end_time" {
-  description = "Planning deadline (ADR-040 OD-5). The real date is decided in milestone M9; the default below is a stale placeholder from the earlier demo window and must be overridden in demo.tfvars. An ASG scheduled action scales the container instances to zero then; it is a backstop, not teardown. Must be in the future at apply time."
+  description = "Planning deadline (ADR-040 OD-5): the end of the demo window. An ASG scheduled action scales the container instances to zero then; it is a backstop, not teardown. deploy.sh, rollback.sh and capacity.sh resume refuse to run after it. Must be in the future at apply time (AWS rejects a past schedule), so set the real value in demo.tfvars; the default is the provisional end of the M9 sprint demo window (2026-11-21 23:59 Asia/Bangkok) and goes stale after that date."
   type        = string
-  default     = "2026-10-31T16:59:00Z"
+  default     = "2026-11-21T16:59:00Z"
   validation {
     condition     = can(formatdate("YYYY", var.demo_end_time)) && endswith(var.demo_end_time, "Z")
     error_message = "demo_end_time must be an RFC 3339 UTC timestamp ending in Z."

@@ -1,17 +1,29 @@
 #!/usr/bin/env bash
 # Generates and stores every StockWise demo secret value in Secrets Manager
 # (ADR-040). Run once after the first apply, before any ops task:
-#   put-secrets.sh --resend-key-file <file> [--master-password-from-env]
+#   put-secrets.sh [--resend-key-file <file>] [--master-password-from-env]
 #
 #   <name_prefix>/database     app_password, migrator_password, demo_user_password
-#   <name_prefix>/application  five distinct 32-byte keys + RESEND_API_KEY
+#   <name_prefix>/application  five distinct 32-byte keys, RESEND_API_KEY and the
+#                              provider values below
+#
+# Provider values are read from the operator's own shell environment at run
+# time (never from Git, never printed, never in argv):
+#   RESEND_API_KEY          only when --resend-key-file is not given
+#   OPENCODE_GO_API_KEY     AI analysis (OpenCode Go)
+#   STRIPE_SECRET_KEY       Stripe test-mode secret key (sk_test_...; live keys refused)
+#   STOCKWISE_PROMPTPAY_ID  PromptPay receiver (10-digit phone, 13-digit national
+#                           ID or 15-digit e-wallet ID; digits only)
 #   <name_prefix>/master       only with db_master_password_mode = write_only:
 #                              username + TF_VAR_db_master_password
 # Values are generated locally, written to a 0600 temporary file, sent with
 # put-secret-value file://, and the file is removed. Nothing is printed.
-# A secret that already has a current value is left untouched (no silent
+# A secret that already has a current value keeps every stored key (no silent
 # rotation: rotating the database secret requires bootstrap-roles again, and
-# rotating application keys invalidates sessions, proofs and pending OTPs).
+# rotating application keys invalidates sessions, proofs and pending OTPs). The
+# one exception is additive: provider keys missing from an existing
+# application secret (for example one stored before they existed) are merged in
+# with merge-secret-json.mjs; stored values are never overwritten.
 #
 # Fails closed (R2-NEW-F1): every AWS call's exit status and response shape is
 # checked, so an AccessDenied, throttling, timeout, empty or malformed answer
@@ -33,7 +45,7 @@ while [[ $# -gt 0 ]]; do
     *) die "unknown argument: $1" ;;
   esac
 done
-[[ -r "$resend_key_file" ]] || die "--resend-key-file must name a readable file holding the Resend API key"
+[[ -z "$resend_key_file" || -r "$resend_key_file" ]] || die "--resend-key-file must name a readable file holding the Resend API key"
 
 # Sets current_versions to the number of AWSCURRENT versions of secret $1, or
 # exits. Never called in a condition, so errexit and die() stay effective.
@@ -91,6 +103,24 @@ put_json() {
 
 readonly key43='[A-Za-z0-9_-]{43}'
 readonly password='[A-Za-z0-9_-]{24,128}'
+# Provider values (read from the environment). Stripe is test mode only (M6).
+readonly provider_names=(OPENCODE_GO_API_KEY STRIPE_SECRET_KEY STOCKWISE_PROMPTPAY_ID)
+readonly opencode_pattern='[A-Za-z0-9._-]{16,256}'
+readonly stripe_pattern='sk_test_[A-Za-z0-9]{16,250}'
+readonly promptpay_pattern='[0-9]{10}|[0-9]{13}|[0-9]{15}'
+
+# Checks the environment value of variable $1 against pattern $2 without ever
+# printing it. $3 is the hint shown on failure.
+require_env_value() {
+  local name="$1" pattern="$2" hint="$3" value="${!1:-}"
+  [[ -n "$value" ]] || die "${name} must be set in the environment of this shell (${hint}); nothing was written"
+  [[ "$value" =~ ^(${pattern})$ ]] || die "${name} in the environment has an unexpected format (${hint}); nothing was written"
+}
+require_provider_env() {
+  require_env_value OPENCODE_GO_API_KEY "$opencode_pattern" "the OpenCode Go API key"
+  require_env_value STRIPE_SECRET_KEY "$stripe_pattern" "a Stripe TEST-mode secret key, sk_test_..."
+  require_env_value STOCKWISE_PROMPTPAY_ID "$promptpay_pattern" "a 10-, 13- or 15-digit PromptPay ID, digits only"
+}
 database_arn="$(tf_output database_secret_arn)"
 application_arn="$(tf_output application_secret_arn)"
 
@@ -110,10 +140,32 @@ fi
 
 read_current_versions "$application_arn" application
 if [[ "$current_versions" -gt 0 ]]; then
-  step "application secret already set; unchanged"
+  # Existing secret: keep every stored key; add only the provider keys that are
+  # missing. The stored JSON and the merged JSON live in memory only.
+  if ! existing="$(aws secretsmanager get-secret-value --secret-id "$application_arn" --query SecretString --output text)"; then
+    die "cannot read the application secret (AWS error); nothing is reported ready"
+  fi
+  merge_status=0
+  merged="$(printf '%s' "$existing" | node "$(native_path "${operator_dir}/merge-secret-json.mjs")" "${provider_names[@]}")" || merge_status=$?
+  unset existing
+  case "$merge_status" in
+    0)
+      require_provider_env
+      put_json "$application_arn" < <(printf '%s' "$merged")
+      unset merged
+      step "application secret: provider keys merged into the existing secret"
+      ;;
+    3) step "application secret already set; unchanged" ;;
+    *) die "cannot merge provider keys into the application secret (not a flat string object, or a provider value is missing from the environment: ${provider_names[*]}); nothing was written" ;;
+  esac
 else
-  resend_key="$(tr -d '\r\n' <"$resend_key_file")"
-  [[ "$resend_key" =~ ^re_[A-Za-z0-9_]{8,200}$ ]] || die "the Resend API key file does not hold a re_... key"
+  if [[ -n "$resend_key_file" ]]; then
+    resend_key="$(tr -d '\r\n' <"$resend_key_file")"
+  else
+    resend_key="${RESEND_API_KEY:-}"
+  fi
+  [[ "$resend_key" =~ ^re_[A-Za-z0-9_]{8,200}$ ]] || die "the Resend API key (--resend-key-file or RESEND_API_KEY) is not a re_... key"
+  require_provider_env
   declare -A key=()
   for name in STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY STOCKWISE_VERIFICATION_OTP_KEY \
     STOCKWISE_VERIFICATION_PROOF_KEY STOCKWISE_BETTER_AUTH_SECRET STOCKWISE_INVITATION_CONTINUATION_KEY; do
@@ -123,7 +175,9 @@ else
   put_json "$application_arn" < <(
     printf '{'
     for name in "${!key[@]}"; do printf '"%s":"%s",' "$name" "${key[$name]}"; done
-    printf '"RESEND_API_KEY":"%s"}' "$resend_key"
+    printf '"RESEND_API_KEY":"%s",' "$resend_key"
+    printf '"OPENCODE_GO_API_KEY":"%s","STRIPE_SECRET_KEY":"%s","STOCKWISE_PROMPTPAY_ID":"%s"}' \
+      "$OPENCODE_GO_API_KEY" "$STRIPE_SECRET_KEY" "$STOCKWISE_PROMPTPAY_ID"
   )
   unset key resend_key
   step "application secret stored"
@@ -150,7 +204,9 @@ verify_secret "$database_arn" database \
 verify_secret "$application_arn" application \
   "STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY=${key43}" "STOCKWISE_VERIFICATION_OTP_KEY=${key43}" \
   "STOCKWISE_VERIFICATION_PROOF_KEY=${key43}" "STOCKWISE_BETTER_AUTH_SECRET=${key43}" \
-  "STOCKWISE_INVITATION_CONTINUATION_KEY=${key43}" "RESEND_API_KEY=re_[A-Za-z0-9_]{8,200}"
+  "STOCKWISE_INVITATION_CONTINUATION_KEY=${key43}" "RESEND_API_KEY=re_[A-Za-z0-9_]{8,200}" \
+  "OPENCODE_GO_API_KEY=${opencode_pattern}" "STRIPE_SECRET_KEY=${stripe_pattern}" \
+  "STOCKWISE_PROMPTPAY_ID=${promptpay_pattern}"
 if $with_master; then
   verify_secret "$master_arn" master "username=[a-z][a-z0-9_]{0,62}" "password=${password}"
 fi

@@ -6,7 +6,6 @@ import {
   E2E_BRANCH_ID,
   E2E_ORGANIZATION_ID,
   E2E_OWNER_EMAIL,
-  E2E_OWNER_ID,
   E2E_PASSWORD,
 } from "./catalog-fixtures.ts";
 
@@ -21,14 +20,10 @@ const workflowScope = `organizationId=${workflowOrganizationId}&branchId=${workf
 test.beforeAll(async () => {
   const prisma = createTestPrismaClient(loadTestDatabaseEnvironment());
   try {
-    const owner = await prisma.user.findUniqueOrThrow({
-      where: { id: E2E_OWNER_ID },
-    });
     await prisma.user.create({
       data: {
         email: onboardingEmail,
         emailVerifiedAt: new Date(),
-        passwordHash: owner.passwordHash,
       },
     });
     // Existing scenarios rely on both shared organizations' initial state.
@@ -38,7 +33,6 @@ test.beforeAll(async () => {
         email: workflowEmail,
         displayName: "Form layout owner",
         emailVerifiedAt: new Date(),
-        passwordHash: owner.passwordHash,
       },
     });
     await prisma.organization.create({

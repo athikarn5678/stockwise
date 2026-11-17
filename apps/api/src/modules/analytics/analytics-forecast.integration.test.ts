@@ -29,7 +29,6 @@ async function actor(
   const user = await prisma.user.create({
     data: {
       email: `${randomUUID()}@example.test`,
-      passwordHash: "test",
       emailVerifiedAt: cutoff,
     },
   });

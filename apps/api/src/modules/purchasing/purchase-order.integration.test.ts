@@ -17,8 +17,6 @@ const environment = loadTestDatabaseEnvironment();
 const prisma = createTestPrismaClient(environment);
 const NOW = new Date("2026-09-01T12:00:00.000Z");
 const repository = createPrismaPurchaseOrderRepository(prisma, () => NOW);
-const PASSWORD_HASH = "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$cHVyY2hhc2U";
-
 async function scope(name: string) {
   const organization = await prisma.organization.create({ data: { name } });
   const branch = await prisma.branch.create({
@@ -71,7 +69,6 @@ async function actor(input: {
     data: {
       email: `${input.role.toLowerCase()}-${crypto.randomUUID()}@example.com`,
       emailVerifiedAt: NOW,
-      passwordHash: PASSWORD_HASH,
     },
   });
   const membership = await prisma.organizationMembership.create({

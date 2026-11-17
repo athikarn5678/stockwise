@@ -64,7 +64,6 @@ describe("receiving HTTP API with PostgreSQL", () => {
       data: {
         email: `${randomUUID()}@example.com`,
         emailVerifiedAt: NOW,
-        passwordHash: "integration-test",
       },
     });
     const membership = await prisma.organizationMembership.create({

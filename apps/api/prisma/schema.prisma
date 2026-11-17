@@ -190,8 +190,6 @@ enum AiInsightFailureCategory {
 model User {
   id                            String     @id @default(uuid()) @db.Uuid
   email                         String     @unique(map: "users_email_key") @db.VarChar(320)
-  // Public dummy verifier; its random preimage was discarded, never a credential.
-  passwordHash                  String     @default("$argon2id$v=19$m=65536,p=4,t=3$MELWslgkJzw87Me69Wz1tw$l9XoBv1UBhpmS40M2xzT5cHzqoSubftPd1Md5u/ZmvQ") @map("password_hash") @db.VarChar(255)
   status                        UserStatus @default(ACTIVE)
   displayName                   String?    @map("display_name") @db.VarChar(200)
   phone                         String?    @db.VarChar(32)

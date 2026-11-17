@@ -152,6 +152,8 @@ there is no second user table. The snapshot is not maintained by legacy writers
 and cannot authorize runtime access. Reconciliation and synchronization are
 mandatory before cutover.
 
+> **Historical (dropped by M3-F1, migration `20261117120000_drop_users_password_hash`).** `users.password_hash` no longer exists; the Native credential lives only in `better_auth_accounts.password` and the guard was replaced before the column was dropped. The paragraph below records the earlier design.
+
 The non-null `password_hash` receives a valid Argon2id public dummy default
 with a discarded cryptographically random preimage. Existing hashes are not
 backfilled; legacy registration keeps explicitly supplying its own hash.

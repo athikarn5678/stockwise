@@ -60,7 +60,6 @@ describe("sale refunds with PostgreSQL", () => {
         displayName: `${input.role} Actor`,
         email: `${randomUUID()}@example.test`,
         emailVerifiedAt: COMPLETED_AT,
-        passwordHash: "refund-test",
       },
     });
     await prisma.organizationMembership.create({

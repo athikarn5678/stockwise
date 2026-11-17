@@ -43,7 +43,6 @@ async function addSale(organizationId: string, branchId: string) {
   const user = await prisma.user.create({
     data: {
       email: `${randomUUID()}@example.test`,
-      passwordHash: "snapshot-test",
     },
   });
   const membership = await prisma.organizationMembership.create({

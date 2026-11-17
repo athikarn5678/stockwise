@@ -57,7 +57,6 @@ function canonical(value: unknown): unknown {
   if (value !== null && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value)
-        .filter(([key]) => key !== "passwordHash")
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([key, entry]) => [key, canonical(entry)]),
     );
@@ -309,26 +308,21 @@ async function verifyManifest(
 async function insert(tx: Transaction, fixture: Fixture): Promise<void> {
   await tx.organization.createMany({ data: fixture.organization });
   await tx.branch.createMany({ data: fixture.branchRows });
-  // The fixture carries each user's Argon2id verifier in `passwordHash` only
-  // to build the credential account: `users.password_hash` keeps its schema
-  // default and nothing writes it.
+  // Native identity: verified and registered at the fixture instant. The
+  // credential lives only in the Better Auth account (users has no hash column).
   await tx.user.createMany({
-    data: fixture.userRows.map((row) => {
-      const user: Prisma.UserCreateManyInput = {
-        ...row,
-        emailVerified: true,
-        nativeRegistrationCompletedAt: row.passwordChangedAt as Date,
-      };
-      delete user.passwordHash;
-      return user;
-    }),
+    data: fixture.userRows.map((row) => ({
+      ...row,
+      emailVerified: true,
+      nativeRegistrationCompletedAt: row.passwordChangedAt as Date,
+    })),
   });
   await tx.betterAuthAccount.createMany({
-    data: fixture.userRows.map((user) => ({
+    data: fixture.credentials.map((credential) => ({
       providerId: "credential",
-      accountId: user.id as string,
-      userId: user.id as string,
-      password: user.passwordHash as string,
+      accountId: credential.userId,
+      userId: credential.userId,
+      password: credential.passwordHash,
     })),
   });
   await tx.organizationMembership.createMany({ data: fixture.memberships });

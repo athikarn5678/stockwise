@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import type { Page } from "@playwright/test";
 import { createPrismaMembershipAccessRepository } from "../../../apps/api/src/modules/identity/membership-access-repository.ts";
@@ -8,7 +8,6 @@ import {
 } from "../../../apps/api/src/modules/identity/membership-access-service.ts";
 import type { InvitationCreateInput } from "../../../apps/api/src/modules/identity/membership-access-schemas.ts";
 import { secureOneTimeTokenProvider } from "../../../apps/api/src/modules/identity/one-time-token.ts";
-import { hashPassword } from "../../../apps/api/src/modules/identity/password-hasher.ts";
 import {
   journey,
   expect,
@@ -59,7 +58,6 @@ async function issue(input: Scenario): Promise<Issued> {
       email: `seed-${randomUUID()}@example.invalid`,
       displayName: "Synthetic invitation owner",
       emailVerifiedAt: new Date(),
-      passwordHash: await hashPassword(randomBytes(24).toString("base64url")),
     },
   });
   const organization = await input.harness.prisma.organization.create({

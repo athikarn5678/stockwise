@@ -10,9 +10,6 @@ import { loadTestDatabaseEnvironment } from "../test/database-environment.ts";
 const environment = loadTestDatabaseEnvironment();
 const prisma = createTestPrismaClient(environment);
 
-const PASSWORD_HASH_FIXTURE =
-  "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$c2NoZW1hLXRlc3Q";
-
 function futureHours(hours: number): Date {
   return new Date(Date.now() + hours * 60 * 60 * 1000);
 }
@@ -20,7 +17,6 @@ async function createUser(email: string, displayName = "Schema Test User") {
   return prisma.user.create({
     data: {
       email,
-      passwordHash: PASSWORD_HASH_FIXTURE,
       displayName,
     },
   });
@@ -149,7 +145,6 @@ describe("identity and tenancy database schema", () => {
     const registrationStageUser = await prisma.user.create({
       data: {
         email: "registration-stage@example.com",
-        passwordHash: PASSWORD_HASH_FIXTURE,
         displayName: null,
       },
     });

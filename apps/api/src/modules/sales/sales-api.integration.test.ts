@@ -91,7 +91,6 @@ describe("sales HTTP API with PostgreSQL", () => {
         displayName: `${input.role} Actor`,
         email: `${randomUUID()}@example.com`,
         emailVerifiedAt: NOW,
-        passwordHash: "sales-api-test",
       },
     });
     await prisma.organizationMembership.create({

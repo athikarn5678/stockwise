@@ -14,10 +14,6 @@ const environment = loadTestDatabaseEnvironment();
 const prisma = createTestPrismaClient(environment);
 const id = "5c0d6b46-7a4b-4a7e-9d3a-1e2f3a4b5c6d";
 const password = "native fixture password 15+";
-// Public dummy verifier: the `users.password_hash` default in schema.prisma.
-// Native identities never use it, and the fixture must not write a real hash.
-const DUMMY_PASSWORD_HASH_DEFAULT =
-  "$argon2id$v=19$m=65536,p=4,t=3$MELWslgkJzw87Me69Wz1tw$l9XoBv1UBhpmS40M2xzT5cHzqoSubftPd1Md5u/ZmvQ";
 const MINUTE = 60_000;
 const configuration: SessionConfiguration = {
   absoluteTimeoutMilliseconds: 7 * 24 * 60 * MINUTE,
@@ -51,14 +47,14 @@ describe("native user fixture", () => {
     expect(user.emailVerifiedAt).not.toBeNull();
     expect(user.nativeRegistrationCompletedAt).not.toBeNull();
     expect(user.credentialVersion).toBe(1n);
-    // No Legacy credential: the Legacy column keeps its public dummy default.
-    expect(user.passwordHash).toBe(DUMMY_PASSWORD_HASH_DEFAULT);
+    // The credential lives only in the Better Auth account (users has no hash column).
+    expect(Object.keys(user)).not.toContain("passwordHash");
     expect(user.betterAuthAccounts).toHaveLength(1);
     const [account] = user.betterAuthAccounts;
     expect(account?.providerId).toBe("credential");
     expect(account?.accountId).toBe(id);
     expect(account?.userId).toBe(id);
-    expect(account?.password).not.toBe(DUMMY_PASSWORD_HASH_DEFAULT);
+    expect(account?.password).toMatch(/^\$argon2id\$/);
     await expect(
       verifyPassword(account?.password ?? "", password),
     ).resolves.toBe(true);

@@ -35,16 +35,12 @@ import {
 const environment = loadTestDatabaseEnvironment();
 const prisma = createTestPrismaClient(environment);
 const NOW = new Date("2026-08-24T18:00:00.000Z");
-const PASSWORD_HASH_FIXTURE =
-  "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$c2NoZW1hLXRlc3Q";
-
 async function user(email: string) {
   return prisma.user.create({
     data: {
       displayName: email.split("@")[0]!,
       email,
       emailVerifiedAt: new Date(NOW.getTime() - 1_000),
-      passwordHash: PASSWORD_HASH_FIXTURE,
     },
   });
 }

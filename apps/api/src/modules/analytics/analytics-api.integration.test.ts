@@ -125,7 +125,6 @@ describe("analytics HTTP API with PostgreSQL", () => {
         displayName: role,
         email: `${randomUUID()}@example.test`,
         emailVerifiedAt: now,
-        passwordHash: "analytics-http-test",
       },
     });
     await prisma.organizationMembership.create({

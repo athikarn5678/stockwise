@@ -15,16 +15,13 @@ const environment = loadTestDatabaseEnvironment();
 const prisma = createTestPrismaClient(environment);
 const repository = createPrismaInventoryRepository(prisma);
 const NOW = new Date("2026-08-30T12:00:00.000Z");
-const PASSWORD_HASH_FIXTURE =
-  "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$c2NoZW1hLXRlc3Q";
-
 async function actor(
   organizationId: string,
   email: string,
   role: "OWNER" | "BRANCH_MANAGER",
 ) {
   const user = await prisma.user.create({
-    data: { email, emailVerifiedAt: NOW, passwordHash: PASSWORD_HASH_FIXTURE },
+    data: { email, emailVerifiedAt: NOW },
   });
   const membership = await prisma.organizationMembership.create({
     data: { organizationId, role, userId: user.id },

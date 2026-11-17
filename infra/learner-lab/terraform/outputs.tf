@@ -84,7 +84,7 @@ output "db_endpoint" {
 }
 
 output "exports_bucket" {
-  value = aws_s3_bucket.exports.id
+  value = data.aws_s3_bucket.exports.id
 }
 
 output "outage_alarm_name" {
@@ -98,12 +98,18 @@ output "dashboard_url" {
 
 # Plain string outputs read by the operator scripts with `terraform output -raw`
 # (no JSON tooling required on the operator machine).
+#
+# name_prefix and region depend on the caller-identity data source so that the
+# targeted first apply of the runbook (README step 2) records them too: the
+# operator scripts, including mirror-images.sh, read both before the full apply.
 output "name_prefix" {
-  value = var.name_prefix
+  value      = var.name_prefix
+  depends_on = [data.aws_caller_identity.current]
 }
 
 output "region" {
-  value = var.region
+  value      = var.region
+  depends_on = [data.aws_caller_identity.current]
 }
 
 # The account the operator scripts require the active Learner Lab identity to

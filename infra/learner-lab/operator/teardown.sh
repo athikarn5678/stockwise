@@ -68,14 +68,31 @@ step "3: downloading every other stored export"
 aws s3 cp "s3://${bucket}/exports/" "$(native_path "${export_dir}/all")/" --recursive --only-show-errors ||
   die "downloading the stored exports failed; nothing was destroyed"
 
-step "4: lifting RDS deletion protection; allowing the exports bucket to be emptied"
+step "4: lifting RDS deletion protection"
 tf apply -var-file="$var_file" "${release_vars[@]}" -var app_desired_count=0 \
-  -var db_deletion_protection=false -var exports_force_destroy=true \
-  -target=aws_db_instance.demo -target=aws_s3_bucket.exports -target=aws_ecs_service.app
+  -var db_deletion_protection=false \
+  -target=aws_db_instance.demo -target=aws_ecs_service.app
 
 step "5: terraform destroy"
 tf destroy -var-file="$var_file" "${release_vars[@]}" -var app_desired_count=0 \
-  -var db_deletion_protection=false -var exports_force_destroy=true
+  -var db_deletion_protection=false
+
+# The exports bucket is created by ensure-exports-bucket.sh, so Terraform does
+# not delete it. Every export was downloaded and verified above (steps 2-3);
+# empty it (all versions and delete markers) and delete it now.
+step "5b: emptying and deleting the exports bucket ${bucket}"
+if aws s3api head-bucket --bucket "$bucket" >/dev/null 2>&1; then
+  while :; do
+    batch="$(aws s3api list-object-versions --bucket "$bucket" --max-items 500 \
+      --query '{Objects: [Versions, DeleteMarkers][].{Key: Key, VersionId: VersionId}}' --output json)" ||
+      die "cannot list the exports bucket versions"
+    # Nothing left to delete (null, [] or an empty answer): stop.
+    [[ "$batch" == *'"VersionId"'* ]] || break
+    aws s3api delete-objects --bucket "$bucket" --delete "$batch" --query 'length(Deleted)' --output text >/dev/null ||
+      die "cannot delete exports bucket versions"
+  done
+  aws s3api delete-bucket --bucket "$bucket" || die "cannot delete the exports bucket"
+fi
 
 step "6: residual check"
 residual=0

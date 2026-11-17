@@ -63,14 +63,18 @@ resource "aws_ecr_lifecycle_policy" "image" {
 # ---- S3: database exports ----------------------------------------------------------
 # Logical pg_dump exports written by the ops-export task (pre-demo baseline,
 # before risky operations, before teardown); teardown.sh downloads them first.
-resource "aws_s3_bucket" "exports" {
-  bucket        = "${var.name_prefix}-exports-${local.account_id}-${var.region}"
-  force_destroy = var.exports_force_destroy
-  tags          = { Name = "${var.name_prefix}-exports" }
+# The bucket is created by operator/ensure-exports-bucket.sh, not by Terraform:
+# the Learner Lab service control policy denies s3:GetBucketObjectLockConfiguration,
+# which the aws_s3_bucket resource reads after every create and refresh (2026-11-17,
+# provider 6.70.0). A data source reads only what the lab allows; every setting
+# below is still managed by Terraform through its own resource. operator/teardown.sh
+# empties and deletes the bucket after `terraform destroy`.
+data "aws_s3_bucket" "exports" {
+  bucket = "${var.name_prefix}-exports-${local.account_id}-${var.region}"
 }
 
 resource "aws_s3_bucket_public_access_block" "exports" {
-  bucket                  = aws_s3_bucket.exports.id
+  bucket                  = data.aws_s3_bucket.exports.id
   block_public_acls       = true
   block_public_policy     = true
   ignore_public_acls      = true
@@ -78,21 +82,21 @@ resource "aws_s3_bucket_public_access_block" "exports" {
 }
 
 resource "aws_s3_bucket_ownership_controls" "exports" {
-  bucket = aws_s3_bucket.exports.id
+  bucket = data.aws_s3_bucket.exports.id
   rule {
     object_ownership = "BucketOwnerEnforced"
   }
 }
 
 resource "aws_s3_bucket_versioning" "exports" {
-  bucket = aws_s3_bucket.exports.id
+  bucket = data.aws_s3_bucket.exports.id
   versioning_configuration {
     status = "Enabled"
   }
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "exports" {
-  bucket = aws_s3_bucket.exports.id
+  bucket = data.aws_s3_bucket.exports.id
   rule {
     apply_server_side_encryption_by_default {
       sse_algorithm = "aws:kms" # AWS managed key aws/s3
@@ -102,7 +106,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "exports" {
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "exports" {
-  bucket = aws_s3_bucket.exports.id
+  bucket = data.aws_s3_bucket.exports.id
   rule {
     id     = "expire-old-versions"
     status = "Enabled"
@@ -122,7 +126,7 @@ data "aws_iam_policy_document" "exports" {
     sid       = "DenyInsecureTransport"
     effect    = "Deny"
     actions   = ["s3:*"]
-    resources = [aws_s3_bucket.exports.arn, "${aws_s3_bucket.exports.arn}/*"]
+    resources = [data.aws_s3_bucket.exports.arn, "${data.aws_s3_bucket.exports.arn}/*"]
     principals {
       type        = "*"
       identifiers = ["*"]
@@ -136,7 +140,7 @@ data "aws_iam_policy_document" "exports" {
 }
 
 resource "aws_s3_bucket_policy" "exports" {
-  bucket     = aws_s3_bucket.exports.id
+  bucket     = data.aws_s3_bucket.exports.id
   policy     = data.aws_iam_policy_document.exports.json
   depends_on = [aws_s3_bucket_public_access_block.exports]
 }

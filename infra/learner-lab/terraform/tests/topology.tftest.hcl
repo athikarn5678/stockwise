@@ -63,8 +63,8 @@ mock_provider "aws" {
   mock_resource "aws_sns_topic" {
     defaults = { arn = "arn:aws:sns:us-east-1:123456789012:stockwise-demo-alarms" }
   }
-  mock_resource "aws_s3_bucket" {
-    defaults = { arn = "arn:aws:s3:::stockwise-demo-mock" }
+  mock_data "aws_s3_bucket" {
+    defaults = { id = "stockwise-demo-exports-123456789012-us-east-1", arn = "arn:aws:s3:::stockwise-demo-exports-123456789012-us-east-1" }
   }
   mock_resource "aws_ecs_cluster" {
     defaults = { id = "arn:aws:ecs:us-east-1:123456789012:cluster/stockwise-demo", arn = "arn:aws:ecs:us-east-1:123456789012:cluster/stockwise-demo" }
@@ -279,7 +279,7 @@ run "default_topology" {
 
   # S3 exports protected; secrets created without values.
   assert {
-    condition     = aws_s3_bucket.exports.force_destroy == false && aws_s3_bucket_public_access_block.exports.block_public_policy
+    condition     = aws_s3_bucket_public_access_block.exports.block_public_policy && aws_s3_bucket_versioning.exports.versioning_configuration[0].status == "Enabled"
     error_message = "Exports bucket must be private and survive an accidental destroy."
   }
   assert {

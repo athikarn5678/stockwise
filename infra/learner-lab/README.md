@@ -85,14 +85,18 @@ Each step's completion check is in **bold**. Each gate (G3–G7) is a separate o
    terraform output acm_validation_records
    terraform output account_id
    ```
-   **The certificate is pending validation, the three repositories exist, and `account_id` prints (the operator scripts fail closed without it).**
+   **The certificate is pending validation, the three repositories exist, and `account_id`, `region` and `name_prefix` print (the operator scripts fail closed without them).**
 3. **Certificate validation DNS (G5).** Create the `acm_validation_records` CNAMEs at the DNS provider. **ACM shows the certificate as `ISSUED`.**
 4. **Copy images into ECR (G3).**
    ```bash
    operator/mirror-images.sh --web <web@sha256> --api <api@sha256> --ops <ops@sha256> --revision <40-char sha>
    ```
    **`.state/release-<sha>.env` exists, and every ECR digest equals its GHCR source digest.**
-5. **Full apply with the application at zero tasks (G4).** Use the three digests from the release file:
+5. **Exports bucket, then full apply with the application at zero tasks (G4).** The Learner Lab service control policy denies `s3:GetBucketObjectLockConfiguration`, which the `aws_s3_bucket` resource reads, so the exports bucket is created outside Terraform (Terraform reads it as a data source and manages its settings):
+   ```bash
+   operator/ensure-exports-bucket.sh        # idempotent; prints the bucket name only
+   ```
+   Then apply with the three digests from the release file. `deploy.sh` and `terraform apply` ask for confirmation; a non-interactive run needs `yes yes | operator/deploy.sh ...`:
    ```bash
    terraform apply -var-file=demo.tfvars -var web_image=<WEB_IMAGE> -var api_image=<API_IMAGE> -var ops_image=<OPS_IMAGE> -var app_desired_count=0
    ```

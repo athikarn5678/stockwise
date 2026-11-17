@@ -92,7 +92,7 @@ case "$action" in
   seed)
     as_migrator
     require DEMO_USER_PASSWORD
-    step "seeding synthetic stockwise-demo-v1 data (optional, D-08)"
+    step "seeding the synthetic 90-day demo dataset (optional)"
     node /opt/stockwise/seed-through-loopback.mjs
     ;;
   uat-provision)

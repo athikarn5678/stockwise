@@ -260,6 +260,7 @@ async function main(): Promise<void> {
     createSalesRouter({
       authenticationMiddleware,
       checkoutService,
+      promptPayId: environment.STOCKWISE_PROMPTPAY_ID,
       publicWebOrigin: environment.STOCKWISE_PUBLIC_WEB_ORIGIN,
       refundService,
       salesApiService,

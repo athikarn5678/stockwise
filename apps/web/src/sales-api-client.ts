@@ -98,6 +98,16 @@ const posProductsResponseSchema = z.object({
 const checkoutResponseSchema = z.object({
   data: z.object({ sale: saleSchema }),
 });
+const paymentOptionsResponseSchema = z.object({
+  data: z.object({ promptPay: z.boolean() }),
+});
+const promptPayQuoteResponseSchema = z.object({
+  data: z.object({
+    amount: z.string(),
+    currency: z.literal("THB"),
+    payload: z.string(),
+  }),
+});
 const refundItemSchema = z.object({
   cogsReversalAmount: z.string().nullable().optional(),
   id: z.string().uuid(),
@@ -222,9 +232,22 @@ export type CheckoutInput = {
   }>;
   payment:
     | { amountTendered: string; method: "CASH" }
-    | { method: "TRANSFER"; reference: string | null };
+    | {
+        /** Optional amount the payer was shown; the server still recomputes it. */
+        expectedTotalAmount?: string;
+        method: "TRANSFER";
+        reference: string | null;
+      };
 };
 export type SalesRequestContext = { branchId: string; organizationId: string };
+export type CheckoutItemInput = CheckoutInput["items"][number];
+export type CheckoutDiscountInput = CheckoutInput["discount"];
+export type PaymentOptions = { promptPay: boolean };
+export type PromptPayQuote = {
+  amount: string;
+  currency: "THB";
+  payload: string;
+};
 
 export type SalesApiErrorKind =
   | "authentication_required"
@@ -236,10 +259,12 @@ export type SalesApiErrorKind =
   | "price_changed"
   | "product_inactive"
   | "product_not_found"
+  | "promptpay_not_configured"
   | "sale_not_found"
   | "sale_already_fully_refunded"
   | "refund_quantity_exceeded"
   | "stale_vat_profile"
+  | "total_mismatch"
   | "unavailable"
   | "validation"
   | "vat_configuration_required";
@@ -293,6 +318,8 @@ function errorFromResponse(status: number, body: unknown): SalesApiError {
     SALE_ALREADY_FULLY_REFUNDED: "sale_already_fully_refunded",
     REFUND_QUANTITY_EXCEEDED: "refund_quantity_exceeded",
     SALES_VAT_PROFILE_STALE: "stale_vat_profile",
+    CHECKOUT_TOTAL_MISMATCH: "total_mismatch",
+    PROMPTPAY_NOT_CONFIGURED: "promptpay_not_configured",
     VAT_CONFIGURATION_REQUIRED: "vat_configuration_required",
     VALIDATION_ERROR: "validation",
   };
@@ -369,6 +396,32 @@ export async function checkoutSale(
       method: "POST",
     }),
   ).data.sale;
+}
+
+export async function getPaymentOptions(
+  context: SalesRequestContext,
+): Promise<PaymentOptions> {
+  return parse(
+    paymentOptionsResponseSchema,
+    await request(salesPath(context, "sales/payment-options")),
+  ).data;
+}
+
+/**
+ * Asks the server for the exact total of the current cart and the EMVCo
+ * PromptPay payload for it. No sale exists until checkout confirms the amount.
+ */
+export async function quotePromptPay(
+  context: SalesRequestContext,
+  input: { discount: CheckoutDiscountInput; items: CheckoutItemInput[] },
+): Promise<PromptPayQuote> {
+  return parse(
+    promptPayQuoteResponseSchema,
+    await request(salesPath(context, "sales/promptpay-qr"), {
+      body: JSON.stringify(input),
+      method: "POST",
+    }),
+  ).data;
 }
 
 export async function listSalesHistory(

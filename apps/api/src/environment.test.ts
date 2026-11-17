@@ -373,6 +373,44 @@ describe("API environment boundary", () => {
     }
   });
 
+  it("keeps the optional PromptPay merchant number server-only", () => {
+    const base = {
+      DATABASE_URL:
+        "postgresql://local-user:local-password@127.0.0.1:5432/local-database",
+      STOCKWISE_API_PORT: "3001",
+      STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: analyticsKey,
+      STOCKWISE_PUBLIC_WEB_ORIGIN: "http://localhost:3000",
+      STOCKWISE_RUNTIME_ENV: "development",
+      ...verificationKeys,
+    };
+    expect(loadApiEnvironment(base).STOCKWISE_PROMPTPAY_ID).toBeUndefined();
+    expect(
+      loadApiEnvironment({ ...base, STOCKWISE_PROMPTPAY_ID: "0812345678" })
+        .STOCKWISE_PROMPTPAY_ID,
+    ).toBe("0812345678");
+    // Empty means not configured (the option stays hidden), never a crash.
+    expect(
+      loadApiEnvironment({ ...base, STOCKWISE_PROMPTPAY_ID: "" })
+        .STOCKWISE_PROMPTPAY_ID,
+    ).toBeUndefined();
+    for (const value of [" 0812345678", "812345678", "08123456789"]) {
+      expect(() =>
+        loadApiEnvironment({ ...base, STOCKWISE_PROMPTPAY_ID: value }),
+      ).toThrow();
+    }
+
+    // A malformed merchant number must never appear in the error text.
+    const malformed = "08123456789";
+    let error: unknown;
+    try {
+      loadApiEnvironment({ ...base, STOCKWISE_PROMPTPAY_ID: malformed });
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeDefined();
+    expect(String(error)).not.toContain(malformed);
+  });
+
   it("requires distinct dedicated canonical verification keys", () => {
     const base = {
       DATABASE_URL:

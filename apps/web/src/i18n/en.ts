@@ -782,6 +782,26 @@ export const en = {
   uiEnterTenderedCashAtOrAboveTheCurrentPrice:
     "Enter tendered cash at or above the current-price subtotal.",
   uiTransferReferenceOptional: "Transfer reference (optional)",
+  paymentPromptPay: "PromptPay",
+  uiPromptPay: "PromptPay QR payment",
+  uiGeneratePromptPayQr: "Generate PromptPay QR",
+  uiPromptPayGeneratingQr: "Generating QR…",
+  uiPromptPayAmountDue: "Amount due {amount}",
+  uiPromptPayQrAlt: "PromptPay QR for the amount {amount} THB",
+  uiPromptPayQrServerTotalNote:
+    "The server computed this amount for the current cart; it is confirmed again when you press confirm. The cart amounts are estimates only.",
+  uiPromptPaySlipOptional:
+    "Attach slip (optional — previewed on this device only, not uploaded or stored)",
+  uiPromptPaySlipPreviewAlt: "Selected slip preview",
+  uiPromptPaySlipMustBeAnImage: "Choose an image file for the slip preview.",
+  uiPromptPayRemoveSlip: "Remove slip",
+  uiConfirmPaymentReceived: "Confirm payment received",
+  uiPromptPayGenerateFirst:
+    "Generate a PromptPay QR for the current cart before confirming payment.",
+  uiPromptPayIsNotAvailableChooseCashOrTransfer:
+    "PromptPay is not available for this branch. Choose cash or transfer.",
+  uiTheTotalChangedGenerateANewPromptPayQr:
+    "The total changed after this QR was generated. Generate a new QR before confirming.",
   uiLoadingSalesVATProfile: "Loading sales VAT profile…",
   uiSalesVATProfile: "Sales VAT profile",
   uiEnterAValidVATRateBeforeSaving: "Enter a valid VAT rate before saving.",

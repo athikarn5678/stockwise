@@ -761,6 +761,26 @@ export const th: Dictionary = {
   uiEnterTenderedCashAtOrAboveTheCurrentPrice:
     "ใส่เงินสดที่รับไม่น้อยกว่ายอดรวมตามราคาปัจจุบัน",
   uiTransferReferenceOptional: "เลขอ้างอิงการโอน (ไม่บังคับ)",
+  paymentPromptPay: "พร้อมเพย์",
+  uiPromptPay: "ชำระเงินด้วยพร้อมเพย์",
+  uiGeneratePromptPayQr: "สร้าง QR พร้อมเพย์",
+  uiPromptPayGeneratingQr: "กำลังสร้าง QR…",
+  uiPromptPayAmountDue: "ยอดที่ต้องชำระ {amount}",
+  uiPromptPayQrAlt: "QR พร้อมเพย์สำหรับยอด {amount} บาท",
+  uiPromptPayQrServerTotalNote:
+    "ยอดนี้คำนวณโดยเซิร์ฟเวอร์สำหรับตะกร้าปัจจุบัน และจะยืนยันอีกครั้งเมื่อกดยืนยันรับเงิน ยอดในตะกร้าเป็นเพียงการประมาณ",
+  uiPromptPaySlipOptional:
+    "แนบสลิป (ไม่บังคับ — แสดงตัวอย่างในเครื่องนี้เท่านั้น ไม่อัปโหลดและไม่บันทึก)",
+  uiPromptPaySlipPreviewAlt: "ตัวอย่างสลิปที่เลือก",
+  uiPromptPaySlipMustBeAnImage: "เลือกไฟล์รูปภาพสำหรับตัวอย่างสลิป",
+  uiPromptPayRemoveSlip: "นำสลิปออก",
+  uiConfirmPaymentReceived: "ยืนยันรับเงินแล้ว",
+  uiPromptPayGenerateFirst:
+    "สร้าง QR พร้อมเพย์สำหรับตะกร้าปัจจุบันก่อนยืนยันรับเงิน",
+  uiPromptPayIsNotAvailableChooseCashOrTransfer:
+    "สาขานี้ไม่รองรับพร้อมเพย์ กรุณาเลือกเงินสดหรือโอนเงิน",
+  uiTheTotalChangedGenerateANewPromptPayQr:
+    "ยอดเงินเปลี่ยนไปหลังสร้าง QR นี้ กรุณาสร้าง QR ใหม่ก่อนยืนยัน",
   uiLoadingSalesVATProfile: "กำลังโหลดข้อมูล VAT การขาย…",
   uiSalesVATProfile: "ข้อมูล VAT การขาย",
   uiEnterAValidVATRateBeforeSaving: "ใส่อัตรา VAT ที่ถูกต้องก่อนบันทึก",

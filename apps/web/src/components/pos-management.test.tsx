@@ -17,7 +17,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchAccessContext } from "@/branch-api-client";
 import {
   checkoutSale,
+  getPaymentOptions,
   getSalesVatProfile,
+  quotePromptPay,
   SalesApiError,
   searchPosProducts,
   updateSalesVatProfile,
@@ -48,7 +50,9 @@ vi.mock("@/sales-api-client", async (importOriginal) => {
   return {
     ...original,
     checkoutSale: vi.fn(),
+    getPaymentOptions: vi.fn(),
     getSalesVatProfile: vi.fn(),
+    quotePromptPay: vi.fn(),
     searchPosProducts: vi.fn(),
     updateSalesVatProfile: vi.fn(),
   };
@@ -156,6 +160,7 @@ beforeEach(() => {
     organizationId: ORGANIZATION_ID,
   });
   vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "checkout-key-one") });
+  vi.mocked(getPaymentOptions).mockResolvedValue({ promptPay: false });
   vi.mocked(fetchAccessContext).mockImplementation(async () => ({
     firstOrganizationOnboarding: { eligible: false },
     organizations: [
@@ -644,4 +649,368 @@ it("retranslates retained checkout feedback without changing cart or replaying c
     ),
   ).toBeTruthy();
   localStorage.clear();
+});
+
+const createObjectUrl = vi.fn<(file: Blob) => string>(() => "blob:slip-one");
+const revokeObjectUrl = vi.fn<(url: string) => void>();
+
+function stubObjectUrls() {
+  // jsdom has no object-URL implementation; the panel must still be testable.
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: createObjectUrl,
+    writable: true,
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    value: revokeObjectUrl,
+    writable: true,
+  });
+}
+
+const PROMPTPAY_PAYLOAD = "00020101021229370016A000000677010111";
+
+function enablePromptPay() {
+  vi.mocked(getPaymentOptions).mockResolvedValue({ promptPay: true });
+  vi.mocked(quotePromptPay).mockResolvedValue({
+    amount: "0.30",
+    currency: "THB",
+    payload: PROMPTPAY_PAYLOAD,
+  });
+}
+
+function promptPayQrImage(): HTMLElement | null {
+  return screen.queryByRole("img", { name: /PromptPay QR for the amount/ });
+}
+
+function confirmButton(): HTMLElement {
+  return screen.getByRole("button", { name: "Confirm payment received" });
+}
+
+async function generatePromptPayQr() {
+  renderPos();
+  await addCoffee();
+  fireEvent.click(await screen.findByRole("radio", { name: "PromptPay" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Generate PromptPay QR" }),
+  );
+  return screen.findByRole("img", { name: /PromptPay QR for the amount/ });
+}
+
+function chooseSlip(name: string, type: string) {
+  fireEvent.change(screen.getByLabelText(/Attach slip/), {
+    target: { files: [new File(["slip"], name, { type })] },
+  });
+}
+
+describe("POS PromptPay option", () => {
+  beforeEach(() => {
+    createObjectUrl.mockReset();
+    createObjectUrl.mockReturnValue("blob:slip-one");
+    revokeObjectUrl.mockReset();
+    stubObjectUrls();
+  });
+
+  it("hides the option when the branch does not accept PromptPay", async () => {
+    renderPos();
+    await screen.findByRole("button", { name: "Add Coffee" });
+    await waitFor(() =>
+      expect(getPaymentOptions).toHaveBeenCalledWith({
+        branchId: BRANCH_ID,
+        organizationId: ORGANIZATION_ID,
+      }),
+    );
+    expect(screen.queryByRole("radio", { name: "PromptPay" })).toBeNull();
+  });
+
+  it("treats a failed payment options request as unavailable", async () => {
+    vi.mocked(getPaymentOptions).mockRejectedValue(
+      new SalesApiError("unavailable"),
+    );
+    renderPos();
+    await addCoffee();
+    await waitFor(() => expect(getPaymentOptions).toHaveBeenCalled());
+    expect(screen.queryByRole("radio", { name: "PromptPay" })).toBeNull();
+  });
+
+  it("shows the option next to cash and transfer when the branch accepts it", async () => {
+    enablePromptPay();
+    renderPos();
+    await addCoffee();
+    expect(
+      await screen.findByRole("radio", { name: "PromptPay" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Cash" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Transfer" })).toBeTruthy();
+  });
+
+  it("falls back to cash when the option disappears while selected", async () => {
+    enablePromptPay();
+    const client = renderPos();
+    await addCoffee();
+    const radio = await screen.findByRole("radio", { name: "PromptPay" });
+    fireEvent.click(radio);
+    expect(screen.getByRole("radio", { name: "PromptPay" })).toHaveProperty(
+      "checked",
+      true,
+    );
+
+    act(() =>
+      client.setQueryData(
+        ["branch-scoped", ORGANIZATION_ID, BRANCH_ID, "pos", "payment-options"],
+        { promptPay: false },
+      ),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("radio", { name: "PromptPay" })).toBeNull(),
+    );
+    expect(screen.getByLabelText("Amount tendered (THB)")).toBeTruthy();
+    expect(checkoutSale).not.toHaveBeenCalled();
+  });
+
+  it("ignores a quote that resolves after the cart changed", async () => {
+    enablePromptPay();
+    let finishQuote!: (quote: {
+      amount: string;
+      currency: "THB";
+      payload: string;
+    }) => void;
+    vi.mocked(quotePromptPay).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishQuote = resolve;
+        }),
+    );
+    renderPos();
+    await addCoffee();
+    fireEvent.click(await screen.findByRole("radio", { name: "PromptPay" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Generate PromptPay QR" }),
+    );
+    await waitFor(() => expect(quotePromptPay).toHaveBeenCalled());
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Increase Coffee quantity" }),
+    );
+    await act(async () =>
+      finishQuote({
+        amount: "0.30",
+        currency: "THB",
+        payload: PROMPTPAY_PAYLOAD,
+      }),
+    );
+
+    expect(promptPayQrImage()).toBeNull();
+    expect(confirmButton()).toHaveProperty("disabled", true);
+  });
+
+  it("generates a QR for the server amount without creating a sale", async () => {
+    enablePromptPay();
+    const qr = await generatePromptPayQr();
+
+    expect(getPaymentOptions).toHaveBeenCalledTimes(1);
+    expect(quotePromptPay).toHaveBeenCalledWith(
+      { branchId: BRANCH_ID, organizationId: ORGANIZATION_ID },
+      {
+        discount: null,
+        items: [
+          { expectedUnitPrice: "0.1000", productId: PRODUCT_ID, quantity: "1" },
+        ],
+      },
+    );
+    expect(qr.getAttribute("alt")).toContain("0.30");
+    expect(qr.getAttribute("src")).toMatch(/^data:image\/svg\+xml/);
+    expect(screen.getByText("Amount due THB 0.30")).toBeTruthy();
+    expect(checkoutSale).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Complete sale" })).toBeNull();
+  });
+
+  it("sends exactly one TRANSFER checkout with the quoted total on confirmation", async () => {
+    enablePromptPay();
+    vi.mocked(checkoutSale).mockResolvedValue({
+      ...completedSale,
+      payment: {
+        amount: "0.30",
+        amountTendered: null,
+        changeAmount: null,
+        method: "TRANSFER",
+        reference: "PromptPay",
+      },
+    });
+    await generatePromptPayQr();
+    expect(checkoutSale).not.toHaveBeenCalled();
+
+    fireEvent.click(confirmButton());
+
+    await waitFor(() => expect(checkoutSale).toHaveBeenCalledTimes(1));
+    expect(checkoutSale).toHaveBeenCalledWith(
+      { branchId: BRANCH_ID, organizationId: ORGANIZATION_ID },
+      "checkout-key-one",
+      expect.objectContaining({
+        discount: null,
+        items: [
+          { expectedUnitPrice: "0.1000", productId: PRODUCT_ID, quantity: "1" },
+        ],
+        payment: {
+          expectedTotalAmount: "0.30",
+          method: "TRANSFER",
+          reference: "PromptPay",
+        },
+      }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Sale completed" }),
+    ).toBeTruthy();
+  });
+
+  it("sends the whole-sale discount to the quote and clears the QR when it changes", async () => {
+    enablePromptPay();
+    renderPos();
+    await addCoffee();
+    fireEvent.change(screen.getByLabelText("Discount type"), {
+      target: { value: "AMOUNT" },
+    });
+    fireEvent.change(screen.getByLabelText("Discount amount (THB)"), {
+      target: { value: "0.10" },
+    });
+    fireEvent.change(screen.getByLabelText("Discount reason"), {
+      target: { value: "Promo" },
+    });
+    fireEvent.click(await screen.findByRole("radio", { name: "PromptPay" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Generate PromptPay QR" }),
+    );
+    await screen.findByRole("img", { name: /PromptPay QR for the amount/ });
+    expect(quotePromptPay).toHaveBeenCalledWith(expect.anything(), {
+      discount: { amount: "0.10", reason: "Promo", type: "AMOUNT" },
+      items: [
+        { expectedUnitPrice: "0.1000", productId: PRODUCT_ID, quantity: "1" },
+      ],
+    });
+
+    fireEvent.change(screen.getByLabelText("Discount amount (THB)"), {
+      target: { value: "0.20" },
+    });
+
+    expect(promptPayQrImage()).toBeNull();
+    expect(confirmButton()).toHaveProperty("disabled", true);
+    expect(checkoutSale).not.toHaveBeenCalled();
+  });
+
+  it("clears the QR when the quantity or payment method changes", async () => {
+    enablePromptPay();
+    await generatePromptPayQr();
+    expect(confirmButton()).toHaveProperty("disabled", false);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Increase Coffee quantity" }),
+    );
+    expect(promptPayQrImage()).toBeNull();
+    expect(confirmButton()).toHaveProperty("disabled", true);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Generate PromptPay QR" }),
+    );
+    await screen.findByRole("img", { name: /PromptPay QR for the amount/ });
+
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    fireEvent.click(screen.getByRole("radio", { name: "PromptPay" }));
+    expect(promptPayQrImage()).toBeNull();
+    expect(confirmButton()).toHaveProperty("disabled", true);
+  });
+
+  it("clears the QR and explains a total mismatch returned by checkout", async () => {
+    enablePromptPay();
+    vi.mocked(checkoutSale).mockRejectedValue(
+      new SalesApiError("total_mismatch"),
+    );
+    await generatePromptPayQr();
+
+    fireEvent.click(confirmButton());
+
+    expect(
+      await screen.findByText(en.uiTheTotalChangedGenerateANewPromptPayQr),
+    ).toBeTruthy();
+    expect(promptPayQrImage()).toBeNull();
+    expect(confirmButton()).toHaveProperty("disabled", true);
+  });
+
+  it("previews a chosen slip locally and never uploads it", async () => {
+    const fetchMock = vi.fn(() => Promise.reject(new Error("no network")));
+    vi.stubGlobal("fetch", fetchMock);
+    enablePromptPay();
+    await generatePromptPayQr();
+
+    chooseSlip("first.png", "image/png");
+
+    const preview = await screen.findByRole("img", {
+      name: "Selected slip preview",
+    });
+    expect(preview.getAttribute("src")).toBe("blob:slip-one");
+    expect(createObjectUrl).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    createObjectUrl.mockReturnValue("blob:slip-two");
+    chooseSlip("second.png", "image/png");
+    await waitFor(() =>
+      expect(revokeObjectUrl).toHaveBeenCalledWith("blob:slip-one"),
+    );
+    expect(
+      screen
+        .getByRole("img", { name: "Selected slip preview" })
+        .getAttribute("src"),
+    ).toBe("blob:slip-two");
+
+    cleanup();
+    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:slip-two");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("revokes the slip preview when the QR is invalidated and when it is removed", async () => {
+    enablePromptPay();
+    await generatePromptPayQr();
+    chooseSlip("slip.png", "image/png");
+    await screen.findByRole("img", { name: "Selected slip preview" });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Increase Coffee quantity" }),
+    );
+    await waitFor(() =>
+      expect(revokeObjectUrl).toHaveBeenCalledWith("blob:slip-one"),
+    );
+    expect(
+      screen.queryByRole("img", { name: "Selected slip preview" }),
+    ).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Generate PromptPay QR" }),
+    );
+    await screen.findByRole("img", { name: /PromptPay QR for the amount/ });
+    createObjectUrl.mockReturnValue("blob:slip-two");
+    chooseSlip("slip.png", "image/png");
+    await screen.findByRole("img", { name: "Selected slip preview" });
+    fireEvent.click(screen.getByRole("button", { name: "Remove slip" }));
+    await waitFor(() =>
+      expect(revokeObjectUrl).toHaveBeenCalledWith("blob:slip-two"),
+    );
+    expect(
+      screen.queryByRole("img", { name: "Selected slip preview" }),
+    ).toBeNull();
+  });
+
+  it("rejects a non-image slip without creating a preview", async () => {
+    enablePromptPay();
+    await generatePromptPayQr();
+
+    chooseSlip("slip.txt", "text/plain");
+
+    expect(
+      await screen.findByText("Choose an image file for the slip preview."),
+    ).toBeTruthy();
+    expect(createObjectUrl).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("img", { name: "Selected slip preview" }),
+    ).toBeNull();
+  });
 });

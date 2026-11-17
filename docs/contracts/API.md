@@ -1558,7 +1558,8 @@ Rules:
 - CASH requires `amountTendered` with scale at most two and at least the server total.
   TRANSFER has no tender/change and may carry one trimmed reference up to 100
   characters. Payment amount is not client-authored; it equals the Sale total. No
-  CARD, split, gateway, pending, offline, slip, OCR, or Payment-status input exists.
+  CARD, split, gateway, pending, offline, slip, OCR, or Payment-status input exists
+  (PromptPay below is a TRANSFER).
 - Server applies optional discount before registered document-level VAT extraction.
   It uses exact Decimal arithmetic, `ROUND_HALF_UP` at accepted document/cost
   boundaries, and deterministic Product-ID-tied largest-remainder line allocation.
@@ -1577,6 +1578,30 @@ Rules:
   receipt representation. Internal cost fields require a separate authorized history
   view later.
 - OpenRouter is never called in checkout.
+
+#### PromptPay QR at POS (M7-S1; no gateway, no migration)
+
+PromptPay is a POS presentation of a manually confirmed TRANSFER; no Payment status,
+pending sale, webhook or slip storage exists. It needs the optional server-only
+`STOCKWISE_PROMPTPAY_ID` (a 10-digit mobile number); when absent the option is hidden
+and the QR endpoint answers `404 PROMPTPAY_NOT_CONFIGURED`. The number is never logged
+and appears only inside the QR payload.
+
+- `GET /organizations/{organizationId}/branches/{branchId}/sales/payment-options`
+  (authenticated) returns `{ "data": { "promptPay": true|false } }`.
+- `POST /organizations/{organizationId}/branches/{branchId}/sales/promptpay-qr`
+  (same-origin protected, checkout authority) takes `{ items, discount }` exactly like
+  checkout and writes nothing: no Sale, Payment, ledger row or stock change. The
+  server applies the same authorization, price, quantity, discount, VAT and stock
+  rules as checkout and returns `{ "data": { "amount": "123.45", "currency": "THB",
+  "payload": "<EMVCo string>" } }` (dynamic initiation `01=12`, merchant tag `29`
+  with AID `A000000677010111` and the mobile number in `0066` format, `53=764`,
+  `54=amount`, `58=TH`, CRC-16/CCITT-FALSE). Failures reuse the checkout error codes.
+- Checkout accepts an optional `payment.expectedTotalAmount` (scale at most two) on
+  `TRANSFER`. After recomputing the total the server rejects the sale with
+  `409 CHECKOUT_TOTAL_MISMATCH` when it differs, before any write. The amount is part
+  of the idempotency request hash only when present (older hashes are unchanged).
+  The slip image is previewed in the browser only and is never sent.
 
 ### Refund contract
 

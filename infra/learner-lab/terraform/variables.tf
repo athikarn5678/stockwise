@@ -114,6 +114,16 @@ variable "email_from" {
   }
 }
 
+variable "demo_insight_organization_id" {
+  description = "STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID: UUID of the synthetic demo organization that may show the labelled Demo Insight (a plain task environment value, not a secret). Null leaves it unset. Set it only for an API image that accepts it in production (ADR-048); an older image refuses to start with it."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.demo_insight_organization_id == null || can(regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", var.demo_insight_organization_id))
+    error_message = "demo_insight_organization_id must be a lowercase UUID."
+  }
+}
+
 variable "web_image" {
   description = "Web image by digest: <registry>/<repository>@sha256:<64 hex>. Required for the full apply."
   type        = string

@@ -12,8 +12,8 @@
 #   RESEND_API_KEY          only when --resend-key-file is not given
 #   OPENCODE_GO_API_KEY     AI analysis (OpenCode Go)
 #   STRIPE_SECRET_KEY       Stripe test-mode secret key (sk_test_...; live keys refused)
-#   STOCKWISE_PROMPTPAY_ID  PromptPay receiver (10-digit phone, 13-digit national
-#                           ID or 15-digit e-wallet ID; digits only)
+#   STOCKWISE_PROMPTPAY_ID  PromptPay receiver: a 10-digit Thai mobile number
+#                           starting with 0 (the API refuses any other form)
 #   <name_prefix>/master       only with db_master_password_mode = write_only:
 #                              username + TF_VAR_db_master_password
 # Values are generated locally, written to a 0600 temporary file, sent with
@@ -107,7 +107,7 @@ readonly password='[A-Za-z0-9_-]{24,128}'
 readonly provider_names=(OPENCODE_GO_API_KEY STRIPE_SECRET_KEY STOCKWISE_PROMPTPAY_ID)
 readonly opencode_pattern='[A-Za-z0-9._-]{16,256}'
 readonly stripe_pattern='sk_test_[A-Za-z0-9]{16,250}'
-readonly promptpay_pattern='[0-9]{10}|[0-9]{13}|[0-9]{15}'
+readonly promptpay_pattern='0[0-9]{9}'
 
 # Checks the environment value of variable $1 against pattern $2 without ever
 # printing it. $3 is the hint shown on failure.
@@ -119,7 +119,7 @@ require_env_value() {
 require_provider_env() {
   require_env_value OPENCODE_GO_API_KEY "$opencode_pattern" "the OpenCode Go API key"
   require_env_value STRIPE_SECRET_KEY "$stripe_pattern" "a Stripe TEST-mode secret key, sk_test_..."
-  require_env_value STOCKWISE_PROMPTPAY_ID "$promptpay_pattern" "a 10-, 13- or 15-digit PromptPay ID, digits only"
+  require_env_value STOCKWISE_PROMPTPAY_ID "$promptpay_pattern" "a 10-digit Thai mobile number starting with 0, digits only"
 }
 database_arn="$(tf_output database_secret_arn)"
 application_arn="$(tf_output application_secret_arn)"

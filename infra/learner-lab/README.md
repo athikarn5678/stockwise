@@ -57,7 +57,7 @@ The owner has deployed this topology to Learner Lab before (from the GHCR images
 
 - Tools: Node.js 24 (the repository runtime, also used by the secret validator), AWS CLI v2, Terraform ≥ 1.11, Docker with buildx, bash (Linux, macOS or Git Bash), curl and OpenSSL.
 - Learner Lab session credentials from **AWS Details**, exported in the operator's own shell only. Never write them to a file. The scripts check that the identity is a Learner Lab role, and that its account matches the Terraform state.
-- `terraform/demo.tfvars`, copied from `example.tfvars` (ignored by Git), holding the hostname, `email_from` and `demo_end_time` (must be in the future at apply time; `deploy.sh`, `rollback.sh` and `capacity.sh resume` refuse after it). The API receives `STOCKWISE_EMAIL_PROVIDER=resend` from the task definition and `STOCKWISE_EMAIL_FROM` from `email_from`.
+- `terraform/demo.tfvars`, copied from `example.tfvars` (ignored by Git), holding the hostname, `email_from` and `demo_end_time` (must be in the future at apply time; `deploy.sh`, `rollback.sh` and `capacity.sh resume` refuse after it). The API receives `STOCKWISE_EMAIL_PROVIDER=resend` from the task definition and `STOCKWISE_EMAIL_FROM` from `email_from`. After seeding the demo dataset, an API image that accepts it in production (ADR-048) can show the labelled Demo Insight: set `demo_insight_organization_id = "<demo organization UUID>"` in `demo.tfvars` (a plain task environment value, not a secret) and redeploy; leave it unset otherwise, because an older image refuses to start with it.
 - **CloudFront is gated off (F4).** Its origin-protection header secret would be stored in plaintext in the operator's Terraform state (`sensitive` only hides it from output). Terraform refuses `enable_cloudfront = true` unless `cloudfront_secret_in_state_approved = true`. Set that only after:
   - the owner explicitly approves that limitation (or a secret-free design such as CloudFront VPC origins with an internal ALB, which needs its own review);
   - CloudFront access is verified (see "AWS capability checks").
@@ -108,7 +108,7 @@ Each step's completion check is in **bold**. Each gate (G3–G7) is a separate o
    **`503`: valid HTTPS for the hostname, no task yet. `000` means DNS or TLS is not ready.** `deploy.sh` repeats this check and refuses to migrate or cut over until it passes.
 7. **Secrets.** Provider values come from the environment of the operator's own shell (never from Git or a file in the repository, never printed):
    ```bash
-   export RESEND_API_KEY=… OPENCODE_GO_API_KEY=… STRIPE_SECRET_KEY=sk_test_… STOCKWISE_PROMPTPAY_ID=…   # PromptPay ID: 10-digit phone, 13-digit national ID or 15-digit e-wallet ID, digits only
+   export RESEND_API_KEY=… OPENCODE_GO_API_KEY=… STRIPE_SECRET_KEY=sk_test_… STOCKWISE_PROMPTPAY_ID=…   # PromptPay ID: a 10-digit Thai mobile number starting with 0, digits only (the API refuses other forms and the task would not start)
    operator/put-secrets.sh                      # or: --resend-key-file <file> instead of RESEND_API_KEY
    ```
    Stripe is test mode only: a `sk_live_` key is refused. The five generated application keys and the database passwords are created once; an already stored secret keeps every stored value, and only provider keys missing from it are merged in (`merge-secret-json.mjs`), so re-running never rotates a key. With `db_master_password_mode = write_only`, add `--master-password-from-env`. **`STOCKWISE_SECRETS:READY`.**

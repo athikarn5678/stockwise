@@ -8,7 +8,7 @@
 #   master       only in the write_only fallback (RDS otherwise owns the secret)
 resource "aws_secretsmanager_secret" "application" {
   name                    = "${var.name_prefix}/application"
-  description             = "StockWise demo application keys and RESEND_API_KEY (values set by operator/put-secrets.sh)"
+  description             = "StockWise demo application keys, RESEND_API_KEY, OPENCODE_GO_API_KEY, STRIPE_SECRET_KEY (test mode) and STOCKWISE_PROMPTPAY_ID (values set by operator/put-secrets.sh)"
   recovery_window_in_days = 0
 }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Controlled teardown of the whole Learner Lab stack (ADR-040). Must complete
-# before the planning deadline (2026-10-31T16:59:00Z). Irreversible: every
+# before the planning deadline (`demo_end_time`, decided in milestone M9). Irreversible: every
 # database row and every AWS resource of the stack is deleted. Real teardown
 # needs the owner's separate authorization.
 #   teardown.sh --var-file <demo.tfvars> --confirm <name_prefix> [--export-dir <dir>]

@@ -174,11 +174,22 @@ run "default_topology" {
     condition     = [for container in jsondecode(aws_ecs_task_definition.app.container_definitions) : container.name] == ["web", "api"]
     error_message = "Application task must contain web and api."
   }
+  # Better Auth Native is the only authority (ADR-045): there is no authority
+  # selection variable, and the Native signing secret is injected from Secrets
+  # Manager (not from a plain environment value).
   assert {
-    condition = contains([
-      for variable in jsondecode(aws_ecs_task_definition.app.container_definitions)[1].environment : "${variable.name}=${variable.value}"
-    ], "STOCKWISE_AUTHENTICATION_AUTHORITY=native")
-    error_message = "API must run Better Auth Native."
+    condition = length([
+      for variable in jsondecode(aws_ecs_task_definition.app.container_definitions)[1].environment : variable
+      if strcontains(variable.name, "AUTHENTICATION_AUTHORITY") || strcontains(variable.name, "BETTER_AUTH")
+    ]) == 0
+    error_message = "The API task must not select an authentication authority or carry the Native secret as a plain environment value."
+  }
+  assert {
+    condition = length([
+      for secret in jsondecode(aws_ecs_task_definition.app.container_definitions)[1].secrets : secret
+      if secret.name == "STOCKWISE_BETTER_AUTH_SECRET" && strcontains(secret.valueFrom, ":STOCKWISE_BETTER_AUTH_SECRET::")
+    ]) == 1
+    error_message = "The API must receive STOCKWISE_BETTER_AUTH_SECRET from the application secret."
   }
   assert {
     condition = contains([

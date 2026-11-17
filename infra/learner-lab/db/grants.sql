@@ -6,31 +6,26 @@
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO stockwise_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO stockwise_app;
 
--- The Native fence, its enrollment provenance and the migration history are
--- written only by migrations and the operator native:cutover; the runtime
--- (including the startup preflight) only reads them. demo_dataset_runs (ADR-043)
--- is written only by the operator provision-demo action.
-REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON native_auth_transition, native_auth_enrollments, _prisma_migrations, demo_dataset_runs FROM stockwise_app;
-GRANT SELECT ON native_auth_transition, native_auth_enrollments, _prisma_migrations, demo_dataset_runs TO stockwise_app;
--- The fence trigger guard_native_auth_dml() reads the fence row FOR SHARE on
--- every guarded write (e.g. a Native session insert), and PostgreSQL requires
--- UPDATE on at least one column for row locks. Grant only the "id" column;
--- native_auth_transition_guard still rejects any actual UPDATE or DELETE.
-GRANT UPDATE ("id") ON native_auth_transition TO stockwise_app;
+-- The migration history is written only by migrations; the runtime only reads
+-- it. demo_dataset_runs (ADR-043) is written only by the operator
+-- provision-demo action. The Native authentication guard
+-- (guard_native_auth_dml, ADR-045) reads only `users`, which the runtime role
+-- may already select, so it needs no extra grant.
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON _prisma_migrations, demo_dataset_runs FROM stockwise_app;
+GRANT SELECT ON _prisma_migrations, demo_dataset_runs TO stockwise_app;
 
 -- Never: TRUNCATE, REFERENCES, TRIGGER, ownership or schema CREATE for the app.
 REVOKE TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public FROM stockwise_app;
 REVOKE CREATE ON SCHEMA public FROM stockwise_app;
 
--- Fail the deploy if the runtime role could alter the fence or the demo provenance.
+-- Fail the deploy if the runtime role could alter the migration history or the
+-- demo provenance, or has DDL-level privileges.
 DO $$
 BEGIN
-  IF has_table_privilege('stockwise_app', 'native_auth_transition', 'UPDATE')
-     OR EXISTS (SELECT FROM information_schema.column_privileges
-                WHERE grantee = 'stockwise_app' AND table_name = 'native_auth_transition'
-                  AND privilege_type = 'UPDATE' AND column_name <> 'id')
-     OR has_table_privilege('stockwise_app', 'native_auth_transition', 'DELETE')
-     OR has_table_privilege('stockwise_app', 'native_auth_transition', 'TRUNCATE')
+  IF has_table_privilege('stockwise_app', '_prisma_migrations', 'INSERT')
+     OR has_table_privilege('stockwise_app', '_prisma_migrations', 'UPDATE')
+     OR has_table_privilege('stockwise_app', '_prisma_migrations', 'DELETE')
+     OR has_table_privilege('stockwise_app', '_prisma_migrations', 'TRUNCATE')
      OR has_table_privilege('stockwise_app', 'demo_dataset_runs', 'INSERT')
      OR has_table_privilege('stockwise_app', 'demo_dataset_runs', 'UPDATE')
      OR has_table_privilege('stockwise_app', 'demo_dataset_runs', 'DELETE')

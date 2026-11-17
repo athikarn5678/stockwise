@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Redeploys the previous web/api images (ADR-040). Migrations are forward-only:
-# rollback never touches the schema and is allowed only once the database is
-# sealed NATIVE (the previous release must be Native-compatible with it).
+# rollback never touches the schema (the previous release must be compatible
+# with the already-migrated database; a release older than M3 / `ADR-045`
+# cannot run on the post-M3 schema).
 #   rollback.sh --var-file <demo.tfvars>
 # shellcheck source-path=SCRIPTDIR source=common.sh
 source "$(dirname "$0")/common.sh"
@@ -22,11 +23,6 @@ read_release "${state_dir}/release-previous.env"
 previous_web="$web_image" previous_api="$api_image"
 current_ops="$(tf_output current_ops_image)"
 require_ecr_digest "$current_ops"
-
-state_log="$(mktemp "${state_dir}/fence.XXXXXX")"
-"${operator_dir}/run-ops-task.sh" fence-state | tee "$state_log"
-grep -q '^STOCKWISE_FENCE_STATE:NATIVE' "$state_log" || { rm -f "$state_log"; die "rollback requires the NATIVE state"; }
-rm -f "$state_log"
 
 if [[ "$(tf_output cloudfront_enabled)" == "true" && -z "${TF_VAR_cloudfront_origin_secret:-}" ]]; then
   TF_VAR_cloudfront_origin_secret="$(cat "${state_dir}/cloudfront-origin-secret")"

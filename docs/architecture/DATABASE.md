@@ -166,7 +166,9 @@ production database is evidenced or authorized. See
 [`BETTER_AUTH_MIGRATION.md`](../development/BETTER_AUTH_MIGRATION.md)
 for mapping, lock/backfill risks, and forward recovery requirements.
 
-### D5-P3 durable authentication transition schema
+### D5-P3 durable authentication transition schema (historical; removed by M3-T6)
+
+> Migration `20261117000000_native_only_authentication` (`ADR-045`, M3-T6) dropped `native_auth_transition`, `native_auth_enrollments`, the Legacy `sessions` and `email_verification_challenges` tables and their enums, and replaced `guard_native_auth_dml` with an unconditional Native guard. The text below records the earlier design.
 
 Owner-approved DEC-01/02/03 adds forward migration
 `20261024000000_native_authentication_transition` after the unchanged 22-migration

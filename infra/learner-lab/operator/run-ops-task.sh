@@ -3,7 +3,7 @@
 #   run-ops-task.sh <action>
 #   bootstrap-roles              -> <prefix>-ops-bootstrap (RDS master credentials)
 #   export                       -> <prefix>-ops-export    (LabRole, writes to S3)
-#   prepare | migrate | grants | fence-state | status | seed | cutover
+#   prepare | migrate | grants | status | seed
 #                                -> <prefix>-ops-ops
 #   run-ops-task.sh export --export-id <id>   binds the export to <id>
 #   run-ops-task.sh uat-provision --uat-phase accounts|memberships --uat-spec-file <json>
@@ -19,8 +19,7 @@
 #                                (teardown.sh verifies exactly that export)
 # Prints the task's CloudWatch log (credential-free by construction) and exits
 # with the container's exit code. Every invocation first verifies the Learner
-# Lab identity and account, whoever the caller is. `cutover` additionally
-# requires the application service to have no desired, pending or running task.
+# Lab identity and account, whoever the caller is.
 # shellcheck source-path=SCRIPTDIR source=common.sh
 source "$(dirname "$0")/common.sh"
 require_tools aws terraform
@@ -38,8 +37,8 @@ demo_digest=""
 case "$action" in
   bootstrap-roles) role="bootstrap" ;;
   export) role="export" ;;
-  prepare | migrate | grants | fence-state | status | seed | cutover | uat-provision | reconcile-owners | provision-demo) role="ops" ;;
-  *) die "usage: run-ops-task.sh bootstrap-roles|prepare|migrate|grants|fence-state|status|seed|cutover|uat-provision|reconcile-owners|provision-demo|export [--export-id <id>] [--uat-phase <p> --uat-spec-file <f>] [--reconcile-mode <m> --reconcile-spec-file <f> --reconcile-confirm-digest <d>] [--demo-mode <m> --demo-spec-file <f> --demo-confirm-digest <d>]" ;;
+  prepare | migrate | grants | status | seed | uat-provision | reconcile-owners | provision-demo) role="ops" ;;
+  *) die "usage: run-ops-task.sh bootstrap-roles|prepare|migrate|grants|status|seed|uat-provision|reconcile-owners|provision-demo|export [--export-id <id>] [--uat-phase <p> --uat-spec-file <f>] [--reconcile-mode <m> --reconcile-spec-file <f> --reconcile-confirm-digest <d>] [--demo-mode <m> --demo-spec-file <f> --demo-confirm-digest <d>]" ;;
 esac
 shift
 while [[ $# -gt 0 ]]; do
@@ -112,13 +111,6 @@ security_group="$(tf_output task_security_group_id)"
 log_group="$(tf_output ops_log_group)"
 family="${prefix}-ops-${role}"
 
-if [[ "$action" == "cutover" ]]; then
-  counts="$(aws ecs describe-services --cluster "$cluster" --services "$service" \
-    --query 'services[0].[desiredCount,pendingCount,runningCount]' --output text)"
-  [[ "$(tr -s '[:space:]' ' ' <<<"$counts" | xargs)" == "0 0 0" ]] ||
-    die "the application service must be at 0 desired/pending/running tasks before the cutover (now: ${counts})"
-fi
-
 environment=""
 [[ -n "$export_id" ]] && environment=",\"environment\":[{\"name\":\"STOCKWISE_EXPORT_ID\",\"value\":\"${export_id}\"}]"
 if [[ "$action" == "uat-provision" ]]; then
@@ -132,8 +124,7 @@ if [[ "$action" == "reconcile-owners" ]]; then
   # SHA-256 digests only, never an address or a secret.
   environment=",\"environment\":[{\"name\":\"STOCKWISE_RECONCILE_MODE\",\"value\":\"${reconcile_mode}\"}"
   if [[ "$reconcile_mode" != "verify" ]]; then
-    spec_b64="$(base64 <"$reconcile_spec_file" | tr -d "
- ")"
+    spec_b64="$(base64 <"$reconcile_spec_file" | tr -d '\r\n ')"
     [[ ${#spec_b64} -le 7000 ]] || die "the reconcile spec exceeds the ECS override size budget"
     environment+=",{\"name\":\"STOCKWISE_RECONCILE_SPEC_B64\",\"value\":\"${spec_b64}\"}"
   fi
@@ -145,8 +136,7 @@ if [[ "$action" == "provision-demo" ]]; then
   # of already verified demo accounts only; base64 keeps it shell- and JSON-safe in the ECS override.
   environment=",\"environment\":[{\"name\":\"STOCKWISE_DEMO_MODE\",\"value\":\"${demo_mode}\"}"
   if [[ "$demo_mode" != "verify" ]]; then
-    spec_b64="$(base64 <"$demo_spec_file" | tr -d "
- ")"
+    spec_b64="$(base64 <"$demo_spec_file" | tr -d '\r\n ')"
     [[ ${#spec_b64} -le 7000 ]] || die "the demo spec exceeds the ECS override size budget"
     environment+=",{\"name\":\"STOCKWISE_DEMO_SPEC_B64\",\"value\":\"${spec_b64}\"}"
   fi

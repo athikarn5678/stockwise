@@ -74,7 +74,7 @@ ENTRYPOINT ["/usr/local/bin/stockwise-database-url"]
 CMD ["node", "/usr/local/lib/stockwise/redacting-log-pipe.mjs", "node", "dist/main.js"]
 
 # ---- ops: one-off ECS tasks (ops/ops-task.sh): role bootstrap, migrate deploy,
-# grants, fence state, optional demo:seed, native:cutover, pg_dump export to S3.
+# grants, optional demo:seed, pg_dump export to S3.
 FROM ${NODE_IMAGE} AS ops
 ENV NODE_ENV=production
 # psql/pg_dump 16 come from the PostgreSQL project's apt repository (pg_dump must

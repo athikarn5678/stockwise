@@ -3,11 +3,11 @@
 -- (ops/ops-task.sh bootstrap-roles); idempotent.
 -- Passwords arrive through psql \getenv from the process environment and are
 -- never on a command line, in this file, in Terraform state or in Git.
---   stockwise_migrator  owns the public schema; migrations, grants, cutover,
---                       optional demo seeding.
+--   stockwise_migrator  owns the public schema; migrations, grants, optional
+--                       demo seeding.
 --   stockwise_app       runtime role: DML only; cannot own, alter, truncate or
 --                       disable triggers on any table, and only reads the
---                       Native authentication fence (see grants.sql).
+--                       migration history and demo provenance (see grants.sql).
 \set ON_ERROR_STOP on
 \getenv migrator_password STOCKWISE_MIGRATOR_DB_PASSWORD
 \getenv app_password STOCKWISE_APP_DB_PASSWORD

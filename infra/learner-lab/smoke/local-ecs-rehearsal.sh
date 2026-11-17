@@ -8,8 +8,9 @@
 #   - a "pause" container owns the task network namespace like the awsvpc ENI,
 #     and api and web join it, so the API is reachable only on its loopback;
 #   - a moto S3 server stands in for the exports bucket;
-#   - ops tasks run bootstrap-roles, prepare, seed, cutover and export in the
-#     ADR-040 order; Native-only startup and the role restrictions are probed.
+#   - ops tasks run bootstrap-roles, prepare, seed and export in the ADR-040
+#     order (the database is Native from its migrations, ADR-045); the role
+#     restrictions are probed.
 # The local test CA is mounted over the baked RDS bundle (the only deviation).
 # Every resource carries the label lls.run=<run> and is removed at the end.
 #   infra/learner-lab/smoke/local-ecs-rehearsal.sh [web-image api-image ops-image]
@@ -142,7 +143,6 @@ if ops_task bootstrap migrate; then record OPS_ROLE_SCOPE_ENFORCED FAIL; else
   if grep -q "not permitted for the 'bootstrap'" "$ops_log"; then record OPS_ROLE_SCOPE_ENFORCED PASS; else record OPS_ROLE_SCOPE_ENFORCED FAIL; fi
 fi
 check OPS_PREPARE_MIGRATE_GRANTS ops_task ops prepare
-if grep -q '^STOCKWISE_FENCE_STATE:LEGACY' "$ops_log"; then record FENCE_LEGACY_AFTER_PREPARE PASS; else record FENCE_LEGACY_AFTER_PREPARE FAIL; fi
 
 app_container() {
   # app_container <name> <extra docker args...>
@@ -154,41 +154,17 @@ app_container() {
   docker run -d "${label[@]}" "${args[@]}" "${ca_mount[@]}" "$@" "$image" >/dev/null
 }
 
-# Native-only startup: the API refuses a database that is not sealed NATIVE.
-docker run -d "${label[@]}" --name "${run}-pause-legacy" --network "$network" "$alpine_image" sleep 600 >/dev/null
-app_container api --name "${run}-api-legacy" --network "container:${run}-pause-legacy"
-status="$(timeout 120 docker wait "${run}-api-legacy" || echo timeout)"
-docker logs "${run}-api-legacy" >"${home}/api-before-cutover.log" 2>&1
-if [[ "$status" != 0 && "$status" != timeout ]]; then record API_REFUSES_LEGACY_DATABASE PASS; else record API_REFUSES_LEGACY_DATABASE "FAIL_${status}"; fi
-docker rm -f "${run}-api-legacy" "${run}-pause-legacy" >/dev/null
-
 # F5: the seed path refuses any TLS downgrade before connecting.
 if ops_task ops seed -e STOCKWISE_SEED_PGSSLMODE=no-verify; then record SEED_REFUSES_NO_VERIFY_OVERRIDE FAIL; else
   if grep -q 'SEED_TLS_OVERRIDE_REFUSED' "$ops_log"; then record SEED_REFUSES_NO_VERIFY_OVERRIDE PASS; else record SEED_REFUSES_NO_VERIFY_OVERRIDE FAIL; fi
 fi
 # The real seed connects through the verified forwarder (stand-in CA, hostname lls-postgres).
-check OPS_SEED_WHILE_LEGACY ops_task ops seed
+check OPS_SEED_ON_MIGRATED_DATABASE ops_task ops seed
 
-# The cutover refuses while any stockwise_app session is open. The session is
-# held idle (psql waiting on stdin), like an application pool connection, so
-# the server notices immediately when its container goes away.
-docker run -d "${label[@]}" --name "${run}-app-session" --network "$network" -e PGPASSWORD="$app" \
-  -v "${vm_home}/certs/ca.pem:/certs/ca.pem:ro" "$postgres_image" sh -c \
-  'sleep 300 | psql "host=lls-postgres dbname=stockwise_demo user=stockwise_app sslmode=verify-full sslrootcert=/certs/ca.pem"' >/dev/null
-sleep 4
-if ops_task ops cutover; then record CUTOVER_REFUSES_OPEN_APP_SESSION FAIL; else
-  if grep -q "open session" "$ops_log"; then record CUTOVER_REFUSES_OPEN_APP_SESSION PASS; else record CUTOVER_REFUSES_OPEN_APP_SESSION FAIL; fi
-fi
-docker rm -f "${run}-app-session" >/dev/null
-for _ in $(seq 1 30); do
-  [[ "$(docker exec "${run}-postgres" psql -U stockwise_master -d stockwise_demo -tAc \
-    "SELECT count(*) FROM pg_stat_activity WHERE usename = 'stockwise_app'")" == 0 ]] && break
-  sleep 1
-done
-check OPS_NATIVE_CUTOVER ops_task ops cutover
-if grep -q '^STOCKWISE_CUTOVER:COMPLETE' "$ops_log"; then record FENCE_SEALED_NATIVE PASS; else record FENCE_SEALED_NATIVE FAIL; fi
-if ops_task ops seed; then record SEED_REFUSED_AFTER_NATIVE FAIL; else record SEED_REFUSED_AFTER_NATIVE PASS; fi
-check OPS_PREPARE_IDEMPOTENT_AFTER_NATIVE ops_task ops prepare
+# A second seed run is an exact no-op, and prepare is idempotent.
+check OPS_SEED_RERUN ops_task ops seed
+if grep -q ' no-op on ' "$ops_log"; then record SEED_RERUN_IS_NOOP PASS; else record SEED_RERUN_IS_NOOP FAIL; fi
+check OPS_PREPARE_IDEMPOTENT ops_task ops prepare
 
 # ---- the application task: pause (task ENI) + api + web -------------------------------
 start_task() {
@@ -266,21 +242,13 @@ if [[ "$env_counts" == "0 1" ]]; then record API_PROCESS_ENV_COMPOSED PASS; else
 if docker exec "${run}-api" sh -c 'touch /repo/probe' >/dev/null 2>&1; then record READ_ONLY_ROOT FAIL; else record READ_ONLY_ROOT PASS; fi
 if [[ "$(docker inspect -f '{{json .HostConfig.CapDrop}}' "${run}-api")" == *ALL* ]]; then record CAPABILITIES_DROPPED PASS; else record CAPABILITIES_DROPPED FAIL; fi
 
-# Production refuses Legacy selection and a missing database secret.
-docker run -d "${label[@]}" --name "${run}-pause-probe" --network "$network" "$alpine_image" sleep 600 >/dev/null
-app_container api --name "${run}-api-legacy-env" --network "container:${run}-pause-probe" \
-  -e STOCKWISE_AUTHENTICATION_AUTHORITY=legacy
-status="$(timeout 90 docker wait "${run}-api-legacy-env" || echo timeout)"
-if [[ "$status" != 0 && "$status" != timeout ]]; then record PRODUCTION_REFUSES_LEGACY_AUTHORITY PASS; else
-  record PRODUCTION_REFUSES_LEGACY_AUTHORITY "FAIL_${status}"; fi
-docker logs "${run}-api-legacy-env" >"${home}/api-legacy-authority.log" 2>&1
+# Production refuses a missing database secret.
 output="$(docker run --rm "${label[@]}" -e STOCKWISE_DB_HOST=lls-postgres -e STOCKWISE_DB_PORT=5432 \
   -e STOCKWISE_DB_NAME=stockwise_demo -e STOCKWISE_DB_USER=stockwise_app "$api_image" 2>&1 || true)"
 if grep -q 'STOCKWISE_REFUSED: STOCKWISE_DB_PASSWORD is not set' <<<"$output"; then record MISSING_SECRET_REFUSED PASS; else
   record MISSING_SECRET_REFUSED FAIL; fi
-docker rm -f "${run}-api-legacy-env" "${run}-pause-probe" >/dev/null
 
-# Runtime database role: DML only, read-only fence, no DDL, TLS required.
+# Runtime database role: DML only, read-only migration history, no DDL, TLS required.
 app_sql() {
   docker run --rm "${label[@]}" --network "$network" -e PGPASSWORD="$app" \
     -v "${vm_home}/certs/ca.pem:/certs/ca.pem:ro" "$postgres_image" psql --no-psqlrc --quiet --tuples-only --no-align \
@@ -290,7 +258,7 @@ app_sql() {
 if app_sql "SELECT count(*) FROM users" | grep -qx '[0-9][0-9]*'; then record APP_ROLE_READS PASS; else record APP_ROLE_READS FAIL; fi
 if app_sql "UPDATE users SET display_name = display_name WHERE false" >/dev/null; then record APP_ROLE_WRITES_APPLICATION_TABLES PASS; else
   record APP_ROLE_WRITES_APPLICATION_TABLES FAIL; fi
-for probe in "UPDATE native_auth_transition SET state = state" "DELETE FROM native_auth_enrollments" \
+for probe in "UPDATE _prisma_migrations SET migration_name = migration_name" "DELETE FROM demo_dataset_runs" \
   "TRUNCATE users" "ALTER TABLE users DISABLE TRIGGER users_native_auth_fence" \
   "CREATE TABLE app_probe (id int)" "DELETE FROM _prisma_migrations"; do
   # psql exits non-zero on the expected refusal; the output is what is checked.
@@ -298,9 +266,10 @@ for probe in "UPDATE native_auth_transition SET state = state" "DELETE FROM nati
   if grep -qiE 'permission denied|must be owner' <<<"$output"; then record "APP_ROLE_DENIED:${probe%% *}_${probe##* }" PASS; else
     record "APP_ROLE_DENIED:${probe%% *}_${probe##* }" FAIL; fi
 done
-output="$(app_sql "UPDATE native_auth_transition SET id = false" || true)"
-if grep -qi "singleton id is immutable" <<<"$output"; then record APP_ROLE_FENCE_UPDATE_REFUSED_BY_TRIGGER PASS; else
-  record APP_ROLE_FENCE_UPDATE_REFUSED_BY_TRIGGER FAIL; fi
+# The Native authentication guard (ADR-045) refuses deleting a user even for DML-capable roles.
+output="$(app_sql "DELETE FROM users" || true)"
+if grep -qi "user deletion is not permitted" <<<"$output"; then record APP_ROLE_USER_DELETE_REFUSED_BY_GUARD PASS; else
+  record APP_ROLE_USER_DELETE_REFUSED_BY_GUARD FAIL; fi
 output="$(docker run --rm "${label[@]}" --network "$network" -e PGPASSWORD="$app" "$postgres_image" \
   psql "host=lls-postgres dbname=stockwise_demo user=stockwise_app sslmode=disable" -c "SELECT 1" 2>&1 || true)"
 if grep -qi 'pg_hba.conf' <<<"$output"; then record DATABASE_REFUSES_PLAINTEXT PASS; else record DATABASE_REFUSES_PLAINTEXT FAIL; fi

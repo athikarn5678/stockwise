@@ -158,14 +158,16 @@ locals {
 
   # "unset" only renders far enough for the precondition below to refuse the plan.
   app_containers = templatefile("${path.module}/templates/app-containers.json.tftpl", merge(local.common_template_vars, {
-    web_image              = coalesce(var.web_image, "unset")
-    api_image              = coalesce(var.api_image, "unset")
-    public_web_origin      = "https://${var.demo_hostname}"
-    email_from             = var.email_from
-    web_log_group          = aws_cloudwatch_log_group.container["web"].name
-    api_log_group          = aws_cloudwatch_log_group.container["api"].name
-    database_secret_arn    = aws_secretsmanager_secret.database.arn
-    application_secret_arn = aws_secretsmanager_secret.application.arn
+    web_image         = coalesce(var.web_image, "unset")
+    api_image         = coalesce(var.api_image, "unset")
+    public_web_origin = "https://${var.demo_hostname}"
+    # A leading comma plus one environment entry, or nothing.
+    demo_insight_environment = var.demo_insight_organization_id == null ? "" : ",{ \"name\": \"STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID\", \"value\": \"${var.demo_insight_organization_id}\" }"
+    email_from               = var.email_from
+    web_log_group            = aws_cloudwatch_log_group.container["web"].name
+    api_log_group            = aws_cloudwatch_log_group.container["api"].name
+    database_secret_arn      = aws_secretsmanager_secret.database.arn
+    application_secret_arn   = aws_secretsmanager_secret.application.arn
   }))
 
   # Each ops task definition receives only the secrets its actions need

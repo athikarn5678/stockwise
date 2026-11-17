@@ -287,6 +287,7 @@ merge_env_refused() {
 expect M9_MERGE_REFUSES_MISSING_OPENCODE_KEY merge_env_refused missing-opencode OPENCODE_GO_API_KEY=
 expect M9_MERGE_REFUSES_LIVE_STRIPE_KEY merge_env_refused live-stripe STRIPE_SECRET_KEY=sk_live_stubfixture0000001
 expect M9_MERGE_REFUSES_BAD_PROMPTPAY_ID merge_env_refused bad-promptpay STOCKWISE_PROMPTPAY_ID=08-1234-5678
+expect M9_MERGE_REFUSES_NON_MOBILE_PROMPTPAY_ID merge_env_refused id-13-digits STOCKWISE_PROMPTPAY_ID=1234567890123
 new_case m9-fresh-refuses-live-stripe
 (export STRIPE_SECRET_KEY=sk_live_stubfixture0000001; STUB_SM_LIST=empty STUB_SM_GET=valid operator_run put put-secrets.sh --resend-key-file "$(native "${work}/resend-key")") && rc=0 || rc=$?
 expect M9_FRESH_REFUSES_LIVE_STRIPE_KEY_NO_APPLICATION_UPLOAD bash -c "[[ $rc != 0 ]] && ! grep -q 'STOCKWISE_SECRETS:READY' '${case_dir}/put.out' &&

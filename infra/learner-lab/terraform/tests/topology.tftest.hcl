@@ -191,6 +191,29 @@ run "default_topology" {
     ]) == 1
     error_message = "The API must receive STOCKWISE_BETTER_AUTH_SECRET from the application secret."
   }
+  # AI (OpenCode Go), Stripe test mode and PromptPay: values only in Secrets
+  # Manager, never as plain environment values.
+  assert {
+    condition = length([
+      for secret in jsondecode(aws_ecs_task_definition.app.container_definitions)[1].secrets : secret
+      if contains(["OPENCODE_GO_API_KEY", "STRIPE_SECRET_KEY", "STOCKWISE_PROMPTPAY_ID"], secret.name)
+      && strcontains(secret.valueFrom, ":${secret.name}::")
+    ]) == 3
+    error_message = "The API must receive OPENCODE_GO_API_KEY, STRIPE_SECRET_KEY and STOCKWISE_PROMPTPAY_ID from the application secret."
+  }
+  assert {
+    condition = length([
+      for variable in jsondecode(aws_ecs_task_definition.app.container_definitions)[1].environment : variable
+      if contains(["OPENCODE_GO_API_KEY", "STRIPE_SECRET_KEY", "STOCKWISE_PROMPTPAY_ID", "RESEND_API_KEY"], variable.name)
+    ]) == 0
+    error_message = "Provider keys and the PromptPay ID must not be plain environment values."
+  }
+  assert {
+    condition = contains([
+      for variable in jsondecode(aws_ecs_task_definition.app.container_definitions)[1].environment : "${variable.name}=${variable.value}"
+    ], "STOCKWISE_EMAIL_PROVIDER=resend")
+    error_message = "Production mail must use Resend."
+  }
   assert {
     condition = contains([
       for variable in jsondecode(aws_ecs_task_definition.app.container_definitions)[1].environment : "${variable.name}=${variable.value}"
@@ -370,15 +393,23 @@ run "cloudfront_secret_refused_while_disabled" {
   expect_failures = [var.cloudfront_origin_secret]
 }
 
-run "planning_deadline_default" {
+run "demo_end_time_reaches_schedule_and_output" {
   command = plan
   variables {
-    demo_end_time = "2026-10-31T16:59:00Z"
+    demo_end_time = "2030-01-01T16:59:00Z"
   }
   assert {
-    condition     = aws_autoscaling_schedule.demo_end.start_time == "2026-10-31T16:59:00Z" && output.planning_deadline == "2026-10-31T16:59:00Z"
-    error_message = "The planning deadline is 2026-10-31 23:59 Asia/Bangkok (OD-5)."
+    condition     = aws_autoscaling_schedule.demo_end.start_time == "2030-01-01T16:59:00Z" && output.planning_deadline == "2030-01-01T16:59:00Z"
+    error_message = "demo_end_time must feed the scale-to-zero schedule and the planning_deadline output."
   }
+}
+
+run "refuses_non_utc_demo_end_time" {
+  command = plan
+  variables {
+    demo_end_time = "2030-01-01T23:59:00+07:00"
+  }
+  expect_failures = [var.demo_end_time]
 }
 
 run "refuses_second_replica" {

@@ -88,7 +88,8 @@ case "$1 ${2:-}" in
       missing="{\"app_password\":\"$(printf 'A%.0s' {1..43})\",\"demo_user_password\":\"$(printf 'D%.0s' {1..43})\"}"
       bad="{\"app_password\":\"short\",\"migrator_password\":\"$(printf 'M%.0s' {1..43})\",\"demo_user_password\":\"$(printf 'D%.0s' {1..43})\"}"
     else
-      valid="{\"STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY\":\"${k43}\",\"STOCKWISE_VERIFICATION_OTP_KEY\":\"${k43}\",\"STOCKWISE_VERIFICATION_PROOF_KEY\":\"${k43}\",\"STOCKWISE_BETTER_AUTH_SECRET\":\"${k43}\",\"STOCKWISE_INVITATION_CONTINUATION_KEY\":\"${k43}\",\"RESEND_API_KEY\":\"re_stubfixture_0001\"}"
+      valid="{\"STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY\":\"${k43}\",\"STOCKWISE_VERIFICATION_OTP_KEY\":\"${k43}\",\"STOCKWISE_VERIFICATION_PROOF_KEY\":\"${k43}\",\"STOCKWISE_BETTER_AUTH_SECRET\":\"${k43}\",\"STOCKWISE_INVITATION_CONTINUATION_KEY\":\"${k43}\",\"RESEND_API_KEY\":\"re_stubfixture_0001\",\"OPENCODE_GO_API_KEY\":\"oc_stubfixture_000000001\",\"STRIPE_SECRET_KEY\":\"sk_test_stubfixture0000001\",\"STOCKWISE_PROMPTPAY_ID\":\"0812345678\"}"
+      six="${valid/,\"OPENCODE_GO_API_KEY\":\"oc_stubfixture_000000001\",\"STRIPE_SECRET_KEY\":\"sk_test_stubfixture0000001\",\"STOCKWISE_PROMPTPAY_ID\":\"0812345678\"/}"
       missing="{\"STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY\":\"${k43}\",\"RESEND_API_KEY\":\"re_stubfixture_0001\"}"
       bad="${valid/re_stubfixture_0001/not-a-resend-key}"
     fi
@@ -101,6 +102,9 @@ case "$1 ${2:-}" in
     if [[ -n "${STUB_SM_BAD_SECRET:-}" && "$id" != *"$STUB_SM_BAD_SECRET"* ]]; then mode=valid; fi
     case "$mode" in
       valid) echo "$valid" ;;
+      # Application secret stored before the provider keys existed: six keys
+      # until a put-secret-value has happened, nine afterwards.
+      six-keys) if [[ "$id" == *application* && ! -e "${STUB_DIR}/secret-put-done" ]]; then echo "$six"; else echo "$valid"; fi ;;
       whitespace) printf '%s\n' "$valid" | sed 's/:/: /g; s/,/, /g' ;;
       multiline) printf '%s\n' "$valid" | sed 's/,/,\n  /g' ;;
       blank) : ;;
@@ -141,6 +145,7 @@ case "$1 ${2:-}" in
     # Record whether the referenced payload existed at call time (never its content).
     [[ "$source_arg" == file://* ]] && printf 'payload-present:%s\n' "$([[ -s "${source_arg#file://}" ]] && echo yes || echo no)" >>"${STUB_DIR}/aws.log"
     [[ "${STUB_PUT_FAIL:-}" == 1 ]] && { echo "An error occurred (AccessDeniedException)" >&2; exit 254; }
+    : >"${STUB_DIR}/secret-put-done"
     echo stub-secret
     ;;
   "rds describe-db-instances")

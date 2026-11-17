@@ -66,7 +66,10 @@
       { "name": "STOCKWISE_VERIFICATION_OTP_KEY", "valueFrom": "${application_secret_arn}:STOCKWISE_VERIFICATION_OTP_KEY::" },
       { "name": "STOCKWISE_VERIFICATION_PROOF_KEY", "valueFrom": "${application_secret_arn}:STOCKWISE_VERIFICATION_PROOF_KEY::" },
       { "name": "STOCKWISE_BETTER_AUTH_SECRET", "valueFrom": "${application_secret_arn}:STOCKWISE_BETTER_AUTH_SECRET::" },
-      { "name": "STOCKWISE_INVITATION_CONTINUATION_KEY", "valueFrom": "${application_secret_arn}:STOCKWISE_INVITATION_CONTINUATION_KEY::" }
+      { "name": "STOCKWISE_INVITATION_CONTINUATION_KEY", "valueFrom": "${application_secret_arn}:STOCKWISE_INVITATION_CONTINUATION_KEY::" },
+      { "name": "OPENCODE_GO_API_KEY", "valueFrom": "${application_secret_arn}:OPENCODE_GO_API_KEY::" },
+      { "name": "STRIPE_SECRET_KEY", "valueFrom": "${application_secret_arn}:STRIPE_SECRET_KEY::" },
+      { "name": "STOCKWISE_PROMPTPAY_ID", "valueFrom": "${application_secret_arn}:STOCKWISE_PROMPTPAY_ID::" }
     ],
     "healthCheck": {
       "command": ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/ready').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"],

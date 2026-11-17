@@ -13,12 +13,27 @@ import type { InventoryDimension } from "../analytics/analytics-inventory-values
 import { createPrismaReorderRepository } from "../analytics/analytics-reorder-repository.ts";
 import { createPrismaAnalyticsSalesRepository } from "../analytics/analytics-sales-repository.ts";
 import { createPrismaAnalyticsScopeRepository } from "../analytics/analytics-scope-repository.ts";
+import { AI_ANALYZE_HEADINGS } from "./ai-analyze-prompt.ts";
 import {
   createPrismaAiInsightReader,
   type InsightReadScope,
 } from "./ai-insight-store.ts";
 
 const Decimal = Prisma.Decimal.clone({ precision: 80 });
+
+/**
+ * Exact headings of the Demo Insight text: Thai / English, derived from the five
+ * headings of the on-demand AI analysis so the two can never drift apart.
+ */
+const bilingual = (index: 0 | 1 | 2 | 3 | 4) =>
+  `${AI_ANALYZE_HEADINGS.th[index]} / ${AI_ANALYZE_HEADINGS.en[index]}`;
+export const DEMO_INSIGHT_HEADINGS = {
+  overview: bilingual(0),
+  sales: bilingual(1),
+  products: bilingual(2),
+  notes: bilingual(3),
+  actions: bilingual(4),
+} as const;
 
 export function createDemoInsightReader(input: {
   prisma: PrismaClient;
@@ -109,11 +124,12 @@ export function createDemoInsightReader(input: {
       const netRevenue = sum(
         sales.buckets.map((b) => b.netSalesAmount),
       ).toFixed(2);
+      const halfBuckets = Math.floor(sales.buckets.length / 2);
       const firstHalf = sum(
-        sales.buckets.slice(0, 15).map((b) => b.netSalesAmount),
+        sales.buckets.slice(0, halfBuckets).map((b) => b.netSalesAmount),
       );
       const secondHalf = sum(
-        sales.buckets.slice(15).map((b) => b.netSalesAmount),
+        sales.buckets.slice(halfBuckets).map((b) => b.netSalesAmount),
       );
       const growthPercent = firstHalf.gt(0)
         ? secondHalf.minus(firstHalf).div(firstHalf).times(100).toFixed(2)
@@ -209,22 +225,63 @@ export function createDemoInsightReader(input: {
         quantity: string;
         unit: string;
       }) => `${p.name}: ${p.quantity} ${p.unit}`;
-      const lines = [
-        th
-          ? `รายได้สุทธิ ${netRevenue} THB จาก ${sales.buckets.reduce((n, b) => n + b.saleCount, 0)} รายการขาย`
-          : `Net revenue ${netRevenue} THB from ${sales.buckets.reduce((n, b) => n + b.saleCount, 0)} sales.`,
-        growthPercent === null
-          ? th
-            ? "ยังไม่มีฐานเปรียบเทียบรายได้"
-            : "Revenue comparison has no positive baseline."
-          : th
-            ? `รายได้ครึ่งหลังเทียบครึ่งแรกของช่วงนี้: ${growthPercent}%`
-            : `Second-half revenue versus first half: ${growthPercent}%.`,
-        `${th ? "สินค้าขายดี แยกตามหน่วย" : "Top products by base unit"}: ${topProducts.map(productText).join("; ") || (th ? "ยังไม่มีการขาย" : "no sales")}.`,
-        `${th ? "สินค้าขายช้า แยกตามหน่วย" : "Slow-moving products by base unit"}: ${slowProducts.map(productText).join("; ") || "—"}.`,
-        `${th ? "สินค้าใกล้หมด แยกตามสาขา" : "Low-stock branch/product pairs"}: ${lowStock.map((p) => `${p.branchName} / ${p.name}: ${p.onHand} ${p.unit}, ${p.coverageDays} ${th ? "วัน" : "days"}`).join("; ") || (th ? "ไม่มีรายการที่คำนวณได้" : "none with available coverage")}.`,
-        `${th ? "ข้อเสนอแนะเติมสินค้า ระยะวางแผน 7 วัน" : "Advisory replenishment with a 7-day planning lead time"}: ${replenishment.map((p) => `${p.branchName} / ${productText(p)}`).join("; ") || (th ? "ไม่มีคำแนะนำที่พร้อมใช้งาน" : "no available recommendations")}.`,
+      const saleCount = sales.buckets.reduce((n, b) => n + b.saleCount, 0);
+      const averageSale =
+        saleCount > 0
+          ? new Decimal(netRevenue).div(saleCount).toFixed(2)
+          : null;
+      // The same five headings, in this order, as the on-demand AI analysis.
+      const sections: ReadonlyArray<readonly [string, readonly string[]]> = [
+        [
+          DEMO_INSIGHT_HEADINGS.overview,
+          [
+            th
+              ? `รายได้สุทธิ ${netRevenue} THB จาก ${saleCount} รายการขาย`
+              : `Net revenue ${netRevenue} THB from ${saleCount} sales.`,
+          ],
+        ],
+        [
+          DEMO_INSIGHT_HEADINGS.sales,
+          [
+            growthPercent === null
+              ? th
+                ? "ยังไม่มีฐานเปรียบเทียบรายได้"
+                : "Revenue comparison has no positive baseline."
+              : th
+                ? `รายได้ครึ่งหลังเทียบครึ่งแรกของช่วงนี้: ${growthPercent}%`
+                : `Second-half revenue versus first half: ${growthPercent}%.`,
+            averageSale === null
+              ? th
+                ? "ยังไม่มีการขายให้คำนวณยอดเฉลี่ยต่อรายการ"
+                : "No sales to average."
+              : th
+                ? `ยอดเฉลี่ยต่อรายการขาย: ${averageSale} THB`
+                : `Average sale: ${averageSale} THB.`,
+          ],
+        ],
+        [
+          DEMO_INSIGHT_HEADINGS.products,
+          [
+            `${th ? "สินค้าขายดี แยกตามหน่วย" : "Top products by base unit"}: ${topProducts.map(productText).join("; ") || (th ? "ยังไม่มีการขาย" : "no sales")}.`,
+            `${th ? "สินค้าขายช้า แยกตามหน่วย" : "Slow-moving products by base unit"}: ${slowProducts.map(productText).join("; ") || "—"}.`,
+          ],
+        ],
+        [
+          DEMO_INSIGHT_HEADINGS.notes,
+          [
+            `${th ? "สินค้าใกล้หมด แยกตามสาขา" : "Low-stock branch/product pairs"}: ${lowStock.map((p) => `${p.branchName} / ${p.name}: ${p.onHand} ${p.unit}, ${p.coverageDays} ${th ? "วัน" : "days"}`).join("; ") || (th ? "ไม่มีรายการที่คำนวณได้" : "none with available coverage")}.`,
+          ],
+        ],
+        [
+          DEMO_INSIGHT_HEADINGS.actions,
+          [
+            `${th ? "ข้อเสนอแนะเติมสินค้า ระยะวางแผน 7 วัน" : "Advisory replenishment with a 7-day planning lead time"}: ${replenishment.map((p) => `${p.branchName} / ${productText(p)}`).join("; ") || (th ? "ไม่มีคำแนะนำที่พร้อมใช้งาน" : "no available recommendations")}.`,
+          ],
+        ],
       ];
+      const content = sections
+        .map(([heading, lines]) => [heading, ...lines].join("\n"))
+        .join("\n\n");
       if (
         provenance.fingerprint !==
         (await demoBusinessFingerprint(input.prisma, request.organizationId))
@@ -240,13 +297,13 @@ export function createDemoInsightReader(input: {
           explanation: th
             ? "ข้อความตัวอย่างจากข้อมูลที่คำนวณจริง ไม่ได้สร้างโดย OpenRouter"
             : "Deterministic demo text from computed metrics. Not generated by OpenRouter.",
-          content: lines.join("\n"),
+          content,
           from: range.from,
           to: range.to,
           reportingTimezone: organization.reportingTimezone,
           metrics: {
             netRevenue,
-            saleCount: sales.buckets.reduce((n, b) => n + b.saleCount, 0),
+            saleCount,
             growthPercent,
             topProducts,
             slowProducts,

@@ -1,5 +1,89 @@
 # StockWise fixed demo dataset
 
+## One-command 90-day demo from an empty database (M4-S1)
+
+`demo:seed:90d` builds the whole synthetic demo on a **new, empty, disposable**
+database in one command. It extends the pipeline below instead of replacing it:
+a bootstrap writes the identity and catalog, then the existing 30-day runner and
+provenance (`apps/api/src/demo/demo-30d-*.ts`, parameterised by a "shape") write
+the activity through the production domain writers (purchasing, receiving,
+checkout, refund, inventory adjustment) with injected clocks.
+
+What it creates (organization `UAT Demo Siam Mart`, `Asia/Bangkok`, VAT not
+registered):
+
+- 3 branches `MAIN`, `NORTH`, `EAST`; 4 categories; 12 products `DEMO-P01`…`DEMO-P12`
+  (EA/PACK/KG/L; `P01` sells most, `P12` least); 2 suppliers.
+- 5 users, one per role, each with a verified Native credential account.
+- 90 consecutive completed Organization-local days ending the day before the
+  reference date: about 950 CASH/TRANSFER sales (more at weekends, slow growth),
+  18 purchase orders that are ordered and received (every 15 days per branch),
+  9 refunds with restock, and 9 manual stock adjustments (`DAMAGE`,
+  `STOCK_COUNT`, `LOSS`). Four of the twelve products are ordered with a small
+  surplus, so some stock is low at the end (reorder/forecast demos).
+
+Local run (Docker is required for the disposable-database receipt described in
+the next section; the receipt and `_demo` database name are unchanged guards):
+
+```bash
+export DEMO_DATABASE_URL='postgresql://<local-user>:<local-password>@127.0.0.1:<port>/<fresh-name>_demo'
+export DEMO_DISPOSABLE_RECEIPT='<absolute-ignored-local-receipt-path>'   # see demo-local-setup.ts
+pnpm demo:seed:90d --preview     # no writes: target check + plan counts
+pnpm demo:seed:90d               # apply: bootstrap + 90 days
+```
+
+Options: `--reference-date YYYY-MM-DD` (default: today in `Asia/Bangkok`; the plan
+covers the 90 days before it), `--seed <n>` (default `90`), `--preview`. A rerun
+without `--reference-date` reuses the recorded reference date, so it validates
+and replays the existing rows without duplicates (the second run is a no-op).
+Changing the seed/date after the first run is refused; use a fresh database.
+A full local apply takes under a minute.
+
+Passwords: set `DEMO_USER_PASSWORD` (15–128 characters) to choose one. If it is
+unset, **local runs only** use the documented default
+`StockWise-Demo-2026!`. Never use that default on any shared or hosted
+database; the Learner Lab target refuses to run without `DEMO_USER_PASSWORD`.
+Credentials and hashes are never printed.
+
+| Role | Email | Branches | What to try |
+| --- | --- | --- | --- |
+| OWNER | `demo-owner@example.invalid` | all | Everything: members/invitations, branches, catalog, suppliers, purchase orders and receiving, POS, sales history, refunds, analytics, forecast/reorder, AI analysis |
+| ADMIN | `demo-admin@example.invalid` | all | Same as OWNER except owner governance (owner membership/transfer) |
+| BRANCH_MANAGER | `demo-manager@example.invalid` | MAIN, NORTH | Branch operations in those two branches only: inventory and adjustments, purchase orders/receiving, POS with discounts, refunds, analytics, forecast/reorder, AI analysis; `EAST` is invisible |
+| INVENTORY_STAFF | `demo-inventory@example.invalid` | NORTH | Inventory balances, history and manual adjustments, non-cost inventory analytics; no catalog, suppliers, purchase orders or forecast (ADR-042) |
+| CASHIER | `demo-cashier@example.invalid` | MAIN | POS checkout (CASH/TRANSFER) and sales history; can view but not create refunds |
+
+Demo Insight (`STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID` = the printed
+organization id, development/test runtime only) renders deterministic text from
+the real metrics with five fixed headings, labelled `ข้อมูลตัวอย่าง` / `Demo
+Insight`, and makes no provider call: `ภาพรวม / Overview`, `ยอดขาย / Sales`,
+`สินค้าขายดีและขายช้า / Products`, `ข้อสังเกต / Notes & risks`,
+`สิ่งที่ควรทำ / Recommended actions`.
+
+### AWS Learner Lab
+
+The same dataset seeds through the existing deploy path: `operator/deploy.sh
+--release <release.env> --var-file terraform/demo.tfvars --seed-demo`, or on its
+own `operator/run-ops-task.sh seed` after `prepare` (migrations + grants) and
+before the application task starts. The ops task runs `seed-through-loopback.mjs`,
+which keeps the loopback/`*_demo` guard and starts `dist/demo/demo-seed-main.js`
+with `STOCKWISE_DEMO_SEED_TARGET=learner-lab-ops`. A Docker receipt cannot exist
+in ECS, so that target uses a narrower proof instead (`verifyLearnerLabSeedTarget`):
+ops role, loopback forwarder to a `*_demo` database that is not production-looking,
+and a database that is **empty** or holds only the deterministic demo organization.
+Any other organization/user/product/sale makes it refuse. The password is the
+generated `demo_user_password` in the `<name_prefix>/database` Secrets Manager
+secret (the ops task receives it as `DEMO_USER_PASSWORD`). A rerun is a no-op.
+The migrator role holds no database-level `CREATE`, so `roles.sql` pre-creates
+the `stockwise_demo` provenance schema (owned by the migrator, no access for the
+runtime role): run `run-ops-task.sh bootstrap-roles` (idempotent) once before the
+first seed, also on an already bootstrapped database. The same flag also lets the
+legacy `demo:seed:30d` skip the Docker receipt under the same conditions (ops
+role, `*_demo` loopback target, empty or demo-organization-only database); the
+database-content check is what protects real tenants.
+The seed may take several minutes over the RDS hop; if the ECS wait times out,
+rerun `run-ops-task.sh seed`, which resumes the same manifest.
+
 ## Completed 30-day UAT extension (ADR-042)
 
 `demo:seed:30d` extends this API-owned demo pipeline for an **existing** synthetic

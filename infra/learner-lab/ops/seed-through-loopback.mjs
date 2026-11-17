@@ -1,11 +1,14 @@
 // OPTIONAL synthetic demo seeding (ADR-039/ADR-040, D-08), run only inside the
 // ops container by ops/ops-task.sh seed, on the freshly migrated Native database.
 //
-// The accepted seeder (`apps/api/src/demo`) refuses every non-loopback,
+// The accepted seeder runs the 90-day dataset (`demo-seed-main.js`: bootstrap
+// of the demo organization, three branches, five role users, catalog and
+// suppliers, then ninety days of activity) and refuses every non-loopback,
 // non-`*_demo` target. This wrapper keeps that guard intact: it listens on the
 // container's own 127.0.0.1 and forwards to the private RDS endpoint taken from
 // the migrator DATABASE_URL, then runs the unmodified seeder against the
-// loopback address.
+// loopback address with the explicit Learner Lab ops proof instead of the
+// Docker receipt.
 //
 // The upstream hop uses authenticated TLS (finding F5). verified-postgres-
 // forwarder.mjs negotiates PostgreSQL TLS itself and verifies the RDS CA chain,
@@ -53,7 +56,11 @@ const target = new URL(source);
 target.hostname = "127.0.0.1";
 target.port = String(forwarder.port);
 target.search = "";
-const environment = { ...process.env, DEMO_DATABASE_URL: target.toString() };
+const environment = {
+  ...process.env,
+  DEMO_DATABASE_URL: target.toString(),
+  STOCKWISE_DEMO_SEED_TARGET: "learner-lab-ops",
+};
 // The seeder compares DATABASE_URL/TEST_DATABASE_URL against its target and
 // refuses non-loopback values; neither applies here.
 delete environment.DATABASE_URL;
@@ -62,7 +69,7 @@ delete environment.TEST_DATABASE_URL;
 // Loopback hop only; the forwarder enforces verified TLS upstream.
 environment.PGSSLMODE = "disable";
 
-const child = spawn(process.execPath, ["dist/demo/demo-main.js"], {
+const child = spawn(process.execPath, ["dist/demo/demo-seed-main.js"], {
   env: environment,
   stdio: "inherit",
 });

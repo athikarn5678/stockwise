@@ -92,6 +92,9 @@ case "$action" in
   seed)
     as_migrator
     require DEMO_USER_PASSWORD
+    # The migrator cannot create this schema itself; bootstrap-roles (roles.sql) does.
+    [[ "$(psql_quiet -At -c "SELECT to_regnamespace('stockwise_demo') IS NOT NULL")" == "t" ]] ||
+      die "the stockwise_demo schema is missing: run bootstrap-roles first (idempotent)"
     step "seeding the synthetic 90-day demo dataset (optional)"
     node /opt/stockwise/seed-through-loopback.mjs
     ;;

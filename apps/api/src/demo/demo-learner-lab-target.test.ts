@@ -201,6 +201,17 @@ describe("Learner Lab seed target proof (no Docker receipt)", () => {
     ).rejects.toThrow(REFUSED);
   });
 
+  it("routes to the Learner Lab proof when the flag is set, with or without schema=public", async () => {
+    learnerLabEnvironment({});
+    await expect(
+      verifyDemoSeedTarget(fakePrisma(emptyDatabase())),
+    ).resolves.toBe(URL_OK);
+    learnerLabEnvironment({ DEMO_DATABASE_URL: `${URL_OK}?schema=public` });
+    await expect(
+      verifyDemoSeedTarget(fakePrisma(emptyDatabase())),
+    ).resolves.toBe(`${URL_OK}?schema=public`);
+  });
+
   it("keeps the Docker receipt for every run that does not ask for the Learner Lab target", async () => {
     learnerLabEnvironment({
       STOCKWISE_DEMO_SEED_TARGET: undefined,

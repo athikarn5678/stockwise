@@ -347,6 +347,8 @@ export function createSalesRouter({
     },
   );
 
+  // Reports one deployment-wide boolean (is a PromptPay receiver configured); it
+  // carries nothing tenant-specific, so authentication alone is enough.
   router.get(
     "/organizations/:organizationId/branches/:branchId/sales/payment-options",
     authenticationMiddleware,

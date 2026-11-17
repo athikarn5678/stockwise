@@ -99,12 +99,16 @@ export const apiEnvironmentSchema = z
     STOCKWISE_EMAIL_FROM: z.string().min(1).max(320).optional(),
     // Optional merchant PromptPay mobile number. Invalid values must never
     // appear in the validation error text, so the message is fixed.
-    STOCKWISE_PROMPTPAY_ID: z
-      .string()
-      .regex(/^0\d{9}$/, {
-        message: "must be a 10-digit Thai mobile number",
-      })
-      .optional(),
+    // An empty value (blank container variable, copied example) means "not configured".
+    STOCKWISE_PROMPTPAY_ID: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z
+        .string()
+        .regex(/^0\d{9}$/, {
+          message: "must be a 10-digit Thai mobile number",
+        })
+        .optional(),
+    ),
     STOCKWISE_PUBLIC_WEB_ORIGIN: z
       .string()
       .url()

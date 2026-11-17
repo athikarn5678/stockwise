@@ -388,7 +388,12 @@ describe("API environment boundary", () => {
       loadApiEnvironment({ ...base, STOCKWISE_PROMPTPAY_ID: "0812345678" })
         .STOCKWISE_PROMPTPAY_ID,
     ).toBe("0812345678");
-    for (const value of ["", " 0812345678", "812345678", "08123456789"]) {
+    // Empty means not configured (the option stays hidden), never a crash.
+    expect(
+      loadApiEnvironment({ ...base, STOCKWISE_PROMPTPAY_ID: "" })
+        .STOCKWISE_PROMPTPAY_ID,
+    ).toBeUndefined();
+    for (const value of [" 0812345678", "812345678", "08123456789"]) {
       expect(() =>
         loadApiEnvironment({ ...base, STOCKWISE_PROMPTPAY_ID: value }),
       ).toThrow();

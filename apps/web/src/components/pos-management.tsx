@@ -488,7 +488,9 @@ function PosContent({
       if (version !== intentVersionRef.current) return null;
       return { amount: quote.amount, svg };
     },
-    onError: (error) => {
+    onError: (error, version) => {
+      // A failure for a cart that has since changed says nothing about the current one.
+      if (version !== intentVersionRef.current) return;
       setPromptPayQr(null);
       setPromptPayError(errorMessage(error));
       if (error instanceof SalesApiError && error.kind === "price_changed") {

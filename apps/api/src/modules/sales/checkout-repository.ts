@@ -866,8 +866,9 @@ export function createPrismaCheckoutRepository(
 
     /**
      * Same authorization, product, price, quantity, discount, VAT and amount rules as
-     * `checkout`, but it writes nothing and locks no stock: a quote must never create a
-     * sale or move inventory. A later `checkout` recomputes everything authoritatively.
+     * `checkout`, but it writes nothing and takes no inventory lock (only the same short
+     * FOR SHARE authorization locks as checkout): a quote must never create a sale or
+     * move inventory. A later `checkout` recomputes everything authoritatively.
      */
     async quote(input) {
       const canonical = canonicalizeCheckoutIntent({

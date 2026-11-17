@@ -53,6 +53,26 @@ case "$1 ${2:-}" in
   "logs get-log-events")
     [[ -r "${STUB_DIR}/task-log.txt" ]] && sed "s/@EXPORT_ID@/$(export_id)/g" "${STUB_DIR}/task-log.txt" | paste -sd '\t' -
     ;;
+  # Exports bucket lifecycle (teardown step 5b). STUB_S3_VERSIONS=1 keeps one
+  # object version listed until delete-objects ran; STUB_S3_DELETE_ERRORS=1 makes
+  # delete-objects report one per-key error (it still exits 0, like real AWS).
+  "s3api head-bucket")
+    if [[ -e "${STUB_DIR}/bucket-deleted" ]]; then
+      echo "An error occurred (404) when calling the HeadBucket operation: Not Found" >&2
+      exit 254
+    fi
+    ;;
+  "s3api list-object-versions")
+    if [[ "${STUB_S3_VERSIONS:-}" == 1 && ! -e "${STUB_DIR}/versions-deleted" ]]; then
+      printf '{\n    "Objects": [\n        {"Key": "exports/a.dump", "VersionId": "v1"}\n    ]\n}\n'
+    else
+      printf '{\n    "Objects": null\n}\n'
+    fi
+    ;;
+  "s3api delete-objects")
+    if [[ "${STUB_S3_DELETE_ERRORS:-}" == 1 ]]; then echo 1; else : >"${STUB_DIR}/versions-deleted"; echo 0; fi
+    ;;
+  "s3api delete-bucket") : >"${STUB_DIR}/bucket-deleted" ;;
   "s3api head-object")
     key="$(fixture_key "$(arg_after --key "$@")")"
     [[ -r "${STUB_DIR}/s3meta/${key}" ]] || { echo "An error occurred (404) when calling the HeadObject operation: Not Found" >&2; exit 254; }

@@ -21,6 +21,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { PosBarcodeScanner } from "./pos-barcode-scanner";
+import {
+  PromptPayPanel,
+  type PromptPayQr,
+  renderPromptPayQrImage,
+} from "./promptpay-panel";
 import { SaleReceipt } from "./sale-receipt";
 
 import { formatThb } from "@/money-display";
@@ -34,10 +39,12 @@ import {
 } from "@/branch-api-client";
 import {
   checkoutSale,
+  getPaymentOptions,
   getSalesVatProfile,
   type CompletedSale,
   type PosProduct,
   type PosUnit,
+  quotePromptPay,
   SalesApiError,
   type SalesApiErrorKind,
   type SalesRequestContext,
@@ -55,7 +62,7 @@ type CartLine = Pick<
   quantity: string;
 };
 type DiscountType = "NONE" | "AMOUNT" | "PERCENT";
-type PaymentMethod = "CASH" | "TRANSFER";
+type PaymentMethod = "CASH" | "PROMPTPAY" | "TRANSFER";
 
 const CHECKOUT_ROLES = new Set<PosRole>([
   "OWNER",
@@ -65,6 +72,13 @@ const CHECKOUT_ROLES = new Set<PosRole>([
 ]);
 const DISCOUNT_ROLES = new Set<PosRole>(["OWNER", "ADMIN", "BRANCH_MANAGER"]);
 const INTEGER_UNITS = new Set<PosUnit>(["EA", "PACK", "BOX"]);
+/** Checkout failures that make any already-displayed PromptPay QR stale. */
+const STALE_PROMPTPAY_ERRORS = new Set<SalesApiErrorKind>([
+  "insufficient_stock",
+  "price_changed",
+  "product_inactive",
+  "total_mismatch",
+]);
 
 function posUrl(organizationId: string, branchId: string | null): string {
   const params = new URLSearchParams({ organizationId });
@@ -160,6 +174,7 @@ function errorMessage(error: unknown): TranslationKey {
     price_changed: "uiAProductPriceChangedTheLatestProductPricesWere",
     product_inactive: "uiAProductInThisCartIsInactiveRemoveIt",
     product_not_found: "uiAProductInThisCartNoLongerExistsRemove",
+    promptpay_not_configured: "uiPromptPayIsNotAvailableChooseCashOrTransfer",
     sale_not_found:
       "uiCheckoutIsTemporarilyUnavailableYourCartWasKeptUnchanged",
     sale_already_fully_refunded:
@@ -167,6 +182,7 @@ function errorMessage(error: unknown): TranslationKey {
     refund_quantity_exceeded:
       "uiCheckoutIsTemporarilyUnavailableYourCartWasKeptUnchanged",
     stale_vat_profile: "uiTheVATProfileChangedRefreshTheLatestVATSettings",
+    total_mismatch: "uiTheTotalChangedGenerateANewPromptPayQr",
     unavailable: "uiCheckoutIsTemporarilyUnavailableYourCartWasKeptUnchanged",
     validation: "uiCheckTheCartDiscountAndPaymentDetailsBeforeTrying",
     vat_configuration_required:
@@ -296,10 +312,17 @@ function PosContent({
   const [amountTendered, setAmountTendered] = useState("");
   const [transferReference, setTransferReference] = useState("");
   const [notice, setNotice] = useState<TranslationKey | null>(null);
+  const [promptPayQr, setPromptPayQr] = useState<PromptPayQr | null>(null);
+  const [promptPayError, setPromptPayError] = useState<TranslationKey | null>(
+    null,
+  );
+  const [intentVersion, setIntentVersion] = useState(0);
   const [completedSale, setCompletedSale] = useState<CompletedSale | null>(
     null,
   );
   const keyRef = useRef<string | null>(null);
+  // Guards a PromptPay quote that resolves after the cart already changed.
+  const intentVersionRef = useRef(0);
   const checkoutPendingRef = useRef(false);
   const scansPendingRef = useRef(0);
   const [scansPending, setScansPending] = useState(0);
@@ -325,10 +348,68 @@ function PosContent({
   const products =
     productsQuery.data?.pages.flatMap((page) => page.data.products) ?? [];
   const subtotal = estimatedSubtotal(cart);
+  const paymentOptionsQuery = useQuery({
+    queryFn: () => getPaymentOptions(context),
+    queryKey: [...scopeKey, "payment-options"],
+    staleTime: 60_000,
+  });
+  // While the options are loading or failed, PromptPay stays unavailable.
+  const promptPayAvailable = paymentOptionsQuery.data?.promptPay === true;
+  const vatBlocked =
+    canConfigureVat && vatProfileQuery.data?.salesVatStatus === "UNCONFIGURED";
 
+  useEffect(() => {
+    if (promptPayAvailable || paymentMethod !== "PROMPTPAY") return;
+    setPaymentMethod("CASH");
+    setPromptPayQr(null);
+    setPromptPayError(null);
+  }, [paymentMethod, promptPayAvailable]);
+
+  const resetPromptPay = () => {
+    intentVersionRef.current += 1;
+    setPromptPayQr(null);
+    setPromptPayError(null);
+    setIntentVersion(intentVersionRef.current);
+  };
   const changeIntent = () => {
     keyRef.current = null;
     setNotice(null);
+    resetPromptPay();
+  };
+
+  /** The exact cart and discount every checkout and quote request sends. */
+  const buildIntent = () => {
+    if (cart.length === 0 || subtotal === null)
+      throw new SalesApiError("validation");
+    for (const line of cart) {
+      if (!quantityIsValid(line.quantity, line.unit))
+        throw new SalesApiError("validation");
+    }
+    const discount = buildDiscount(
+      discountType,
+      discountValue,
+      discountReason,
+      canDiscount,
+    );
+    if (discount === "invalid") throw new SalesApiError("validation");
+    return {
+      discount,
+      items: cart.map((line) => ({
+        expectedUnitPrice: line.basePrice,
+        productId: line.id,
+        quantity: line.quantity,
+      })),
+    };
+  };
+  const startCheckout = () => {
+    if (checkoutPendingRef.current || scansPendingRef.current > 0) return;
+    checkoutPendingRef.current = true;
+    void checkoutMutation
+      .mutateAsync()
+      .catch(() => undefined)
+      .finally(() => {
+        checkoutPendingRef.current = false;
+      });
   };
   const addProduct = (product: PosProduct) => {
     if (!product.available || checkoutPendingRef.current) return;
@@ -348,41 +429,28 @@ function PosContent({
 
   const checkoutMutation = useMutation({
     mutationFn: async () => {
-      if (cart.length === 0 || subtotal === null)
-        throw new SalesApiError("validation");
-      for (const line of cart) {
-        if (!quantityIsValid(line.quantity, line.unit))
-          throw new SalesApiError("validation");
-      }
-      const discount = buildDiscount(
-        discountType,
-        discountValue,
-        discountReason,
-        canDiscount,
-      );
-      if (discount === "invalid") throw new SalesApiError("validation");
+      const intent = buildIntent();
       const payment = buildPayment(
         paymentMethod,
         amountTendered,
         transferReference,
+        promptPayQr?.amount ?? null,
       );
       if (payment === "invalid") throw new SalesApiError("validation");
       keyRef.current ??= createIdempotencyKey();
-      return checkoutSale(context, keyRef.current, {
-        discount,
-        items: cart.map((line) => ({
-          expectedUnitPrice: line.basePrice,
-          productId: line.id,
-          quantity: line.quantity,
-        })),
-        payment,
-      });
+      return checkoutSale(context, keyRef.current, { ...intent, payment });
     },
     onError: async (error) => {
       if (error instanceof SalesApiError && error.kind === "price_changed") {
         await queryClient.invalidateQueries({
           queryKey: [...scopeKey, "products"],
         });
+      }
+      if (
+        error instanceof SalesApiError &&
+        STALE_PROMPTPAY_ERRORS.has(error.kind)
+      ) {
+        resetPromptPay();
       }
       if (
         error instanceof SalesApiError &&
@@ -401,12 +469,38 @@ function PosContent({
     onSuccess: (sale) => {
       setCompletedSale(sale);
       setNotice(null);
+      resetPromptPay();
       void queryClient.invalidateQueries({
         queryKey: [...scopeKey, "products"],
       });
       void queryClient.invalidateQueries({
         queryKey: ["branch-scoped", organization.id, branch.id, "inventory"],
       });
+    },
+  });
+
+  const quoteMutation = useMutation({
+    mutationFn: async (version: number): Promise<PromptPayQr | null> => {
+      const intent = buildIntent();
+      const quote = await quotePromptPay(context, intent);
+      const svg = await renderPromptPayQrImage(quote.payload);
+      // A cart change while the request was in flight makes this answer stale.
+      if (version !== intentVersionRef.current) return null;
+      return { amount: quote.amount, svg };
+    },
+    onError: (error) => {
+      setPromptPayQr(null);
+      setPromptPayError(errorMessage(error));
+      if (error instanceof SalesApiError && error.kind === "price_changed") {
+        void queryClient.invalidateQueries({
+          queryKey: [...scopeKey, "products"],
+        });
+      }
+    },
+    onSuccess: (qr) => {
+      if (qr === null) return;
+      setPromptPayQr(qr);
+      setPromptPayError(null);
     },
   });
 
@@ -422,6 +516,8 @@ function PosContent({
           setPaymentMethod("CASH");
           setAmountTendered("");
           setTransferReference("");
+          setPromptPayQr(null);
+          setPromptPayError(null);
           setCompletedSale(null);
         }}
         sale={completedSale}
@@ -616,41 +712,60 @@ function PosContent({
                 setAmountTendered(tendered);
                 setTransferReference(reference);
               }}
+              promptPayAvailable={promptPayAvailable}
               reference={transferReference}
               subtotal={subtotal}
               method={paymentMethod}
             />
-            <form
-              aria-label={t("uiCheckoutCurrentSale")}
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (checkoutPendingRef.current || scansPendingRef.current > 0)
-                  return;
-                checkoutPendingRef.current = true;
-                void checkoutMutation
-                  .mutateAsync()
-                  .catch(() => undefined)
-                  .finally(() => {
-                    checkoutPendingRef.current = false;
-                  });
-              }}
-            >
-              <Button
-                aria-busy={checkoutMutation.isPending}
-                disabled={
-                  cart.length === 0 ||
-                  checkoutMutation.isPending ||
-                  scansPending > 0 ||
-                  (canConfigureVat &&
-                    vatProfileQuery.data?.salesVatStatus === "UNCONFIGURED")
+            {paymentMethod === "PROMPTPAY" ? (
+              <PromptPayPanel
+                canConfirm={
+                  promptPayQr !== null &&
+                  !checkoutMutation.isPending &&
+                  scansPending === 0 &&
+                  !vatBlocked
                 }
-                type="submit"
+                canGenerate={cart.length > 0}
+                error={promptPayError}
+                isConfirming={checkoutMutation.isPending}
+                isGenerating={quoteMutation.isPending}
+                onConfirm={() => {
+                  if (promptPayQr === null) return;
+                  startCheckout();
+                }}
+                onGenerate={() => {
+                  if (quoteMutation.isPending) return;
+                  void quoteMutation
+                    .mutateAsync(intentVersionRef.current)
+                    .catch(() => undefined);
+                }}
+                qr={promptPayQr}
+                resetToken={intentVersion}
+              />
+            ) : (
+              <form
+                aria-label={t("uiCheckoutCurrentSale")}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  startCheckout();
+                }}
               >
-                {checkoutMutation.isPending
-                  ? t("uiCompletingSale")
-                  : t("uiCompleteSale")}
-              </Button>
-            </form>
+                <Button
+                  aria-busy={checkoutMutation.isPending}
+                  disabled={
+                    cart.length === 0 ||
+                    checkoutMutation.isPending ||
+                    scansPending > 0 ||
+                    vatBlocked
+                  }
+                  type="submit"
+                >
+                  {checkoutMutation.isPending
+                    ? t("uiCompletingSale")
+                    : t("uiCompleteSale")}
+                </Button>
+              </form>
+            )}
           </fieldset>
         </aside>
       </div>
@@ -902,6 +1017,7 @@ function PaymentControls({
   amountTendered,
   method,
   onChange,
+  promptPayAvailable,
   reference,
   subtotal,
 }: {
@@ -912,6 +1028,7 @@ function PaymentControls({
     tendered: string,
     reference: string,
   ) => void;
+  promptPayAvailable: boolean;
   reference: string;
   subtotal: string | null;
 }) {
@@ -949,6 +1066,19 @@ function PaymentControls({
           />
           {t("paymentTransfer")}
         </Label>
+        {promptPayAvailable ? (
+          <Label className="flex min-h-11 items-center gap-2 text-sm font-medium">
+            <Input
+              className=""
+              checked={method === "PROMPTPAY"}
+              name="payment-method"
+              onChange={() => onChange("PROMPTPAY", amountTendered, reference)}
+              type="radio"
+              value="PROMPTPAY"
+            />
+            {t("paymentPromptPay")}
+          </Label>
+        ) : null}
       </div>
       {method === "CASH" ? (
         <>
@@ -970,7 +1100,7 @@ function PaymentControls({
               : t("uiEstimatedChange").replace("{amount}", formatThb(change))}
           </p>
         </>
-      ) : (
+      ) : method === "TRANSFER" ? (
         <Label className="form-field">
           {t("uiTransferReferenceOptional")}
           <Input
@@ -981,7 +1111,7 @@ function PaymentControls({
             value={reference}
           />
         </Label>
-      )}
+      ) : null}
     </fieldset>
   );
 }
@@ -1006,7 +1136,18 @@ function buildPayment(
   method: PaymentMethod,
   tendered: string,
   reference: string,
+  promptPayAmount: string | null,
 ) {
+  if (method === "PROMPTPAY") {
+    // Only the server amount is ever sent; the browser never computes it.
+    return promptPayAmount === null
+      ? ("invalid" as const)
+      : ({
+          expectedTotalAmount: promptPayAmount,
+          method: "TRANSFER",
+          reference: "PromptPay",
+        } as const);
+  }
   if (method === "TRANSFER")
     return { method, reference: reference.trim() || null } as const;
   const amount = decimalToScaled(tendered, 2);

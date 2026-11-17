@@ -239,4 +239,82 @@ describe("checkout values", () => {
       "99999999999999999890000000000.00",
     );
   });
+  describe("expected total amount (PromptPay QR)", () => {
+    const scope = {
+      actorUserId: "11111111-1111-4111-8111-111111111111",
+      branchId: "22222222-2222-4222-8222-222222222222",
+      organizationId: "33333333-3333-4333-8333-333333333333",
+    };
+    const cart = {
+      discount: null,
+      items: [
+        {
+          expectedUnitPrice: "10",
+          productId: "44444444-4444-4444-8444-444444444444",
+          quantity: "2",
+        },
+      ],
+    };
+    const hash = (
+      payment: Parameters<typeof canonicalizeCheckoutIntent>[0]["payment"],
+    ) => {
+      const result = canonicalizeCheckoutIntent({ ...cart, payment });
+      if (result.kind !== "valid") throw new Error("expected a valid intent");
+      return checkoutCanonicalRequestHash({ ...scope, intent: result.intent });
+    };
+
+    it("keeps every request hash that existed before the field was added byte-identical", () => {
+      // Pinned from the implementation before expectedTotalAmount existed:
+      // already-stored sales must still replay under their idempotency keys.
+      expect(hash({ method: "TRANSFER", reference: "ref-1" })).toBe(
+        "a16936662b3d99ed6f60415c0101719611564333a6d65cf80458be8f8cf8fb2b",
+      );
+      expect(hash({ method: "TRANSFER" })).toBe(
+        "61865672420d16782219ad7317358dd0c3f7a87d98304470ab4cef9291a10387",
+      );
+      expect(hash({ amountTendered: "100.00", method: "CASH" })).toBe(
+        "ede806fa220fe099f713d3c49a5fb390b839ffd4b8ae21870382d215912e89f5",
+      );
+      expect(hash({ expectedTotalAmount: null, method: "TRANSFER" })).toBe(
+        hash({ method: "TRANSFER" }),
+      );
+    });
+
+    it("binds a shown amount into the request hash and canonicalizes its scale", () => {
+      const withAmount = hash({
+        expectedTotalAmount: "20.50",
+        method: "TRANSFER",
+        reference: "PromptPay",
+      });
+      expect(withAmount).not.toBe(
+        hash({ method: "TRANSFER", reference: "PromptPay" }),
+      );
+      expect(withAmount).not.toBe(
+        hash({
+          expectedTotalAmount: "20.51",
+          method: "TRANSFER",
+          reference: "PromptPay",
+        }),
+      );
+      expect(
+        hash({
+          expectedTotalAmount: "20.5",
+          method: "TRANSFER",
+          reference: "PromptPay",
+        }),
+      ).toBe(withAmount);
+    });
+
+    it.each(["abc", "-1.00", "1.001", "", "1e2", " 1.00"])(
+      "rejects the malformed shown amount %j",
+      (expectedTotalAmount) => {
+        expect(
+          canonicalizeCheckoutIntent({
+            ...cart,
+            payment: { expectedTotalAmount, method: "TRANSFER" },
+          }),
+        ).toEqual({ kind: "invalid_payment" });
+      },
+    );
+  });
 });

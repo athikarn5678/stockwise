@@ -97,6 +97,14 @@ export const apiEnvironmentSchema = z
     STOCKWISE_RUNTIME_ENV: z.enum(["development", "test", "production"]),
     STOCKWISE_API_PORT: z.coerce.number().int().min(1).max(65_535),
     STOCKWISE_EMAIL_FROM: z.string().min(1).max(320).optional(),
+    // Optional merchant PromptPay mobile number. Invalid values must never
+    // appear in the validation error text, so the message is fixed.
+    STOCKWISE_PROMPTPAY_ID: z
+      .string()
+      .regex(/^0\d{9}$/, {
+        message: "must be a 10-digit Thai mobile number",
+      })
+      .optional(),
     STOCKWISE_PUBLIC_WEB_ORIGIN: z
       .string()
       .url()
@@ -376,6 +384,7 @@ export function loadApiEnvironment(
     STOCKWISE_RUNTIME_ENV: environment.STOCKWISE_RUNTIME_ENV,
     STOCKWISE_API_PORT: environment.STOCKWISE_API_PORT,
     STOCKWISE_EMAIL_FROM: environment.STOCKWISE_EMAIL_FROM,
+    STOCKWISE_PROMPTPAY_ID: environment.STOCKWISE_PROMPTPAY_ID,
     STOCKWISE_PUBLIC_WEB_ORIGIN: environment.STOCKWISE_PUBLIC_WEB_ORIGIN,
     STOCKWISE_SESSION_ABSOLUTE_TIMEOUT_MINUTES:
       environment.STOCKWISE_SESSION_ABSOLUTE_TIMEOUT_MINUTES,

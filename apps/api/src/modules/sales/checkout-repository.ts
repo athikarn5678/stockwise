@@ -106,12 +106,35 @@ export type CheckoutOutcome =
   | { kind: "invalid_discount" }
   | { kind: "invalid_payment" }
   | { kind: "invalid_amounts" }
+  | { kind: "total_mismatch" }
   | { kind: "vat_configuration_required" }
   | { kind: "insufficient_stock" }
   | { kind: "idempotency_conflict" };
 
+/** Read-only quote of what `checkout` would charge for the same cart. */
+export interface CheckoutQuoteInput {
+  actorUserId: string;
+  branchId: string;
+  discount: CheckoutIntentInput["discount"];
+  items: CheckoutIntentInput["items"];
+  organizationId: string;
+}
+
+export type CheckoutQuoteOutcome =
+  | { kind: "success"; totalAmount: string }
+  | Exclude<
+      CheckoutOutcome,
+      | { kind: "success" }
+      | { kind: "replay" }
+      | { kind: "idempotency_conflict" }
+      | { kind: "invalid_idempotency_key" }
+      | { kind: "invalid_payment" }
+      | { kind: "total_mismatch" }
+    >;
+
 export interface CheckoutRepository {
   checkout(input: CheckoutInput): Promise<CheckoutOutcome>;
+  quote(input: CheckoutQuoteInput): Promise<CheckoutQuoteOutcome>;
 }
 
 export interface CheckoutRepositoryOptions {
@@ -577,6 +600,16 @@ export function createPrismaCheckoutRepository(
               salesVatStatus: access.authorization.salesVatStatus,
             });
             if (amounts === null) return { kind: "invalid_amounts" } as const;
+            // A payer-facing amount (PromptPay QR) must equal the server total exactly.
+            if (
+              canonical.intent.payment.method === "TRANSFER" &&
+              canonical.intent.payment.expectedTotalAmount !== undefined &&
+              !canonical.intent.payment.expectedTotalAmount.equals(
+                amounts.totalAmount,
+              )
+            ) {
+              return { kind: "total_mismatch" } as const;
+            }
 
             let amountTendered: Prisma.Decimal | null = null;
             let changeAmount: Prisma.Decimal | null = null;
@@ -829,6 +862,109 @@ export function createPrismaCheckoutRepository(
         }
       }
       throw new Error("Checkout retry loop exhausted unexpectedly.");
+    },
+
+    /**
+     * Same authorization, product, price, quantity, discount, VAT and amount rules as
+     * `checkout`, but it writes nothing and locks no stock: a quote must never create a
+     * sale or move inventory. A later `checkout` recomputes everything authoritatively.
+     */
+    async quote(input) {
+      const canonical = canonicalizeCheckoutIntent({
+        discount: input.discount,
+        items: input.items,
+        payment: { method: "TRANSFER", reference: null },
+      });
+      // The placeholder payment is always valid; any other failure is a cart problem.
+      if (canonical.kind !== "valid") {
+        switch (canonical.kind) {
+          case "duplicate_product":
+            return { kind: "duplicate_product" } as const;
+          case "invalid_discount":
+            return { kind: "invalid_discount" } as const;
+          case "invalid_price":
+            return { kind: "invalid_price" } as const;
+          case "invalid_quantity":
+            return { kind: "invalid_quantity" } as const;
+          case "invalid_payment":
+            return { kind: "invalid_amounts" } as const;
+        }
+      }
+      return prisma.$transaction(async (transaction) => {
+        const access = await authorizeCheckout(transaction, input);
+        if (access.kind !== "allowed") return access;
+        if (access.authorization.salesVatStatus === "UNCONFIGURED") {
+          return { kind: "vat_configuration_required" } as const;
+        }
+        if (
+          canonical.intent.discount !== null &&
+          !access.authorization.discountAllowed
+        ) {
+          return { kind: "forbidden" } as const;
+        }
+        const products: LockedProduct[] = [];
+        for (const line of canonical.intent.items) {
+          const rows = await transaction.$queryRaw<LockedProduct[]>(Prisma.sql`
+            SELECT
+              "id",
+              "name",
+              "sku",
+              "unit"::text AS "unit",
+              "status"::text AS "status",
+              "base_price" AS "basePrice"
+            FROM "products"
+            WHERE "id" = ${line.productId}::uuid
+              AND "organization_id" = ${access.authorization.organizationId}::uuid
+          `);
+          const product = rows[0];
+          if (product === undefined) return { kind: "not_found" } as const;
+          if (product.status !== "ACTIVE") {
+            return { kind: "product_inactive" } as const;
+          }
+          if (!product.basePrice.equals(line.expectedUnitPrice)) {
+            return { kind: "price_changed" } as const;
+          }
+          if (
+            (product.unit === "EA" ||
+              product.unit === "PACK" ||
+              product.unit === "BOX") &&
+            !line.quantity.isInteger()
+          ) {
+            return { kind: "invalid_quantity" } as const;
+          }
+          const balances = await transaction.$queryRaw<
+            Array<{ quantity: Prisma.Decimal }>
+          >(Prisma.sql`
+            SELECT "quantity"
+            FROM "inventory_balances"
+            WHERE "branch_id" = ${access.authorization.branchId}::uuid
+              AND "product_id" = ${product.id}::uuid
+              AND "organization_id" = ${access.authorization.organizationId}::uuid
+          `);
+          if (
+            balances[0] === undefined ||
+            balances[0].quantity.lessThan(line.quantity)
+          ) {
+            return { kind: "insufficient_stock" } as const;
+          }
+          products.push(product);
+        }
+        const amounts = calculateCheckoutAmounts({
+          discount: canonical.intent.discount,
+          lines: canonical.intent.items.map((line, index) => ({
+            productId: line.productId,
+            quantity: line.quantity,
+            unitPrice: products[index]!.basePrice,
+          })),
+          salesVatRate: access.authorization.salesVatRate,
+          salesVatStatus: access.authorization.salesVatStatus,
+        });
+        if (amounts === null) return { kind: "invalid_amounts" } as const;
+        return {
+          kind: "success",
+          totalAmount: amounts.totalAmount.toFixed(2),
+        } as const;
+      });
     },
   };
 }

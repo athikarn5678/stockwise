@@ -191,6 +191,13 @@ run "default_topology" {
     ]) == 1
     error_message = "The API must receive STOCKWISE_BETTER_AUTH_SECRET from the application secret."
   }
+  assert {
+    condition = length([
+      for variable in jsondecode(aws_ecs_task_definition.app.container_definitions)[1].environment : variable
+      if variable.name == "STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID"
+    ]) == 0
+    error_message = "Demo Insight stays unset unless demo_insight_organization_id is given."
+  }
   # AI (OpenCode Go), Stripe test mode and PromptPay: values only in Secrets
   # Manager, never as plain environment values.
   assert {
@@ -402,6 +409,28 @@ run "demo_end_time_reaches_schedule_and_output" {
     condition     = aws_autoscaling_schedule.demo_end.start_time == "2030-01-01T16:59:00Z" && output.planning_deadline == "2030-01-01T16:59:00Z"
     error_message = "demo_end_time must feed the scale-to-zero schedule and the planning_deadline output."
   }
+}
+
+run "demo_insight_organization_id_is_plain_environment" {
+  command = plan
+  variables {
+    demo_insight_organization_id = "0c7c1f0e-5b7e-4c3a-9a39-2f1d6f0a1b2c"
+  }
+  assert {
+    condition = length([
+      for variable in jsondecode(aws_ecs_task_definition.app.container_definitions)[1].environment : variable
+      if variable.name == "STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID" && variable.value == "0c7c1f0e-5b7e-4c3a-9a39-2f1d6f0a1b2c"
+    ]) == 1
+    error_message = "The Demo Insight organization id must reach the API as a plain environment value."
+  }
+}
+
+run "demo_insight_organization_id_rejects_non_uuid" {
+  command = plan
+  variables {
+    demo_insight_organization_id = "not-a-uuid"
+  }
+  expect_failures = [var.demo_insight_organization_id]
 }
 
 run "refuses_non_utc_demo_end_time" {

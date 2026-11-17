@@ -57,7 +57,7 @@
       { "name": "STOCKWISE_DB_PORT", "value": "${db_port}" },
       { "name": "STOCKWISE_DB_NAME", "value": "${db_name}" },
       { "name": "STOCKWISE_DB_USER", "value": "stockwise_app" },
-      { "name": "NODE_EXTRA_CA_CERTS", "value": "/etc/stockwise/rds-global-bundle.pem" }
+      { "name": "NODE_EXTRA_CA_CERTS", "value": "/etc/stockwise/rds-global-bundle.pem" }${demo_insight_environment}
     ],
     "secrets": [
       { "name": "STOCKWISE_DB_PASSWORD", "valueFrom": "${database_secret_arn}:app_password::" },

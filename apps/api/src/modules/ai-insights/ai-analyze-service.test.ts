@@ -19,6 +19,7 @@ const snapshot: AiAnalyzeSnapshot = {
       refundAmount: "0.00",
       refundCount: 0,
       saleCount: 2,
+      salesAfterDiscountAmount: "200.00",
     },
     {
       date: "2026-11-12",
@@ -26,6 +27,7 @@ const snapshot: AiAnalyzeSnapshot = {
       refundAmount: "50.00",
       refundCount: 1,
       saleCount: 5,
+      salesAfterDiscountAmount: "1250.00",
     },
   ],
   period: {

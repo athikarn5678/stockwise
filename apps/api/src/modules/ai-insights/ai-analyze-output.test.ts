@@ -25,6 +25,7 @@ const snapshot: AiAnalyzeSnapshot = {
       refundAmount: "0.00",
       refundCount: 0,
       saleCount: 2,
+      salesAfterDiscountAmount: "200.00",
     },
     {
       date: "2026-11-12",
@@ -32,6 +33,7 @@ const snapshot: AiAnalyzeSnapshot = {
       refundAmount: "50.00",
       refundCount: 1,
       saleCount: 5,
+      salesAfterDiscountAmount: "1250.00",
     },
   ],
   period: {
@@ -125,6 +127,37 @@ describe("AI analyze output validation", () => {
         ]),
       }),
     ).toThrow(AiAnalyzeOutputError);
+  });
+
+  it("rejects text before the first heading, non-ASCII digits, and keeps ranges", () => {
+    const body = ["Net sales 1400.00.", "None.", "Food.", "None.", "Act."];
+    expect(() =>
+      parseAiAnalyzeOutput({
+        language: "en",
+        snapshot,
+        text: `Preamble with 4242 sales\n${english(body)}`,
+      }),
+    ).toThrow(AiAnalyzeOutputError);
+    expect(() =>
+      parseAiAnalyzeOutput({
+        language: "en",
+        snapshot,
+        text: english(["Net sales ๑๔๐๐.", "None.", "Food.", "None.", "Act."]),
+      }),
+    ).toThrow(AiAnalyzeOutputError);
+    expect(() =>
+      parseAiAnalyzeOutput({
+        language: "en",
+        snapshot,
+        text: english([
+          "Between 2-5 sales.",
+          "None.",
+          "Food.",
+          "None.",
+          "Act.",
+        ]),
+      }),
+    ).not.toThrow();
   });
 
   it("tolerates comma grouping and rounding of snapshot values", () => {

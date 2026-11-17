@@ -199,11 +199,9 @@ export function AiInsightView({
           >
             {t("aiAnalyze")}
           </Button>
-          {analyzeMutation.isPending ? (
-            <p aria-live="polite" className="text-sm">
-              {t("aiAnalyzeLoading")}
-            </p>
-          ) : null}
+          <p aria-live="polite" className="text-sm">
+            {analyzeMutation.isPending ? t("aiAnalyzeLoading") : ""}
+          </p>
         </div>
         {analyzeMutation.isError ? (
           <p className="mt-2 text-sm form-message" role="alert">
@@ -236,7 +234,7 @@ export function AiInsightView({
             </p>
             {analysis.sections.map((section) => (
               <div className="mt-4" key={section.heading}>
-                <h3 className="text-base font-semibold">{section.heading}</h3>
+                <h4 className="text-base font-semibold">{section.heading}</h4>
                 <p className="mt-1 whitespace-pre-wrap break-words">
                   {section.body}
                 </p>

@@ -7,6 +7,19 @@ import type { createAnalyticsSalesService } from "../analytics/analytics-sales-s
 
 const ExactDecimal = Prisma.Decimal.clone({ precision: 80 });
 const CATEGORY_PAGE_LIMIT = 100;
+const CATEGORY_PAGE_CAP = 10;
+
+type CategorySeries =
+  Awaited<
+    ReturnType<ReturnType<typeof createAnalyticsCategoryService>["read"]>
+  > extends infer Outcome
+    ? Outcome extends {
+        kind: "success";
+        page: { series: readonly (infer Series)[] };
+      }
+      ? Series
+      : never
+    : never;
 
 export type AiAnalyzeScope =
   | Readonly<{ kind: "organization" }>
@@ -39,6 +52,7 @@ export type AiAnalyzeSnapshot = Readonly<{
     refundAmount: string;
     refundCount: number;
     saleCount: number;
+    salesAfterDiscountAmount: string;
   }>[];
   period: AiAnalyzeSnapshotPeriod;
   totals: Readonly<{
@@ -104,11 +118,16 @@ export function buildAiAnalyzeSnapshot(input: {
     refundAmount: string;
     refundCount: number;
     saleCount: number;
+    salesAfterDiscountAmount: string;
   }>[];
   period: AiAnalyzeSnapshotPeriod;
 }): AiAnalyzeSnapshot {
   const totalSales = sum(input.days.map((day) => day.netSalesAmount));
   const totalRefunds = sum(input.days.map((day) => day.refundAmount));
+  // ANALYTICS.md M-007: AOV = SalesAfterDiscount / SaleCount (refunds excluded).
+  const totalSalesAfterDiscount = sum(
+    input.days.map((day) => day.salesAfterDiscountAmount),
+  );
   const saleCount = input.days.reduce((total, day) => total + day.saleCount, 0);
   const refundCount = input.days.reduce(
     (total, day) => total + day.refundCount,
@@ -187,7 +206,9 @@ export function buildAiAnalyzeSnapshot(input: {
     period: input.period,
     totals: {
       averageOrderValue:
-        saleCount === 0 ? null : totalSales.div(saleCount).toFixed(2),
+        saleCount === 0
+          ? null
+          : totalSalesAfterDiscount.div(saleCount).toFixed(2),
       netSalesAmount: totalSales.toFixed(2),
       refundAmount: totalRefunds.toFixed(2),
       refundCount,
@@ -254,19 +275,33 @@ export function createAiAnalyzeSnapshotBuilder(input: {
       return sales.kind === "forbidden"
         ? { kind: "forbidden" }
         : { kind: "unavailable" };
-    const categories = await input.categoryService.read({
-      ...selector,
-      limit: CATEGORY_PAGE_LIMIT,
-    });
-    if (categories.kind !== "success")
-      return categories.kind === "forbidden"
-        ? { kind: "forbidden" }
-        : { kind: "unavailable" };
+    // Ranking needs every category; follow the cursor, bounded.
+    const categorySeries: CategorySeries[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < CATEGORY_PAGE_CAP; page += 1) {
+      const categories = await input.categoryService.read({
+        ...selector,
+        ...(cursor === undefined ? {} : { cursor }),
+        limit: CATEGORY_PAGE_LIMIT,
+      });
+      if (categories.kind !== "success")
+        return categories.kind === "forbidden"
+          ? { kind: "forbidden" }
+          : { kind: "unavailable" };
+      categorySeries.push(...categories.page.series);
+      if (categories.page.nextCursor === null) {
+        cursor = undefined;
+        break;
+      }
+      cursor = categories.page.nextCursor;
+    }
+    // Top/bottom ranking over a partial category list would be wrong.
+    if (cursor !== undefined) return { kind: "unavailable" };
 
     return {
       kind: "ok",
       snapshot: buildAiAnalyzeSnapshot({
-        categorySeries: categories.page.series.map((series) => ({
+        categorySeries: categorySeries.map((series) => ({
           buckets: series.buckets.map((bucket) => ({
             netSalesAmount: bucket.netSalesAmount,
           })),
@@ -287,6 +322,7 @@ export function createAiAnalyzeSnapshotBuilder(input: {
           refundAmount: bucket.refundAmount,
           refundCount: bucket.refundCount,
           saleCount: bucket.saleCount,
+          salesAfterDiscountAmount: bucket.salesAfterDiscountAmount,
         })),
         period,
       }),

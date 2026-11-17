@@ -76,6 +76,14 @@ describe("OpenCode Go provider", () => {
     expect(headers.Authorization).toBe(`Bearer ${key}`);
   });
 
+  it("makes a single attempt even for a retryable failure", async () => {
+    const { fetchImplementation, provider } = client(
+      () => new Response("{}", { status: 503 }),
+    );
+    expect(await provider.generate(input)).toMatchObject({ ok: false });
+    expect(fetchImplementation).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps the OpenRouter default request byte-identical", async () => {
     const fetchImplementation = vi.fn<typeof fetch>(async () =>
       completion("some/free-model", "Summary"),

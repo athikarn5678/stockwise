@@ -27,14 +27,14 @@ Choose **Option 3**.
 
 - OpenCode Go, reached through its OpenAI-compatible chat-completions API: `POST https://opencode.ai/zen/go/v1/chat/completions`.
 - Configuration: `OPENCODE_GO_API_KEY` (server-only, optional) and `OPENCODE_GO_MODEL` (optional, default `deepseek-v4.1-flash`). Existing OpenAI-compatible adapter widened by options (`endpoint`, `model`, `providerName`, `timeoutMilliseconds`, `maxTokens`, `responseTextLimitBytes`); OpenRouter defaults and its `usage.include` extension are unchanged.
-- Bounds: 90 s timeout, `max_tokens` 4000 (the model spends part of it on reasoning tokens), 12 KB response text, existing retry policy. No paid fallback.
+- Bounds: 60 s timeout with a single attempt (no retry), `max_tokens` 4000 (the model spends part of it on reasoning tokens), 12 KB response text. No paid fallback.
 - Scheduled OpenRouter job, orchestrator, stored insights, and `ADR-033` data minimization remain unchanged; the two paths never share state.
 
 ### 2. Endpoint and authorization
 
 - `POST /api/v1/organizations/{organizationId}/ai-insights/analyze`, authenticated, scope from the query (`scope=organization` or `scope=branch&branchId=...`), body `{language: "en"|"th", days?: 7|14|30}` (default 7).
 - The **same** `AI_BUSINESS_SUMMARY_VIEW` + `BUSINESS_ANALYTICS_VIEW` + `SALES_COST_VIEW` check as the persisted reads runs before any snapshot work; the request body never carries organization/branch scope.
-- Per-user, process-local limit of one analysis per 60 s, applied after authorization and counted even when generation fails. Results: `200` (with `Cache-Control: no-store`), `429 RATE_LIMITED` + `Retry-After`, `502 AI_PROVIDER_FAILED`, `502 AI_RESPONSE_REJECTED`, `400`, `403`.
+- Per-user, process-local limit of one analysis per 60 s, applied after authorization and counted even when generation fails. Results: `200` (with `Cache-Control: no-store`), `429 RATE_LIMITED` + `Retry-After`, `404 NOT_FOUND` (snapshot unavailable), `502 AI_PROVIDER_FAILED`, `502 AI_RESPONSE_REJECTED`, `400`, `403`.
 
 ### 3. Snapshot (data minimization)
 
@@ -51,6 +51,9 @@ Deterministic code, last N completed Organization-timezone days: period identity
 
 - The rate limiter is process-local and resets on restart; multi-instance enforcement stays under `OQ-020`.
 - Only category-level product data exists, so "best/worst products" means categories.
+- The numeric check compares magnitudes with the snapshot's number set: small integers (such as 5 or 7), number words, and numbers equal to a category-name digit also pass; non-ASCII digits and any text before the first heading are rejected. Category names come from the database and reach the prompt as JSON data, so an instruction-like name is possible; the output contract and validator are the guard, not a trust assumption.
+- More than 1,000 categories (10 pages of 100) makes the snapshot unavailable rather than ranking a partial list.
+- `pnpm --filter @stockwise/api ai:smoke` (with `OPENCODE_GO_API_KEY` exported) is an operator-run provider probe that prints only the HTTP status and response length.
 - Output is untrusted display text: escaped, never rendered as active HTML, and never stored.
 
 ## Consequences

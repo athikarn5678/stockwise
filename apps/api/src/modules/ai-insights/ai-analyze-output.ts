@@ -15,7 +15,9 @@ export class AiAnalyzeOutputError extends Error {
 
 const HEADING_PREFIX = "## ";
 const LOCAL_DATE = /(\d{4})-(\d{2})-(\d{2})/g;
-const NUMBER = /-?\d+(?:\.\d+)?/g;
+// Magnitudes only: a hyphen is a range or sign, never part of the token.
+const NUMBER = /\d+(?:\.\d+)?/g;
+const NON_ASCII_DIGIT = /(?![0-9])\p{Nd}/u;
 const LIST_MARKER = /^\s*\d{1,2}[.)]\s+/;
 const GROUPED_DIGITS = /(?<=\d),(?=\d)/g;
 const TOLERATED_DECIMALS = [0, 1] as const;
@@ -67,6 +69,8 @@ function sectionsOf(
 ): readonly AiAnalyzeSection[] {
   const expected = AI_ANALYZE_HEADINGS[language];
   const collected: { heading: string; lines: string[] }[] = [];
+  if (NON_ASCII_DIGIT.test(text))
+    throw new AiAnalyzeOutputError("The analysis must use Arabic digits.");
   for (const line of text.split(/\r?\n/)) {
     if (line.startsWith(HEADING_PREFIX)) {
       collected.push({
@@ -75,7 +79,16 @@ function sectionsOf(
       });
       continue;
     }
-    collected.at(-1)?.lines.push(line);
+    const current = collected.at(-1);
+    if (current === undefined) {
+      // Text before the first heading would bypass validation but still be shown.
+      if (line.trim() !== "")
+        throw new AiAnalyzeOutputError(
+          "The analysis has text before the first section.",
+        );
+      continue;
+    }
+    current.lines.push(line);
   }
   if (collected.length !== expected.length)
     throw new AiAnalyzeOutputError(

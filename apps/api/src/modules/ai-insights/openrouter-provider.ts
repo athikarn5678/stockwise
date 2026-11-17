@@ -143,6 +143,7 @@ export type ChatCompletionProviderOptions = Readonly<{
   apiKey?: string | undefined;
   endpoint?: string;
   fetchImplementation?: typeof fetch;
+  maxAttempts?: number;
   maxTokens?: number;
   requestHeaders?: () => Record<string, string>;
   model?: string;
@@ -155,6 +156,7 @@ export function createOpenRouterProvider({
   apiKey,
   endpoint = ENDPOINT,
   fetchImplementation = fetch,
+  maxAttempts = 3,
   maxTokens = MAX_TOKENS,
   model = MODEL,
   requestHeaders,
@@ -282,6 +284,7 @@ export function createOpenRouterProvider({
       const first = await call();
       if (
         first.ok ||
+        maxAttempts < 2 ||
         !retryable(first.failureCategory, first.attempts.at(-1)?.httpStatus)
       )
         return first;
@@ -289,6 +292,7 @@ export function createOpenRouterProvider({
       const second = await call();
       if (
         second.ok ||
+        maxAttempts < 3 ||
         !retryable(second.failureCategory, second.attempts.at(-1)?.httpStatus)
       )
         return second;

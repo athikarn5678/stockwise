@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildAiAnalyzeSnapshot,
+  createAiAnalyzeSnapshotBuilder,
   type AiAnalyzeSnapshotPeriod,
 } from "./ai-analyze-snapshot.ts";
 
@@ -21,6 +22,7 @@ function day(
     refundAmount?: string;
     refundCount?: number;
     saleCount?: number;
+    salesAfterDiscountAmount?: string;
   } = {},
 ) {
   const grossProfit = options.cost;
@@ -38,6 +40,8 @@ function day(
     refundAmount: options.refundAmount ?? "0.00",
     refundCount: options.refundCount ?? 0,
     saleCount: options.saleCount ?? 1,
+    salesAfterDiscountAmount:
+      options.salesAfterDiscountAmount ?? netSalesAmount,
   };
 }
 
@@ -67,6 +71,7 @@ describe("AI analyze snapshot", () => {
           refundAmount: "5.10",
           refundCount: 1,
           saleCount: 3,
+          salesAfterDiscountAmount: "15.05",
         }),
         day("2026-11-12", "1.30", { saleCount: 2 }),
       ],
@@ -74,7 +79,7 @@ describe("AI analyze snapshot", () => {
     });
 
     expect(snapshot.totals).toEqual({
-      averageOrderValue: "15.90",
+      averageOrderValue: "16.63",
       netSalesAmount: "111.30",
       refundAmount: "5.10",
       refundCount: 1,
@@ -133,5 +138,83 @@ describe("AI analyze snapshot", () => {
         period,
       }).cost,
     ).toEqual({ costNote: "unavailable" });
+  });
+});
+
+describe("AI analyze snapshot builder", () => {
+  function builder(pages: readonly (string | null)[]) {
+    const read = vi.fn(async (request: { cursor?: string }) => {
+      const index = request.cursor === undefined ? 0 : Number(request.cursor);
+      return {
+        kind: "success" as const,
+        page: {
+          nextCursor: pages[index] ?? null,
+          series: [
+            {
+              buckets: [{ netSalesAmount: String(index + 1) + ".00" }],
+              categoryKind: "CATEGORY" as const,
+              categoryName: `Category ${index}`,
+            },
+          ],
+        },
+      };
+    });
+    const sales = {
+      read: vi.fn(async () => ({
+        kind: "success" as const,
+        metrics: {
+          buckets: [
+            {
+              cost: undefined,
+              localStartInclusive: "2026-11-10",
+              netSalesAmount: "5.00",
+              refundAmount: "0.00",
+              refundCount: 0,
+              saleCount: 1,
+              salesAfterDiscountAmount: "5.00",
+            },
+          ],
+        },
+      })),
+    };
+    return {
+      read,
+      run: createAiAnalyzeSnapshotBuilder({
+        // The builder only calls `read`; the fakes return the shapes it reads.
+        categoryService: { read } as never,
+        now: () => Date.parse("2026-11-17T05:00:00Z"),
+        organizationReader: {
+          organization: {
+            findUnique: async () => ({ reportingTimezone: "Asia/Bangkok" }),
+          },
+        } as never,
+        salesService: sales as never,
+      }),
+    };
+  }
+  const request = {
+    actorUserId: "u",
+    days: 7,
+    organizationId: "o",
+    scope: { kind: "organization" },
+  } as const;
+
+  it("follows the category cursor so ranking uses every category", async () => {
+    const { read, run } = builder(["1", "2", null]);
+    const outcome = await run(request);
+    expect(read).toHaveBeenCalledTimes(3);
+    expect(outcome.kind).toBe("ok");
+    if (outcome.kind === "ok")
+      expect(outcome.snapshot.categories.top[0]).toEqual({
+        name: "Category 2",
+        netSalesAmount: "3.00",
+      });
+  });
+
+  it("is unavailable instead of ranking a truncated category list", async () => {
+    const { run } = builder(
+      Array.from({ length: 20 }, (_, i) => String(i + 1)),
+    );
+    expect(await run(request)).toEqual({ kind: "unavailable" });
   });
 });

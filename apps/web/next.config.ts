@@ -54,6 +54,8 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // The on-demand AI analysis (ADR-046) may take up to 60 s through the proxy.
+  experimental: { proxyTimeout: 90_000 },
   async rewrites() {
     return [getApiHealthRewrite(environment), getApiV1Rewrite(environment)];
   },

@@ -13,6 +13,7 @@ import type { InventoryDimension } from "../analytics/analytics-inventory-values
 import { createPrismaReorderRepository } from "../analytics/analytics-reorder-repository.ts";
 import { createPrismaAnalyticsSalesRepository } from "../analytics/analytics-sales-repository.ts";
 import { createPrismaAnalyticsScopeRepository } from "../analytics/analytics-scope-repository.ts";
+import { AI_ANALYZE_HEADINGS } from "./ai-analyze-prompt.ts";
 import {
   createPrismaAiInsightReader,
   type InsightReadScope,
@@ -20,13 +21,18 @@ import {
 
 const Decimal = Prisma.Decimal.clone({ precision: 80 });
 
-/** Exact headings of the Demo Insight text. The on-demand AI analysis is specified to use the same five, in this order. */
+/**
+ * Exact headings of the Demo Insight text: Thai / English, derived from the five
+ * headings of the on-demand AI analysis so the two can never drift apart.
+ */
+const bilingual = (index: 0 | 1 | 2 | 3 | 4) =>
+  `${AI_ANALYZE_HEADINGS.th[index]} / ${AI_ANALYZE_HEADINGS.en[index]}`;
 export const DEMO_INSIGHT_HEADINGS = {
-  overview: "ภาพรวม / Overview",
-  sales: "ยอดขาย / Sales",
-  products: "สินค้าขายดีและขายช้า / Products",
-  notes: "ข้อสังเกต / Notes & risks",
-  actions: "สิ่งที่ควรทำ / Recommended actions",
+  overview: bilingual(0),
+  sales: bilingual(1),
+  products: bilingual(2),
+  notes: bilingual(3),
+  actions: bilingual(4),
 } as const;
 
 export function createDemoInsightReader(input: {

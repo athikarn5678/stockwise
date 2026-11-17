@@ -29,7 +29,7 @@ The migrator role has no database-level `CREATE`, so `infra/learner-lab/db/roles
 
 ### 2. Demo Insight in the production runtime
 
-Demo Insight is served in `STOCKWISE_RUNTIME_ENV=production` only when `STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID` is set, the request's organization equals it, AND it equals the deterministic demo organization id (`DEMO_INSIGHT_PRODUCTION_ORGANIZATION_ID`, the `demo:seed:90d` organization). Everything else is unchanged: ordinary AI-summary authorization and scope first, the `ข้อมูลตัวอย่าง` / `Demo Insight` label, deterministic text from real metrics with the five fixed headings, no provider call, no AI report/attempt rows. If the variable is unset Demo Insight is off everywhere (no organization is served).
+Demo Insight is served in `STOCKWISE_RUNTIME_ENV=production` only when `STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID` is set, the request's organization equals it, AND it equals the deterministic demo organization id (`DEMO_INSIGHT_PRODUCTION_ORGANIZATION_ID`, the `demo:seed:90d` organization). In production the organization-equality check runs before authorization (a non-member asking for another organization gets `404` rather than `403`). Everything else is unchanged: ordinary AI-summary authorization and trusted scope, the `ข้อมูลตัวอย่าง` / `Demo Insight` label, deterministic text from real metrics with the five fixed headings, no provider call, no AI report/attempt rows. If the variable is unset Demo Insight is off everywhere (no organization is served).
 
 ### Consequences
 

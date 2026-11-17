@@ -89,6 +89,9 @@ operator_run() {
   (
     export PATH="${stubs}:${PATH}" STUB_DIR="$case_dir" STUB_IDENTITY_ARN="${STUB_IDENTITY_ARN-$identity}"
     export STOCKWISE_OPERATOR_STATE_DIR="${case_dir}/state" AWS_REGION="${STUB_AWS_REGION:-us-east-1}" STOCKWISE_SMOKE_ATTEMPTS=1
+    # Synthetic provider values (put-secrets.sh reads them from the environment).
+    export OPENCODE_GO_API_KEY="${OPENCODE_GO_API_KEY-oc_stubfixture_000000001}" STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY-sk_test_stubfixture0000001}" \
+      STOCKWISE_PROMPTPAY_ID="${STOCKWISE_PROMPTPAY_ID-0812345678}"
     cd "${RUN_FROM:-$case_dir}"
     "${operator}/${script}" "$@"
   ) >"${case_dir}/${label}.out" 2>&1
@@ -135,6 +138,7 @@ new_case f6-interrupted
 (
   export PATH="${stubs}:${PATH}" STUB_DIR="$case_dir" STUB_IDENTITY_ARN="$identity" STUB_PUT_SLEEP=4
   export STOCKWISE_OPERATOR_STATE_DIR="${case_dir}/state" AWS_REGION=us-east-1
+  export OPENCODE_GO_API_KEY=oc_stubfixture_000000001 STRIPE_SECRET_KEY=sk_test_stubfixture0000001 STOCKWISE_PROMPTPAY_ID=0812345678
   cd "$case_dir"
   exec "${operator}/put-secrets.sh" --resend-key-file "$(native "${work}/resend-key")"
 ) >"${case_dir}/put.out" 2>&1 &
@@ -264,6 +268,29 @@ new_case r2nf1-existing-valid
 STUB_SM_LIST=current STUB_SM_GET=valid operator_run put put-secrets.sh --resend-key-file "$(native "${work}/resend-key")" && rc=0 || rc=$?
 expect R2NF1_EXISTING_VALID_READY_WITHOUT_UPLOAD bash -c "[[ $rc == 0 ]] && grep -q 'STOCKWISE_SECRETS:READY' '${case_dir}/put.out' &&
   ! grep -q 'put-secret-value' '${case_dir}/aws.log'"
+
+# M9-S1: provider keys come from the environment; stored keys are never overwritten.
+new_case m9-merge-six-keys
+STUB_SM_LIST=current STUB_SM_GET=six-keys operator_run put put-secrets.sh --resend-key-file "$(native "${work}/resend-key")" && rc=0 || rc=$?
+expect M9_EXISTING_SIX_KEYS_MERGED_THEN_READY bash -c "[[ $rc == 0 ]] && grep -q 'STOCKWISE_SECRETS:READY' '${case_dir}/put.out' &&
+  [[ \$(grep -c 'put-secret-value' '${case_dir}/aws.log') == 1 ]] && ! payload_left"
+if grep -q 'sk_test_stubfixture0000001\|oc_stubfixture_000000001\|0812345678' "${case_dir}/put.out" "${case_dir}/aws.log"; then
+  record M9_MERGE_NEVER_PRINTS_OR_LOGS_VALUES FAIL
+else record M9_MERGE_NEVER_PRINTS_OR_LOGS_VALUES PASS; fi
+merge_env_refused() {
+  # merge_env_refused <case> <VAR=value>... ; six-keys secret, bad or missing provider env
+  new_case "m9-$1"
+  shift
+  (export "$@"; STUB_SM_LIST=current STUB_SM_GET=six-keys operator_run put put-secrets.sh --resend-key-file "$(native "${work}/resend-key")") && rc=0 || rc=$?
+  [[ $rc != 0 ]] && ! grep -q 'STOCKWISE_SECRETS:READY' "${case_dir}/put.out" && ! grep -q 'put-secret-value' "${case_dir}/aws.log"
+}
+expect M9_MERGE_REFUSES_MISSING_OPENCODE_KEY merge_env_refused missing-opencode OPENCODE_GO_API_KEY=
+expect M9_MERGE_REFUSES_LIVE_STRIPE_KEY merge_env_refused live-stripe STRIPE_SECRET_KEY=sk_live_stubfixture0000001
+expect M9_MERGE_REFUSES_BAD_PROMPTPAY_ID merge_env_refused bad-promptpay STOCKWISE_PROMPTPAY_ID=08-1234-5678
+new_case m9-fresh-refuses-live-stripe
+(export STRIPE_SECRET_KEY=sk_live_stubfixture0000001; STUB_SM_LIST=empty STUB_SM_GET=valid operator_run put put-secrets.sh --resend-key-file "$(native "${work}/resend-key")") && rc=0 || rc=$?
+expect M9_FRESH_REFUSES_LIVE_STRIPE_KEY_NO_APPLICATION_UPLOAD bash -c "[[ $rc != 0 ]] && ! grep -q 'STOCKWISE_SECRETS:READY' '${case_dir}/put.out' &&
+  [[ \$(grep -c 'put-secret-value' '${case_dir}/aws.log') == 1 ]]"
 
 # R3-F2: full JSON syntax and decoded duplicate keys, through the real CLI helper.
 for mode in blank invalid-inner trailing-comma duplicate duplicate-conflict duplicate-null \

@@ -17,6 +17,9 @@ import { createReorderService } from "./modules/analytics/analytics-reorder-serv
 import { createAnalyticsInventoryService } from "./modules/analytics/analytics-inventory-service.ts";
 import { createAnalyticsRouter } from "./modules/analytics/analytics-router.ts";
 import { createAiInsightRouter } from "./modules/ai-insights/ai-insight-router.ts";
+import { createAiAnalyzeService } from "./modules/ai-insights/ai-analyze-service.ts";
+import { createAiAnalyzeSnapshotBuilder } from "./modules/ai-insights/ai-analyze-snapshot.ts";
+import { createOpenCodeGoProvider } from "./modules/ai-insights/opencode-go-provider.ts";
 import { createDemoInsightReader } from "./modules/ai-insights/demo-insight.ts";
 import {
   composeDemoInsightReaders,
@@ -273,8 +276,24 @@ async function main(): Promise<void> {
       salesService: analyticsSalesService,
     }),
   );
+  const aiAnalyzeService = createAiAnalyzeService({
+    ...(environment.OPENCODE_GO_API_KEY === undefined
+      ? {}
+      : {
+          provider: createOpenCodeGoProvider({
+            apiKey: environment.OPENCODE_GO_API_KEY,
+            model: environment.OPENCODE_GO_MODEL,
+          }),
+        }),
+    buildSnapshot: createAiAnalyzeSnapshotBuilder({
+      categoryService: analyticsCategoryService,
+      organizationReader: prisma,
+      salesService: analyticsSalesService,
+    }),
+  });
   apiRouter.use(
     createAiInsightRouter({
+      analyzeService: aiAnalyzeService,
       authenticationMiddleware,
       reader: createPrismaAiInsightReader(prisma),
       demoReader: composeDemoInsightReaders(

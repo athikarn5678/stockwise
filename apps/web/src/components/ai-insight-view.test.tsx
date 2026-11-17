@@ -57,6 +57,28 @@ let demoResult: null | {
   provider: null;
   providerCalls: 0;
 } = null;
+let analyzeStatus = 200;
+let analyzePending = false;
+let analyzeBodies: string[] = [];
+const analyzeResult = {
+  language: "en" as const,
+  mock: true,
+  period: {
+    days: 7,
+    from: "2026-11-09",
+    scope: "organization" as const,
+    timezone: "Asia/Bangkok",
+    to: "2026-11-16",
+  },
+  sections: [
+    { body: "Sample overview text.", heading: "Overview" },
+    { body: "Net sales 1400.00 from 7 sales.", heading: "Sales" },
+    { body: "Category-level data only.", heading: "Products" },
+    { body: "Cost is unavailable.", heading: "Notes & risks" },
+    { body: "Review the slowest categories.", heading: "Recommended actions" },
+  ],
+  text: "## Overview\nSample overview text.",
+};
 
 function organization(
   role: AccessibleOrganization["role"] = "OWNER",
@@ -90,11 +112,28 @@ beforeEach(() => {
   pendingBranches = false;
   responseStatus = 200;
   demoResult = null;
+  analyzeStatus = 200;
+  analyzePending = false;
+  analyzeBodies = [];
   vi.stubGlobal(
     "fetch",
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       requests.push({ url, method: init?.method ?? "GET" });
+      if (url.includes("/ai-insights/analyze?")) {
+        analyzeBodies.push(String(init?.body));
+        if (analyzePending) return new Promise(() => {});
+        return Promise.resolve(
+          new Response(
+            JSON.stringify(
+              analyzeStatus === 200
+                ? { data: analyzeResult }
+                : { error: { code: "RATE_LIMITED" } },
+            ),
+            { status: analyzeStatus },
+          ),
+        );
+      }
       if (url.includes("/ai-insights/demo?"))
         return Promise.resolve(
           new Response(JSON.stringify({ data: demoResult }), {
@@ -431,5 +470,63 @@ describe("persisted AI insight view", () => {
     });
     expect(screen.getByText("Loading persisted insight…")).toBeTruthy();
     expect(screen.queryByText("Successful AI summary")).toBeNull();
+  });
+
+  it("posts an on-demand analysis for the selected organization scope", async () => {
+    renderView();
+    await screen.findByText("Latest report succeeded");
+    fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
+    expect(await screen.findByText("Sample overview text.")).toBeTruthy();
+    const analyzeRequest = requests.find(({ url }) =>
+      url.includes("/ai-insights/analyze?"),
+    );
+    expect(analyzeRequest?.method).toBe("POST");
+    expect(analyzeRequest?.url).toContain("scope=organization");
+    expect(JSON.parse(analyzeBodies[0] ?? "{}")).toEqual({
+      days: 7,
+      language: "en",
+    });
+    expect(screen.getByText("Sample (Mock)")).toBeTruthy();
+    for (const heading of [
+      "Overview",
+      "Sales",
+      "Products",
+      "Notes & risks",
+      "Recommended actions",
+    ])
+      expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
+    expect(screen.getByText(/Period: 2026-11-09/)).toBeTruthy();
+  });
+
+  it("sends the branch scope from the selector", async () => {
+    renderView("BRANCH_MANAGER");
+    await screen.findByText("Latest report succeeded");
+    fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
+    await screen.findByText("Sample overview text.");
+    const analyzeRequest = requests.find(({ url }) =>
+      url.includes("/ai-insights/analyze?"),
+    );
+    expect(analyzeRequest?.url).toContain(`scope=branch&branchId=${A}`);
+  });
+
+  it("disables the analyze button and announces progress", async () => {
+    analyzePending = true;
+    renderView();
+    await screen.findByText("Latest report succeeded");
+    const button = screen.getByRole("button", { name: "Analyze" });
+    fireEvent.click(button);
+    expect(await screen.findByText("Analyzing…")).toBeTruthy();
+    expect(button.getAttribute("disabled")).not.toBeNull();
+  });
+
+  it("shows the per-minute rate limit message", async () => {
+    analyzeStatus = 429;
+    renderView();
+    await screen.findByText("Latest report succeeded");
+    fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
+    expect(await screen.findByRole("alert")).toHaveProperty(
+      "textContent",
+      "Please wait a moment and try again (one request per minute).",
+    );
   });
 });

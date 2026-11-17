@@ -15,9 +15,11 @@ export type AiProviderUsage = Readonly<{
   cost?: string;
 }>;
 
+export type AiProviderName = "openrouter" | "opencode-go";
+
 export type AiProviderAttempt = Readonly<{
-  provider: "openrouter";
-  requestedModel: "openrouter/free";
+  provider: AiProviderName;
+  requestedModel: string;
   attemptNumber: number;
   durationMilliseconds: number;
   httpStatus?: number;

@@ -9,7 +9,7 @@ Retail platform for SMEs: organization-level catalog and suppliers, branch inven
 - Done = `pnpm verify` + `pnpm build` pass, fresh-thread review vs this section + diff.
 
 ## Notes
-- Deployment target (owner decision 2026-11-17): AWS Learner Lab under ADR-040 (ALB + ACM, ECS on EC2, RDS Multi-AZ, Secrets Manager, ECR/GHCR images). Nothing is provisioned yet. Deployment is milestone M9, done after the other milestones (as many as feasible). The own-server/Cloudflare Tunnel idea is dropped.
+- Deployment target (owner decision 2026-11-17): AWS Learner Lab under ADR-040 (ALB + ACM, ECS on EC2, RDS Multi-AZ, Secrets Manager, ECR/GHCR images). The owner has deployed it before from the GHCR images (2026-10-29/30); the lab is time-limited, so it is redone as milestone M9 (see "24h sprint" below). The own-server/Cloudflare Tunnel idea is dropped.
 - Authentication (owner decision 2026-11-15): use Better Auth **Native**, the mode the AWS deployment used (`STOCKWISE_RUNTIME_ENV=production` + `STOCKWISE_AUTHENTICATION_AUTHORITY=native`, database sealed NATIVE by the one-way `native:cutover`). Local development currently runs Legacy (the default for development). Milestone M3 moves every runtime to Native and removes Legacy.
 - Member re-invite is not needed: removed members are restored with Reactivate (Members page → "Include inactive" → member → "Reactivate with this access"). API and UI exist and their tests pass in `pnpm verify`.
 
@@ -167,7 +167,7 @@ Follow-ups (not part of M3):
 - [x] M3-F1 Drop `users.password_hash` (ADR-045 condition (b); done 2026-11-17, PR #8). Migration `20261117120000_drop_users_password_hash`: `CREATE OR REPLACE guard_native_auth_dml` first (the 20261117000000 guard minus the `users.password_hash` immutability rule; PL/pgSQL resolves column names at execution, so dropping the column alone would make every later `users` UPDATE fail), then `ALTER TABLE users DROP COLUMN password_hash` (its not-blank CHECK goes with it). `pending_registrations.password_hash` is untouched. `schema.prisma` field removed; ~35 test files no longer pass `passwordHash` to `user.create`; the demo fixture keeps the verifiers in a separate `credentials` array (the logical fingerprint is unchanged because `passwordHash` was already excluded from it); a guard test proves the column is gone and a `users` UPDATE succeeds. Proofs: fresh deploy with no drift; a database at the T6 schema holding a Native user migrates intact (row kept, UPDATE works afterwards, credential-version rule still refuses a decrease). The dev database `stockwise_local` (0 users) receives it with `prisma migrate deploy` after the merge.
 
 Deferred / follow-ups (list only; none is part of M3 and none is ticked):
-- M9 carry-overs: `terraform fmt -check`/`validate`/`test`, `shellcheck`, `smoke/local-ecs-rehearsal.sh`, the real `demo_end_time` and `planning_deadline_default` test, the 41 environment-related `operator/tests/operator-tests.sh` failures (identical before and after M3), and the independent review of Codex remediation R3.
+- M9 carry-overs: `terraform fmt -check`/`validate`/`test`, `shellcheck`, `smoke/local-ecs-rehearsal.sh`, the real `demo_end_time` and `planning_deadline_default` test, the 41 environment-related `operator/tests/operator-tests.sh` failures (identical before and after M3), and the independent review of Codex remediation R3 (waived by owner decision 2026-11-17, see "24h sprint").
 - Known flaky tests (rerun alone before judging): `recovery-localization.test.tsx` focus assertion, `inventory` and `marketing` axe color-contrast e2e, `database-harness.test.ts`, `better-auth-password-reset.integration.test.ts`.
 - About 30 pre-existing e2e failures that also fail on `main` (stub-spec locators, a hard-coded `localhost:3101` origin, duplicate `getByLabel` matches, `form-layout`, `pos-scanner`, `sale-receipt`, `preferences`).
 - Unverified: real external email delivery and production HTTPS.
@@ -242,11 +242,40 @@ Outcome: cashier takes a card or PromptPay QR payment; the sale completes and st
 
 ### M9 — Deploy to AWS Learner Lab (ADR-040)
 Outcome: the app runs on Learner Lab per ADR-040 with Native auth, a fresh RDS database created NATIVE from migrations, and a smoke test passing; Stripe webhooks (M6/M7, if done) reach the public URL.
-- [ ] M9-T1 Re-verify infra/learner-lab against the current code (independent review of R3 still pending per AGENTS.md)
+- [x] M9-T1 Re-verify infra/learner-lab against the current code (2026-11-17, sprint task M9-S1: Terraform fmt/validate/test, operator regression suite, node tests; the independent review of R3 is waived by owner decision, see "24h sprint")
 - [ ] M9-T2 Build and push images; provision; run migrations; smoke test
 - [ ] M9-T3 Operator runbook: start/stop per Learner Lab session, teardown, costs
 Every provisioning or cloud command needs owner approval per run.
 M9 carry-overs from M3-T7 (Review 6): set the real `demo_end_time` and update the stale default in `infra/learner-lab/terraform/variables.tf` together with the `planning_deadline_default` run in `terraform/tests/topology.tftest.hcl` (it still pins 2026-10-31); run `terraform fmt -check`, `validate` and `terraform test`, `shellcheck`, and the local ECS rehearsal (`smoke/local-ecs-rehearsal.sh`), none of which could run in the M3 environment; `operator/tests/operator-tests.sh` has 41 environment-related failures (identical before and after M3) to triage.
+
+## 24h sprint (2026-11-17/18)
+Owner decision 2026-11-17: ship a demo-able slice of M5/M6/M7/M4 and deploy it to AWS Learner Lab (ADR-040) at `https://stockwise.hcn920.com` (Cloudflare proxy in front of the ALB, README "Cloudflare proxy"). Workers: AI + billing, demo data + PromptPay, deploy. Each task is one branch (`chore|feat/<id>-<slug>` from the latest `origin/main`), one PR, one fresh-thread Sonnet-high review, merged only after review PASS and green CI. Code is delegated to Pi `opencode-go/deepseek-v4.1-flash`; secrets, money and cloud commands are done by the worker.
+
+| Sprint task | Plan item it carries | Slice in the sprint |
+|---|---|---|
+| M5-S1 AI button | M5 (AI analysis v2) | On-demand "วิเคราะห์" button; the report has 5 headings; provider OpenCode Go (`OPENCODE_GO_API_KEY`) |
+| M6-S1 Stripe subscription | M6 (Stripe billing) | Stripe Checkout in test mode (card 4242 4242 4242 4242); the plan shows active (`STRIPE_SECRET_KEY`, `sk_test_` only) |
+| M4-S1 demo data | M4 (demo dataset) | Demo dataset with users for every role, loadable on the deployed database; includes the "Demo Insight" content |
+| M7-S1 PromptPay QR | M7 (Stripe at POS) | PromptPay QR with the server-calculated amount (`STOCKWISE_PROMPTPAY_ID`); no real bank transfer is made in testing |
+| M9-S1 deploy | M9 (Learner Lab deploy) | C1 prep (this section, secrets plumbing, Terraform/doc fixes), C2 first deploy of current `main`, C3 final deploy with the merged slices and the smoke checklist |
+
+**Cut scope (decided for the sprint; each worker's PR narrows or confirms its row):** only what the smoke checklist below exercises. **Deferred, not part of the sprint:** the scheduled analysis (daily/weekly/monthly) and its 11-section JSON schema, "Today's brief" quotas and the scheduler (M5-T1..T9 beyond the button); Customer Portal, grace/read-only lapse enforcement and plan-limit enforcement across every endpoint, unless a worker's PR includes them (M6-T4..T6); card payments at the POS, Stripe refunds and the pending-payment sale rules beyond the QR (M7-T1..T5 beyond M7-S1); M8 README; the full 90-day from-scratch demo CLI beyond what M4-S1 delivers; CloudFront; real production hosting (`OQ-015`/`OQ-020`); live-mode Stripe keys (refused by the code). Other deferred items listed under M3/M9 stay as written. This list is reconciled with the merged PRs in C3.
+
+**R3 (Codex remediation of the ADR-040 findings): accepted by owner decision without independent review (2026-11-17).** The two P2 findings of the third review were remediated by R3, and no separate independent review of R3 was run. This is a waiver, not an acceptance by review; AGENTS.md records the same.
+
+**Deployment facts for M9-S1 (verified 2026-11-17):**
+- Images reach the cluster in two steps: the `Learner Lab images` workflow (`workflow_dispatch`, builds `web`/`api`/`ops` for linux/amd64, pushes `ghcr.io/athikarn5678/stockwise-<target>:sha-<commit>`; the commit's CI `Quality gates` must be green), then `operator/mirror-images.sh` copies them by digest into the stack's ECR repositories and writes `.state/release-<sha>.env`. The GHCR digests are readable without login (`docker buildx imagetools inspect`). The exact commands are in `infra/learner-lab/README.md` step 1.
+- Secrets: `put-secrets.sh` now also stores `OPENCODE_GO_API_KEY`, `STRIPE_SECRET_KEY` (test keys only) and `STOCKWISE_PROMPTPAY_ID`, read from the operator's shell environment at run time; an existing application secret keeps its stored keys and only the missing provider keys are merged. The task definition injects them from Secrets Manager. `STOCKWISE_EMAIL_PROVIDER=resend` is in the task definition; `STOCKWISE_EMAIL_FROM` comes from `email_from` in `demo.tfvars` (`StockWise <no-reply@hcn920.com>`; `hcn920.com` is verified in Resend).
+- Open until the workers merge: any further environment names the new features read (for example `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, Stripe price IDs) are not plumbed yet. C3 reconciles them against the merged code before the final deploy. `STRIPE_WEBHOOK_SECRET` exists only after a webhook endpoint is created for the public URL.
+- `demo_end_time`: the default is the provisional end of the demo window, 2026-11-21T16:59:00Z (23:59 Asia/Bangkok). The real value is set in the operator's `demo.tfvars` and must be in the future at apply time.
+- The 41 "environment-related" `operator-tests.sh` failures carried over from M3-T7 were the operator and test scripts lacking the executable bit in Git (`Permission denied` on Linux). The bit is now committed; the suite passes (196 PASS / 0 FAIL).
+- Local checks run for C1: `terraform fmt -check`, `validate`, `terraform test` (16 passed), operator regression suite, `node --test` on the operator helpers, `bash -n` on every script. Not run: `shellcheck` (not installed), `smoke/local-ecs-rehearsal.sh` (the real deploy replaces it), `verified-postgres-forwarder` F5 reproduction case (needs `node_modules`).
+
+Sprint status:
+- [x] C1 M9-S1 prep (this PR)
+- [ ] C2 First deploy of current `main` (lab open → apply → secrets → deploy → migrate → smoke → Cloudflare record → email check)
+- [ ] M5-S1, M6-S1, M4-S1, M7-S1 merged (tracked in their own threads)
+- [ ] C3 Final deploy, demo seed and smoke checklist
 
 ## Open questions (owner)
 - None open. Q1 (sections + Today's brief) and Q2 (plans, trial, lapse policy) approved 2026-11-15.

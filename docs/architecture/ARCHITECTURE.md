@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Architecture Freeze v1; application functionality implemented through Phase 7; final acceptance with explicit MT-L04 verification limitation; PRE-CLOUD READY YES; Phase 8 STARTED for the Learner Lab demo only (`ADR-040`, superseding `ADR-039`; infrastructure source implemented and verified locally). ADR-040 Learner Lab deployment: implemented in source, never provisioned; container images built to GHCR (2026-10-29/30); deployment planned as M9. |
+| Status | Architecture Freeze v1; application functionality implemented through Phase 7; final acceptance with explicit MT-L04 verification limitation; PRE-CLOUD READY YES; Phase 8 STARTED for the Learner Lab demo only (`ADR-040`, superseding `ADR-039`; infrastructure source implemented and verified locally). ADR-040 Learner Lab deployment: implemented in source and deployed by the owner to AWS Learner Lab before, from the container images built to GHCR (2026-10-29/30); the lab environment is time-limited, so the current deployment is redone as M9 (24h sprint 2026-11-17/18). |
 | Baseline | Architecture Freeze v1 |
 | Last updated | 2026-10-08 |
 
@@ -956,7 +956,7 @@ The final design must decide public/private subnets, ingress, Next.js hosting mo
 
 ### Learner Lab demo topology (`ADR-040`)
 
-The source lives in `infra/learner-lab`. Its diagram and service-by-service explanation are in `infra/learner-lab/ARCHITECTURE.md`. ADR-040 Learner Lab deployment: implemented in source, never provisioned; container images built to GHCR (2026-10-29/30); deployment planned as M9.
+The source lives in `infra/learner-lab`. Its diagram and service-by-service explanation are in `infra/learner-lab/ARCHITECTURE.md`. ADR-040 Learner Lab deployment: implemented in source and deployed by the owner to AWS Learner Lab before, from the container images built to GHCR (2026-10-29/30); the lab environment is time-limited, so the current deployment is redone as M9 (24h sprint 2026-11-17/18).
 
 ```mermaid
 flowchart LR

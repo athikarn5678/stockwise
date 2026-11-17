@@ -386,9 +386,7 @@ Phase 8. Implementation and verification status are separate from commit status.
 authentication authority in development, test and production; Legacy and the
 cutover fence were removed by milestone M3-T5/T6 (`infra/learner-lab` was aligned
 by M3-T7).
-D5-P5 is no longer a live status. ADR-040 Learner Lab deployment: implemented in
-source, never provisioned; container images built to GHCR (2026-10-29/30);
-deployment planned as M9. Every older status row and checkpoint paragraph below
+D5-P5 is no longer a live status. ADR-040 Learner Lab deployment: implemented in source and deployed by the owner to AWS Learner Lab before, from the container images built to GHCR (2026-10-29/30); the lab environment is time-limited, so the current deployment is redone as M9 (24h sprint 2026-11-17/18). Every older status row and checkpoint paragraph below
 is history as recorded at its date and stays unchanged.
 
 **Historical status (2026-10-27; superseded by the 2026-11-17 status update above):**

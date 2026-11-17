@@ -63,6 +63,14 @@ export const apiEnvironmentSchema = z
       .string()
       .regex(/^[\x21-\x7e]+$/)
       .optional(),
+    OPENCODE_GO_API_KEY: z
+      .string()
+      .regex(/^[\x21-\x7e]+$/)
+      .optional(),
+    OPENCODE_GO_MODEL: z
+      .string()
+      .regex(/^[A-Za-z0-9_./:-]{1,128}$/)
+      .optional(),
     RESEND_API_KEY: z.string().min(1).optional(),
     STOCKWISE_BETTER_AUTH_SECRET: z.string().min(1),
     STOCKWISE_INVITATION_CONTINUATION_KEY: z
@@ -209,6 +217,7 @@ export const apiEnvironmentSchema = z
     );
     const providerKeyValues = [
       environment.OPENROUTER_API_KEY,
+      environment.OPENCODE_GO_API_KEY,
       environment.RESEND_API_KEY,
     ].filter((value): value is string => value !== undefined);
     const rejectReusedVerificationMaterial = (
@@ -340,6 +349,8 @@ export function loadApiEnvironment(
   return apiEnvironmentSchema.parse({
     DATABASE_URL: environment.DATABASE_URL,
     OPENROUTER_API_KEY: environment.OPENROUTER_API_KEY,
+    OPENCODE_GO_API_KEY: environment.OPENCODE_GO_API_KEY,
+    OPENCODE_GO_MODEL: environment.OPENCODE_GO_MODEL,
     RESEND_API_KEY: environment.RESEND_API_KEY,
     STOCKWISE_BETTER_AUTH_SECRET: environment.STOCKWISE_BETTER_AUTH_SECRET,
     STOCKWISE_INVITATION_CONTINUATION_KEY:

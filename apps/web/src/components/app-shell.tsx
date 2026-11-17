@@ -60,6 +60,7 @@ import { PreferenceControls } from "@/components/preference-controls";
 import { useLanguage } from "@/providers/language-provider";
 import { isGuestRoute, routeAccessPolicy } from "@/route-access-policy";
 import {
+  BILLING_CHANGED_EVENT,
   getBilling,
   type BillingSubscription,
   type BillingState,
@@ -533,6 +534,13 @@ function useBillingSummary(organizationId: string | undefined) {
     organizationId: string;
     summary: BillingState;
   } | null>(null);
+  // Bumped by the billing page after a confirmed subscription.
+  const [refresh, setRefresh] = useState(0);
+  useEffect(() => {
+    const onChange = () => setRefresh((value) => value + 1);
+    window.addEventListener(BILLING_CHANGED_EVENT, onChange);
+    return () => window.removeEventListener(BILLING_CHANGED_EVENT, onChange);
+  }, []);
   useEffect(() => {
     if (organizationId === undefined) return;
     const controller = new AbortController();
@@ -541,7 +549,7 @@ function useBillingSummary(organizationId: string | undefined) {
       () => undefined,
     );
     return () => controller.abort();
-  }, [organizationId]);
+  }, [organizationId, refresh]);
   return state !== null && state.organizationId === organizationId
     ? state.summary
     : null;

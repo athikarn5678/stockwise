@@ -43,6 +43,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@/billing-api-client", () => ({
+  BILLING_CHANGED_EVENT: "stockwise:billing-changed",
   BillingApiError: mocks.BillingApiError,
   getBilling: mocks.getBilling,
   postCheckout: mocks.postCheckout,

@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -12,6 +13,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import HomePage from "@/app/page";
+import { BILLING_CHANGED_EVENT } from "@/billing-api-client";
 import { fetchAccessContext } from "@/branch-api-client";
 import { RegistrationForm } from "@/components/auth/registration-form";
 import { VerificationForm } from "@/components/auth/verification-form";
@@ -624,6 +626,29 @@ describe("web application shell", () => {
     expect(
       within(nav).getByRole("link", { name: "Billing" }).getAttribute("href"),
     ).toBe(`/app/billing?organizationId=${ORG}&branchId=${BRANCH}`);
+  });
+
+  it("refetches the plan badge when a subscription is confirmed", async () => {
+    let subscription: { plan: string; status: string } | null = null;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith(`/organizations/${ORG}/billing`))
+        return new Response(
+          JSON.stringify({
+            data: { canManage: true, enabled: true, subscription },
+          }),
+        );
+      return new Response(JSON.stringify({ error: { code: "NOT_FOUND" } }), {
+        status: 404,
+      });
+    });
+    renderShell(accessContext());
+    await screen.findByRole("link", { name: "Billing" });
+    expect(screen.queryByText("Growth")).toBeNull();
+    subscription = { plan: "GROWTH", status: "ACTIVE" };
+    act(() => {
+      window.dispatchEvent(new Event(BILLING_CHANGED_EVENT));
+    });
+    expect(await screen.findByText("Growth")).toBeTruthy();
   });
 
   it("keeps a failed billing read silent: no badge, no Billing link, no error", async () => {

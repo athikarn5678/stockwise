@@ -34,6 +34,9 @@ export type SubscriptionStatus = z.infer<typeof subscriptionStatusSchema>;
 export type BillingSubscription = z.infer<typeof subscriptionSchema>;
 export type BillingState = z.infer<typeof billingResponseSchema>["data"];
 
+/** Fired on `window` after a confirmed subscription so the shell badge refetches. */
+export const BILLING_CHANGED_EVENT = "stockwise:billing-changed";
+
 export class BillingApiError extends Error {
   constructor(
     readonly status: number,

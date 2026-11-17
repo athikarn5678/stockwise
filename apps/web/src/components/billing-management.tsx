@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { resolveApplicationContext } from "@/application-context";
 import {
+  BILLING_CHANGED_EVENT,
   BillingApiError,
   getBilling,
   postCheckout,
@@ -156,6 +157,7 @@ export function BillingContent({
         void queryClient.invalidateQueries({
           queryKey: ["billing", organizationId],
         });
+        window.dispatchEvent(new Event(BILLING_CHANGED_EVENT));
         router.replace(`/app/billing?organizationId=${organizationId}`);
       },
       (error: unknown) => {

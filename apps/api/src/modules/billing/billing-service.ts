@@ -79,7 +79,8 @@ export function createBillingService(input: {
         request.organizationId,
       );
       if (access !== "owner") return { kind: "forbidden" };
-      // A second subscription would double-bill; plan changes are deferred.
+      // No second stored row / plan swap; concurrent unconfirmed Checkouts can
+      // still double-charge in test mode (ADR-047, deferred to the webhook slice).
       if ((await repository.find(request.organizationId)) !== null)
         return { kind: "conflict" };
       const base = `${publicWebOrigin}/app/billing?organizationId=${request.organizationId}`;

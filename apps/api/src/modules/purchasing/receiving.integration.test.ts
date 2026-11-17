@@ -37,7 +37,6 @@ async function actor(input: {
   const user = await prisma.user.create({
     data: {
       email: `${randomUUID()}@example.com`,
-      passwordHash: "integration-test",
     },
   });
   const membership = await prisma.organizationMembership.create({

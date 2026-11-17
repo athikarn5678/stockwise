@@ -15,7 +15,6 @@ import {
 const environment = loadTestDatabaseEnvironment();
 const prisma = createTestPrismaClient(environment);
 const repository = createPrismaSupplierRepository(prisma);
-const PASSWORD_HASH = "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$c2NoZW1hLXRlc3Q";
 async function user(
   organizationId: string,
   role: "OWNER" | "BRANCH_MANAGER" | "INVENTORY_STAFF" | "CASHIER",
@@ -24,7 +23,6 @@ async function user(
     data: {
       email: `${role.toLowerCase()}-${crypto.randomUUID()}@example.com`,
       emailVerifiedAt: new Date(),
-      passwordHash: PASSWORD_HASH,
     },
   });
   await prisma.organizationMembership.create({

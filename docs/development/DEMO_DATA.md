@@ -200,7 +200,7 @@ The target must hold exactly the committed migrations and the table set they
 produce (`apps/api/src/demo/demo-schema.ts`; `demo-schema.test.ts` re-derives it
 from the migration SQL). The database is Native directly from its migrations
 (`ADR-045`): seeding writes the demo users together with one Better Auth
-credential account each (no `users.password_hash` write, no cutover step), and
+credential account each (`users` has no hash column; no cutover step), and
 every other Better Auth table must be empty. Seeding is optional for
 the AWS Academy demo (`infra/learner-lab/README.md`). To verify seeding and a
 Native sign-in of a seeded user on a receipt-owned disposable

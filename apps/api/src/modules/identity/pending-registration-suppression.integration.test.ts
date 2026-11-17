@@ -329,7 +329,6 @@ describe("isolated D3 PostgreSQL delivery-suppressed registration", () => {
       const user = await prisma.user.create({
         data: {
           email: address,
-          passwordHash: hash,
           status,
           emailVerified: verified,
           ...(verified ? { emailVerifiedAt: new Date() } : {}),

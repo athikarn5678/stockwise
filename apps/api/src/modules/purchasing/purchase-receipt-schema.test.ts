@@ -23,7 +23,7 @@ async function fixture(label: string) {
     data: { code: `${label}-BR`, name: label, organizationId: organization.id },
   });
   const user = await prisma.user.create({
-    data: { email: `${randomUUID()}@example.com`, passwordHash: "schema-test" },
+    data: { email: `${randomUUID()}@example.com` },
   });
   const membership = await prisma.organizationMembership.create({
     data: { organizationId: organization.id, role: "OWNER", userId: user.id },

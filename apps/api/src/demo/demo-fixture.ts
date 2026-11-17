@@ -209,10 +209,9 @@ export async function buildDemoFixture(password: string) {
     createdAt: bootstrap,
     updatedAt: bootstrap,
   }));
-  const userRows: Prisma.UserCreateManyInput[] = users.map((user, index) => ({
+  const userRows: Prisma.UserCreateManyInput[] = users.map((user) => ({
     id: userId(user.email),
     email: user.email,
-    passwordHash: passwordHashes[index]!,
     status: "ACTIVE",
     displayName: user.name,
     phone: null,
@@ -926,10 +925,17 @@ export async function buildDemoFixture(password: string) {
   )
     throw new Error("Demo fixture counts drifted from stockwise-demo-v1.");
 
+  // One Argon2id verifier per demo user: stored only as the Better Auth
+  // credential account password (users has no hash column).
+  const credentials = users.map((user, index) => ({
+    userId: userId(user.email),
+    passwordHash: passwordHashes[index]!,
+  }));
   return {
     organization,
     branchRows,
     userRows,
+    credentials,
     memberships,
     assignments,
     onboarding,

@@ -74,7 +74,6 @@ describe("self-profile PostgreSQL integration", () => {
         displayName: null,
         email,
         emailVerifiedAt: new Date(NOW.getTime() - 1_000),
-        passwordHash: "$argon2id$fixture",
         phone,
       },
     });
@@ -165,7 +164,6 @@ describe("self-profile PostgreSQL integration", () => {
     );
     expect(current.email).toBe(user.email);
     expect(current.phone).toBe("+66 1 234 5678");
-    expect(current.passwordHash).toBe(user.passwordHash);
     expect(current.credentialVersion).toBe(user.credentialVersion);
     expect(current.passwordChangedAt).toEqual(user.passwordChangedAt);
     expect(current.emailVerifiedAt).toEqual(user.emailVerifiedAt);

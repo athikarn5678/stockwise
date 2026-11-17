@@ -22,8 +22,6 @@ import { isBranchActiveAt } from "./branch-status-history.ts";
 const environment = loadTestDatabaseEnvironment();
 const prisma = createTestPrismaClient(environment);
 const NOW = new Date();
-const PASSWORD_HASH_FIXTURE =
-  "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$c2NoZW1hLXRlc3Q";
 const DAY_MILLISECONDS = 86_400_000;
 const configuration: SessionConfiguration = {
   absoluteTimeoutMilliseconds: 7 * DAY_MILLISECONDS,
@@ -37,7 +35,6 @@ async function user(email: string) {
     data: {
       email,
       emailVerifiedAt: NOW,
-      passwordHash: PASSWORD_HASH_FIXTURE,
     },
   });
 }

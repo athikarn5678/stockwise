@@ -43,7 +43,6 @@ async function actor(organizationId: string, role: Role, branchId?: string) {
     data: {
       email: `${randomUUID()}@example.test`,
       emailVerifiedAt: now,
-      passwordHash: "insight-api-test",
     },
   });
   await prisma.organizationMembership.create({

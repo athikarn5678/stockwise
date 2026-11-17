@@ -29,7 +29,6 @@ async function createInventoryFixture(label: string) {
   const user = await prisma.user.create({
     data: {
       email: `${label.toLowerCase()}@example.com`,
-      passwordHash: "not-a-real-password-hash",
     },
   });
   const membership = await prisma.organizationMembership.create({
@@ -253,7 +252,6 @@ describe("inventory database schema", () => {
     const otherUser = await prisma.user.create({
       data: {
         email: "actor-mismatch@example.com",
-        passwordHash: "not-a-real-password-hash",
       },
     });
 

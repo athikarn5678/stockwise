@@ -97,8 +97,6 @@ describe("isolated D3 PostgreSQL pending registration", () => {
         providerId_accountId: { providerId: "credential", accountId: user.id },
       },
     });
-    expect(user.passwordHash).not.toBe(hash);
-    expect(await verifyPassword(user.passwordHash, PASSWORD)).toBe(false);
     expect(account.password).toBe(hash);
     expect(await verifyPassword(account.password!, PASSWORD)).toBe(true);
     expect(await verifyPassword(account.password!, PASSWORD.trim())).toBe(
@@ -380,7 +378,6 @@ describe("isolated D3 PostgreSQL pending registration", () => {
       const user = await prisma.user.create({
         data: {
           email: address,
-          passwordHash: hash,
           status,
           ...(status === "DISABLED" ? { disabledAt: new Date() } : {}),
         },
@@ -492,7 +489,7 @@ describe("isolated D3 PostgreSQL pending registration", () => {
   it("rejects enrollment if a legacy user appeared after staging", async () => {
     const row = await stage();
     const user = await prisma.user.create({
-      data: { email: row.email, passwordHash: hash },
+      data: { email: row.email },
     });
     expect(await complete(row)).toBe("invalid");
     expect(

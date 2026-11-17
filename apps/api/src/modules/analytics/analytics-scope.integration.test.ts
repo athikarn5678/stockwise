@@ -10,9 +10,6 @@ import { createPrismaAnalyticsScopeRepository } from "./analytics-scope-reposito
 const environment = loadTestDatabaseEnvironment();
 const prisma = createTestPrismaClient(environment);
 const repository = createPrismaAnalyticsScopeRepository(prisma);
-const PASSWORD_HASH_FIXTURE =
-  "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$c2NoZW1hLXRlc3Q";
-
 async function createActor(input: {
   assignedBranchIds?: readonly string[];
   organizationId: string;
@@ -23,7 +20,6 @@ async function createActor(input: {
       displayName: `${input.role} Analytics Actor`,
       email: `${input.role.toLowerCase()}-${crypto.randomUUID()}@example.com`,
       emailVerifiedAt: new Date(),
-      passwordHash: PASSWORD_HASH_FIXTURE,
     },
   });
   await prisma.organizationMembership.create({

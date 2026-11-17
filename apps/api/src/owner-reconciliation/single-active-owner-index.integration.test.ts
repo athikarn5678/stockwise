@@ -38,7 +38,6 @@ async function member(
       displayName: "x",
       email,
       emailVerifiedAt: T0,
-      passwordHash: "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$c2NoZW1hLXRlc3Q",
     },
   });
   const row = await prisma.organizationMembership.create({

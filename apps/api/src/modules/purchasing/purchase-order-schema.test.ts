@@ -8,8 +8,6 @@ import { loadTestDatabaseEnvironment } from "../../test/database-environment.ts"
 
 const environment = loadTestDatabaseEnvironment();
 const prisma = createTestPrismaClient(environment);
-const PASSWORD_HASH = "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$c2NoZW1hLXRlc3Q";
-
 async function fixture() {
   const organization = await prisma.organization.create({
     data: { name: "Purchasing Organization" },
@@ -21,7 +19,6 @@ async function fixture() {
     data: {
       email: `purchasing-${crypto.randomUUID()}@example.com`,
       emailVerifiedAt: new Date(),
-      passwordHash: PASSWORD_HASH,
     },
   });
   const membership = await prisma.organizationMembership.create({
@@ -31,7 +28,6 @@ async function fixture() {
     data: {
       email: `other-purchasing-${crypto.randomUUID()}@example.com`,
       emailVerifiedAt: new Date(),
-      passwordHash: PASSWORD_HASH,
     },
   });
   const otherMembership = await prisma.organizationMembership.create({

@@ -545,4 +545,40 @@ describe("API environment boundary", () => {
     expect(error).toBeDefined();
     expect(String(error)).not.toContain(verificationOtpKey);
   });
+
+  it("accepts only a Stripe test-mode secret key without echoing it", () => {
+    const base = {
+      DATABASE_URL:
+        "postgresql://local-user:local-password@127.0.0.1:5432/local-database",
+      STOCKWISE_API_PORT: "3001",
+      STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: analyticsKey,
+      STOCKWISE_PUBLIC_WEB_ORIGIN: "http://localhost:3000/",
+      STOCKWISE_RUNTIME_ENV: "development",
+      ...verificationKeys,
+    };
+    expect(
+      loadApiEnvironment({ ...base, STRIPE_SECRET_KEY: "sk_test_abc123" })
+        .STRIPE_SECRET_KEY,
+    ).toBe("sk_test_abc123");
+    // Absent is fine: billing is then hidden rather than fatal.
+    expect(loadApiEnvironment(base).STRIPE_SECRET_KEY).toBeUndefined();
+
+    for (const secretKey of [
+      "sk_live_abc123",
+      "pk_test_abc123",
+      "rk_test_abc123",
+      "sk_test_abc-123",
+      "",
+    ]) {
+      let error: unknown;
+      try {
+        loadApiEnvironment({ ...base, STRIPE_SECRET_KEY: secretKey });
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).toBeDefined();
+      // An empty value has nothing to leak; every rejected key stays hidden.
+      if (secretKey !== "") expect(String(error)).not.toContain(secretKey);
+    }
+  });
 });

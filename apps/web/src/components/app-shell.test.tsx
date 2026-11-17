@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -12,6 +13,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import HomePage from "@/app/page";
+import { BILLING_CHANGED_EVENT } from "@/billing-api-client";
 import { fetchAccessContext } from "@/branch-api-client";
 import { RegistrationForm } from "@/components/auth/registration-form";
 import { VerificationForm } from "@/components/auth/verification-form";
@@ -266,8 +268,10 @@ describe("web application shell", () => {
     "opens authenticated Home from %s without showing public auth content",
     async (path) => {
       pathname = path;
-      vi.mocked(fetch).mockResolvedValue(
-        new Response(JSON.stringify({ data: accessContext() })),
+      // A fresh Response per call: a body can be read only once, and the
+      // shell's silent billing request may share this stub.
+      vi.mocked(fetch).mockImplementation(
+        async () => new Response(JSON.stringify({ data: accessContext() })),
       );
       renderShell(accessContext(), <p>Public authentication form</p>);
       expect(screen.queryByText("Public authentication form")).toBeNull();
@@ -598,5 +602,67 @@ describe("web application shell", () => {
     await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
     expect(screen.getByRole("link", { name: "Sign in" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Log out" })).toBeNull();
+  });
+
+  it("shows the plan badge and Billing navigation for an owner with billing enabled", async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith(`/organizations/${ORG}/billing`))
+        return new Response(
+          JSON.stringify({
+            data: {
+              canManage: true,
+              enabled: true,
+              subscription: { plan: "STARTER", status: "ACTIVE" },
+            },
+          }),
+        );
+      return new Response(JSON.stringify({ error: { code: "NOT_FOUND" } }), {
+        status: 404,
+      });
+    });
+    renderShell(accessContext());
+    expect(await screen.findByText("Starter")).toBeTruthy();
+    const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+    expect(
+      within(nav).getByRole("link", { name: "Billing" }).getAttribute("href"),
+    ).toBe(`/app/billing?organizationId=${ORG}&branchId=${BRANCH}`);
+  });
+
+  it("refetches the plan badge when a subscription is confirmed", async () => {
+    let subscription: { plan: string; status: string } | null = null;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith(`/organizations/${ORG}/billing`))
+        return new Response(
+          JSON.stringify({
+            data: { canManage: true, enabled: true, subscription },
+          }),
+        );
+      return new Response(JSON.stringify({ error: { code: "NOT_FOUND" } }), {
+        status: 404,
+      });
+    });
+    renderShell(accessContext());
+    await screen.findByRole("link", { name: "Billing" });
+    expect(screen.queryByText("Growth")).toBeNull();
+    subscription = { plan: "GROWTH", status: "ACTIVE" };
+    act(() => {
+      window.dispatchEvent(new Event(BILLING_CHANGED_EVENT));
+    });
+    expect(await screen.findByText("Growth")).toBeTruthy();
+  });
+
+  it("keeps a failed billing read silent: no badge, no Billing link, no error", async () => {
+    vi.mocked(fetch).mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ error: { code: "FORBIDDEN" } }), {
+          status: 403,
+        }),
+    );
+    renderShell(accessContext());
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    expect(screen.queryByText("Starter")).toBeNull();
+    const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+    expect(within(nav).queryByRole("link", { name: "Billing" })).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

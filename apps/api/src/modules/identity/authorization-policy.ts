@@ -32,6 +32,7 @@ export const PERMISSIONS = {
   FORECAST_REORDER_VIEW: "forecast-reorder.view",
   AI_BUSINESS_SUMMARY_VIEW: "ai-business-summary.view",
   ORGANIZATION_SETTINGS_MANAGE: "organization-settings.manage",
+  BILLING_MANAGE: "billing.manage",
   BRANCH_MANAGE: "branch.manage",
   MEMBERSHIP_VIEW: "membership.view",
   NON_OWNER_MEMBERSHIP_MANAGE: "membership.non-owner.manage",
@@ -199,6 +200,10 @@ const PERMISSION_RULES = {
   },
   [PERMISSIONS.ORGANIZATION_SETTINGS_MANAGE]: {
     roles: ORGANIZATION_ADMINISTRATION_ROLES,
+    scope: "organization",
+  },
+  [PERMISSIONS.BILLING_MANAGE]: {
+    roles: OWNER_ONLY_ROLES,
     scope: "organization",
   },
   [PERMISSIONS.BRANCH_MANAGE]: {

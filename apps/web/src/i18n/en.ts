@@ -84,6 +84,38 @@ export const en = {
   organizationSettingsRetry: "Try again",
   organizationSettingsDenied:
     "You do not have permission to manage this organization.",
+  billing: "Billing",
+  billingDescription: "Manage your organization's monthly subscription.",
+  billingLoading: "Loading billing…",
+  billingLoadError: "Billing could not be loaded. Please try again.",
+  billingRetry: "Try again",
+  billingDenied: "Only the organization owner can manage billing.",
+  billingUnavailable: "Billing is not available right now.",
+  billingPerMonth: "per month",
+  billingSubscribe: "Subscribe",
+  billingSubscribing: "Opening secure checkout…",
+  billingCurrentPlan: "Current plan: {plan} ({status})",
+  billingPlanStarter: "Starter",
+  billingPlanGrowth: "Growth",
+  billingPlanBusiness: "Business",
+  billingStatusActive: "Active",
+  billingStatusPastDue: "Past due",
+  billingStatusCanceled: "Canceled",
+  billingCanceledNote: "Checkout was canceled. Nothing was charged.",
+  billingConfirming: "Confirming your subscription…",
+  billingConfirmed: "Subscription active: {plan}",
+  billingErrCheckout: "Checkout could not be started. Please try again.",
+  billingErrUntrustedRedirect:
+    "The checkout address was not recognized, so the payment page was not opened.",
+  billingErrConfirmForbidden:
+    "This checkout does not belong to your organization.",
+  billingErrConflict: "This organization already has a subscription.",
+  billingErrNotComplete:
+    "The payment is not complete yet. Finish checkout and try again.",
+  billingErrProvider:
+    "The payment provider is unavailable right now. Please try again later.",
+  billingErrConfirm:
+    "The subscription could not be confirmed. Please try again.",
   organizationSettingsUnsavedConfirm:
     "You have unsaved changes. Leave this page?",
   organizationSettingsSaved: "Organization name saved.",

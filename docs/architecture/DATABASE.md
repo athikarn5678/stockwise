@@ -1680,6 +1680,8 @@ The implementation may choose row locking, conditional/versioned updates, atomic
 
 `demo_dataset_runs` (one row per synthetic demo organization): `organization_id` PK/FK (restrict), `name`, `signature` (sha256 of the deterministic plan inputs), `plan` jsonb, `state` (`IN_PROGRESS`|`COMPLETE`), `baseline` jsonb, `history_digest`, `completed_at`. A check ties COMPLETE to a non-null baseline/digest/time; a trigger permits INSERT only as IN_PROGRESS, only IN_PROGRESS to COMPLETE without changing identity or plan, and forbids deleting any row. Written only by the operator `provision-demo` action; `stockwise_app` has SELECT only (`infra/learner-lab/db/grants.sql`, fail-closed). Additive and forward-only; the application ignores the table unless a COMPLETE row exists.
 
+`organization_subscriptions` (ADR-047; one row per Organization, Stripe test mode): `organization_id` unique/FK (restrict), `plan` (`subscription_plan`: STARTER|GROWTH|BUSINESS), `status` (`subscription_status`: ACTIVE|PAST_DUE|CANCELED; only ACTIVE is written until webhooks exist), `stripe_customer_id`, `stripe_subscription_id` (unique), `stripe_checkout_session_id` (unique), timestamps. CHECKs pin the `cus_`/`sub_`/`cs_test_` prefixes. Stripe ids are references, not credentials. Additive and forward-only; written only by the OWNER-only confirm endpoint.
+
 ## 9. Index plan by access pattern
 
 Indexes must be validated against actual queries and PostgreSQL plans; do not add every possible index.

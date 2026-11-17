@@ -14,7 +14,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useLanguage } from "@/providers/language-provider";
 
-const plans = [
+export const plans = [
   {
     name: "Starter",
     audience: "pricingStarterAudience",

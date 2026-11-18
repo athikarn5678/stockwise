@@ -8,7 +8,6 @@ import {
   type InfiniteData,
 } from "@tanstack/react-query";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import {
@@ -22,9 +21,7 @@ import {
   type AiAnalysisRunPage,
   type AiAnalysisScope,
 } from "@/ai-analysis-api-client";
-import { resolveApplicationContext } from "@/application-context";
 import {
-  fetchAccessContext,
   fetchBranches,
   type AccessibleOrganization,
 } from "@/branch-api-client";
@@ -49,7 +46,7 @@ const LANGUAGE_LABELS: Record<AiAnalysisLanguage, TranslationKey> = {
 };
 
 /** Same roles the API authorizes for the three insight permissions. */
-function mayAnalyze(organization: AccessibleOrganization) {
+export function mayAnalyze(organization: AccessibleOrganization) {
   if (organization.role === "OWNER" || organization.role === "ADMIN")
     return true;
   return (
@@ -77,53 +74,6 @@ function errorKey(error: unknown): TranslationKey {
     if (error.status === 502) return "aiAnalyzeErrProvider";
   }
   return "aiAnalyzeErrLoad";
-}
-
-export function AiAnalysisPage() {
-  const { t } = useLanguage();
-  const searchParams = useSearchParams();
-  const organizationId = searchParams.get("organizationId");
-  const accessQuery = useQuery({
-    queryKey: ["access-context"],
-    queryFn: ({ signal }) => fetchAccessContext({ signal }),
-    retry: false,
-  });
-  const organization =
-    organizationId && accessQuery.data
-      ? resolveApplicationContext(
-          accessQuery.data,
-          organizationId,
-          searchParams.get("branchId"),
-        ).organization
-      : null;
-
-  if (accessQuery.isPending)
-    return <p aria-live="polite">{t("aiAnalysisLoadingPage")}</p>;
-  if (accessQuery.isError)
-    return (
-      <section className="w-full max-w-2xl space-y-4">
-        <p role="alert">{t("aiAnalysisLoadError")}</p>
-        <Button type="button" onClick={() => void accessQuery.refetch()}>
-          {t("accessRetry")}
-        </Button>
-      </section>
-    );
-  if (!organization) return <p role="alert">{t("aiAnalysisLoadError")}</p>;
-  if (!mayAnalyze(organization))
-    return <p role="alert">{t("aiAnalysisNotPermitted")}</p>;
-
-  return (
-    <AiAnalysisContent
-      key={organization.id}
-      organization={organization}
-      selectedBranchId={searchParams.get("branchId")}
-    />
-  );
-}
-
-export function AiAnalysisPageFallback() {
-  const { t } = useLanguage();
-  return <p aria-live="polite">{t("aiAnalysisLoadingPage")}</p>;
 }
 
 export function AiAnalysisContent({
@@ -236,7 +186,7 @@ export function AiAnalysisContent({
   return (
     <section aria-label={t("aiAnalysisTitle")} className="w-full space-y-6">
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold">{t("aiAnalysisTitle")}</h1>
+        <h2 className="text-xl font-semibold">{t("aiAnalysisTitle")}</h2>
         <p className="max-w-3xl text-sm text-muted-foreground">
           {t("aiAnalysisIntro")}
         </p>

@@ -17,9 +17,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AnalyticsManagement } from "./analytics-management";
 import { chooseOptionByValue, expectSelectValue } from "@/test/select-helpers";
 
+let viewParam = "";
 vi.mock("next/navigation", () => ({
   useSearchParams: () =>
-    new URLSearchParams(`organizationId=${ORG}&branchId=${BRANCH}`),
+    new URLSearchParams(`organizationId=${ORG}&branchId=${BRANCH}${viewParam}`),
 }));
 vi.mock("recharts", () => ({
   CartesianGrid: () => null,
@@ -349,6 +350,7 @@ function renderPage(localized = false) {
 }
 
 beforeEach(() => {
+  viewParam = "";
   costMoney = "2.0000000000";
   requests = [];
   role = "OWNER";
@@ -368,6 +370,49 @@ afterEach(() => {
 });
 
 describe("analytics management", () => {
+  it("places the AI analysis tab directly after AI insights for an owner", async () => {
+    renderPage();
+    const tabs = await screen.findByRole("navigation", {
+      name: "Analytics views",
+    });
+    const labels = Array.from(tabs.querySelectorAll("button")).map(
+      (button) => button.textContent,
+    );
+    const insights = labels.indexOf("AI insights");
+    expect(insights).toBeGreaterThan(-1);
+    expect(labels[insights + 1]).toBe("AI analysis");
+  });
+
+  it("does not offer the AI analysis tab to inventory staff", async () => {
+    role = "INVENTORY_STAFF";
+    renderPage();
+    await screen.findByRole("navigation", { name: "Analytics views" });
+    expect(screen.queryByRole("button", { name: "AI analysis" })).toBeNull();
+  });
+
+  it("opens the AI analysis tab from the legacy route's view parameter", async () => {
+    viewParam = "&view=ai-analysis";
+    renderPage();
+    expect(
+      await screen.findByRole("button", { name: "Generate analysis" }),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "AI analysis" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("ignores view=ai-analysis for a role that may not analyse", async () => {
+    viewParam = "&view=ai-analysis";
+    role = "INVENTORY_STAFF";
+    renderPage();
+    await screen.findByRole("navigation", { name: "Analytics views" });
+    expect(
+      screen.queryByRole("button", { name: "Generate analysis" }),
+    ).toBeNull();
+  });
+
   it("formats exact cost metrics with grouping and meaningful extra digits", async () => {
     salesCost = true;
     costMoney = "9007199254740993.1230000000";

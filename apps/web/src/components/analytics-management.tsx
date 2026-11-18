@@ -40,6 +40,7 @@ import {
 } from "@/analytics-api-client";
 import { formatThb } from "@/money-display";
 import { resolveApplicationContext } from "@/application-context";
+import { AiAnalysisContent, mayAnalyze } from "@/components/ai-analysis-page";
 import { AiInsightView } from "@/components/ai-insight-view";
 import { InventoryAnalyticsView } from "@/components/inventory-analytics-view";
 import { ForecastReorderView } from "@/components/forecast-reorder-view";
@@ -54,7 +55,8 @@ type View =
   | "branches"
   | "inventory"
   | "forecast-reorder"
-  | "insights";
+  | "insights"
+  | "ai-analysis";
 
 function initialPeriod(): AnalyticsPeriod {
   const today = new Date();
@@ -560,15 +562,18 @@ export function AnalyticsManagement() {
       key={`${resolved.organization.id}:${resolved.organization.role}:${resolved.organization.branches.map((branch) => branch.id).join(",")}`}
       organization={resolved.organization}
       selectedBranchId={resolved.branch?.id ?? null}
+      requestedView={searchParams.get("view")}
     />
   );
 }
 
 function AnalyticsContent({
   organization,
+  requestedView,
   selectedBranchId,
 }: {
   organization: AccessibleOrganization;
+  requestedView: string | null;
   selectedBranchId: string | null;
 }) {
   const { t } = useLanguage();
@@ -577,8 +582,15 @@ function AnalyticsContent({
     useState<AnalyticsPeriod>(initialPeriod);
   const [period, setPeriod] = useState<AnalyticsPeriod>(draftPeriod);
   const [scopeValue, setScopeValue] = useState("organization");
+  const canAnalyze = mayAnalyze(organization);
   const [view, setView] = useState<View>(
-    organization.role === "INVENTORY_STAFF" ? "inventory" : "sales",
+    // `?view=ai-analysis` (the old /app/ai-analysis route) opens that tab, but
+    // only for roles that may see it.
+    requestedView === "ai-analysis" && canAnalyze
+      ? "ai-analysis"
+      : organization.role === "INVENTORY_STAFF"
+        ? "inventory"
+        : "sales",
   );
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
   const [categoryReset, setCategoryReset] = useState(0);
@@ -650,7 +662,11 @@ function AnalyticsContent({
         {t("uiAnalyticsFor")} {organization.name}.
       </p>
       <form
-        hidden={view === "forecast-reorder" || view === "insights"}
+        hidden={
+          view === "forecast-reorder" ||
+          view === "insights" ||
+          view === "ai-analysis"
+        }
         className="rounded-lg border bg-card p-4 sm:p-5"
         onSubmit={(event) => {
           event.preventDefault();
@@ -742,6 +758,7 @@ function AnalyticsContent({
               "inventory",
               "forecast-reorder",
               "insights",
+              ...(canAnalyze ? (["ai-analysis"] as const) : []),
             ] as const)
         ).map((item) => (
           <Button
@@ -761,11 +778,19 @@ function AnalyticsContent({
                     ? t("inventoryTitle")
                     : item === "insights"
                       ? t("aiTitle")
-                      : t("uiForecastReorder")}
+                      : item === "ai-analysis"
+                        ? t("aiAnalysis")
+                        : t("uiForecastReorder")}
           </Button>
         ))}
       </nav>
-      {view === "insights" ? (
+      {view === "ai-analysis" ? (
+        <AiAnalysisContent
+          key={selectedBranchId ?? ""}
+          organization={organization}
+          selectedBranchId={selectedBranchId}
+        />
+      ) : view === "insights" ? (
         <AiInsightView
           key={selectedBranchId ?? ""}
           organization={organization}

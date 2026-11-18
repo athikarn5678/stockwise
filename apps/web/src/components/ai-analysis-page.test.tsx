@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AiAnalysisRun } from "@/ai-analysis-api-client";
 import type { AccessibleOrganization } from "@/branch-api-client";
-import { AiAnalysisContent, AiAnalysisPage } from "./ai-analysis-page";
+import { AiAnalysisContent, mayAnalyze } from "./ai-analysis-page";
 
 const ORG = "10000000-0000-4000-8000-000000000001";
 const A = "20000000-0000-4000-8000-000000000001";
@@ -128,17 +128,6 @@ function page(items: AiAnalysisRun[], nextCursor: string | null = null) {
   return { data: items, meta: { nextCursor } };
 }
 
-function renderPage() {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  render(
-    <QueryClientProvider client={client}>
-      <AiAnalysisPage />
-    </QueryClientProvider>,
-  );
-}
-
 function renderContent(input?: {
   role?: AccessibleOrganization["role"];
   selectedBranchId?: string | null;
@@ -202,50 +191,14 @@ afterEach(() => {
   Reflect.deleteProperty(Element.prototype, "scrollIntoView");
 });
 
-describe("AI analysis page access", () => {
-  it("tells a cashier that the page is not available", async () => {
-    searchParams.set("organizationId", ORG);
-    mocks.fetchAccessContext.mockResolvedValue({
-      firstOrganizationOnboarding: { eligible: false },
-      organizations: [
-        {
-          branches: [{ code: "A", id: A, name: "Alpha" }],
-          id: ORG,
-          name: "Store One",
-          role: "CASHIER",
-        },
-      ],
-      user: { displayName: "Cashier", id: "user-id" },
-    });
-    renderPage();
-    expect(await screen.findByRole("alert")).toHaveProperty(
-      "textContent",
-      "AI analysis is available to owners, admins, and branch managers with an assigned branch.",
-    );
-    expect(
-      screen.queryByRole("button", { name: "Generate analysis" }),
-    ).toBeNull();
-    expect(mocks.listRuns).not.toHaveBeenCalled();
-  });
-
-  it("lets a branch manager with an assigned branch analyse", async () => {
-    searchParams.set("organizationId", ORG);
-    mocks.fetchAccessContext.mockResolvedValue({
-      firstOrganizationOnboarding: { eligible: false },
-      organizations: [
-        {
-          branches: [{ code: "A", id: A, name: "Alpha" }],
-          id: ORG,
-          name: "Store One",
-          role: "BRANCH_MANAGER",
-        },
-      ],
-      user: { displayName: "Manager", id: "user-id" },
-    });
-    renderPage();
-    expect(
-      await screen.findByRole("button", { name: "Generate analysis" }),
-    ).toBeTruthy();
+describe("AI analysis access rule", () => {
+  it("allows owners, admins and branch managers with a branch only", () => {
+    expect(mayAnalyze(organization("OWNER"))).toBe(true);
+    expect(mayAnalyze(organization("ADMIN"))).toBe(true);
+    expect(mayAnalyze(organization("BRANCH_MANAGER"))).toBe(true);
+    expect(mayAnalyze(organization("BRANCH_MANAGER", []))).toBe(false);
+    expect(mayAnalyze(organization("INVENTORY_STAFF"))).toBe(false);
+    expect(mayAnalyze(organization("CASHIER"))).toBe(false);
   });
 });
 

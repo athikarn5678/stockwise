@@ -62,6 +62,10 @@ export const th: Dictionary = {
   light: "สว่าง",
   dark: "มืด",
   language: "ภาษา",
+  settingsTitle: "ตั้งค่า",
+  settingsDescription:
+    "จัดการโปรไฟล์ของคุณ และข้อมูลองค์กร (สำหรับเจ้าของและผู้ดูแล)",
+  settingsLoading: "กำลังโหลดการตั้งค่า…",
   profileTitle: "โปรไฟล์ของฉัน",
   profileDescription: "จัดการชื่อและหมายเลขโทรศัพท์ในบัญชีของคุณ",
   profileLoading: "กำลังโหลดโปรไฟล์…",

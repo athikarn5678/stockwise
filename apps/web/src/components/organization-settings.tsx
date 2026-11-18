@@ -19,7 +19,11 @@ import { useSessionLifecycle } from "@/providers/session-lifecycle-provider";
 import { useLanguage } from "@/providers/language-provider";
 import { useSubscriptionWriteGate } from "@/providers/subscription-provider";
 
-export function OrganizationSettings() {
+export function OrganizationSettings({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
   const { t } = useLanguage();
   const searchParams = useSearchParams();
   const organizationId = searchParams.get("organizationId");
@@ -47,6 +51,7 @@ export function OrganizationSettings() {
 
   return (
     <OrganizationEditor
+      embedded={embedded}
       key={organization.id}
       organizationId={organization.id}
     />
@@ -70,8 +75,15 @@ function AccessError({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-function OrganizationEditor({ organizationId }: { organizationId: string }) {
+function OrganizationEditor({
+  embedded,
+  organizationId,
+}: {
+  embedded: boolean;
+  organizationId: string;
+}) {
   const { t } = useLanguage();
+  const Heading = embedded ? "h2" : "h1";
   const { writeBlocked } = useSubscriptionWriteGate();
   const queryClient = useQueryClient();
   const settingsQuery = useQuery({
@@ -292,11 +304,17 @@ function OrganizationEditor({ organizationId }: { organizationId: string }) {
     );
 
   return (
-    <section className="w-full max-w-2xl space-y-6">
+    <section
+      className={embedded ? "w-full space-y-6" : "w-full max-w-2xl space-y-6"}
+    >
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold">
+        <Heading
+          className={
+            embedded ? "text-xl font-semibold" : "text-2xl font-semibold"
+          }
+        >
           {t("organizationSettingsTitle")}
-        </h1>
+        </Heading>
         <p className="text-muted-foreground">
           {t("organizationSettingsDescription")}
         </p>

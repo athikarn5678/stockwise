@@ -62,6 +62,10 @@ export const en = {
   language: "Language",
   footerDescription: "Inventory, sales, and a clearer view of your business.",
   footerNote: "Built for small and medium-sized retailers.",
+  settingsTitle: "Settings",
+  settingsDescription:
+    "Manage your profile and, if you are an owner or admin, your organization.",
+  settingsLoading: "Loading settings…",
   profileTitle: "My profile",
   profileDescription: "Manage the name and phone number on your account.",
   profileLoading: "Loading your profile…",

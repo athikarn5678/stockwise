@@ -31,7 +31,6 @@ import {
   Store,
   Users,
   Truck,
-  UserRound,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -386,7 +385,7 @@ function WorkspaceShell({ children }: AppShellProps) {
     organization?.role === "OWNER" || organization?.role === "ADMIN";
   const destinations = [
     { label: t("home"), path: "/app", visible: true },
-    { label: t("profileTitle"), path: "/app/profile", visible: true },
+    { label: t("settingsTitle"), path: "/app/settings", visible: true },
   ];
   if (organization) {
     destinations.push(
@@ -436,11 +435,6 @@ function WorkspaceShell({ children }: AppShellProps) {
       },
       { label: t("branches"), path: "/app/branches", visible: canManage },
       { label: t("members"), path: "/app/members", visible: canManage },
-      {
-        label: t("organizationSettingsTitle"),
-        path: "/app/organization-settings",
-        visible: canManage,
-      },
     );
   }
 
@@ -476,7 +470,8 @@ function WorkspaceShell({ children }: AppShellProps) {
         <Fragment
           key={
             context &&
-            (pathname === "/app/profile" ||
+            (pathname === "/app/settings" ||
+              pathname === "/app/profile" ||
               pathname === "/app/organization-settings")
               ? accountDraftAuthority(context)
               : "content"
@@ -567,8 +562,7 @@ const destinationIcons: Record<string, LucideIcon> = {
   "/app/purchase-orders": ClipboardList,
   "/app/branches": Store,
   "/app/members": Users,
-  "/app/profile": UserRound,
-  "/app/organization-settings": Settings,
+  "/app/settings": Settings,
 };
 
 function WorkspaceHeader({ title }: { title: string }) {

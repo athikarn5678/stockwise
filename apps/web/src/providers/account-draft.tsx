@@ -40,29 +40,33 @@ export interface AccountDraftStore {
   ): void;
 }
 
-// One route-owned unsaved form, not a private-query cache. Only a soft
-// revalidation may hand it to a new component after fresh authority matches.
+// Route-owned unsaved forms, one entry per scope (the Settings page holds the
+// profile and the organization form at once). Not a private-query cache. Only a
+// soft revalidation may hand an entry to a new component after fresh authority
+// matches.
 export function createAccountDraftStore(): AccountDraftStore {
-  let entry: { scope: string; authority: string; value: AccountDraft } | null =
-    null;
+  const entries = new Map<string, { authority: string; value: AccountDraft }>();
   return {
     clear() {
-      entry = null;
+      entries.clear();
     },
     reconcile(context: AccessContext | null) {
-      if (
-        !context ||
-        (entry && entry.authority !== accountDraftAuthority(context))
-      )
-        entry = null;
+      if (!context) {
+        entries.clear();
+        return;
+      }
+      const authority = accountDraftAuthority(context);
+      for (const [scope, entry] of entries)
+        if (entry.authority !== authority) entries.delete(scope);
     },
     read(
       scope: string,
       context: AccessContext | undefined,
     ): AccountDraft | null {
-      if (!context || entry?.scope !== scope) return null;
+      const entry = entries.get(scope);
+      if (!context || entry === undefined) return null;
       if (entry.authority !== accountDraftAuthority(context)) {
-        entry = null;
+        entries.delete(scope);
         return null;
       }
       return entry.value;
@@ -72,11 +76,15 @@ export function createAccountDraftStore(): AccountDraftStore {
       context: AccessContext | undefined,
       value: AccountDraft | null,
     ) {
-      if (!context || !value) {
-        entry = null;
+      if (!context) {
+        entries.clear();
         return;
       }
-      entry = { scope, authority: accountDraftAuthority(context), value };
+      if (!value) {
+        entries.delete(scope);
+        return;
+      }
+      entries.set(scope, { authority: accountDraftAuthority(context), value });
     },
   };
 }

@@ -358,3 +358,31 @@ it("ACCOUNT-F1 clears actor A caches and fences a delayed save before mounting a
   );
   expect(accountClient.getQueryData(["self-profile"])).toEqual(b);
 });
+
+it("keeps the profile and the organization draft side by side (Settings page)", () => {
+  const store = createAccountDraftStore();
+  const current = context();
+  const profileDraft = {
+    displayName: "Edited",
+    phone: "",
+    saved: { displayName: "Saved name", phone: "" },
+    baseUpdatedAt: "2026-10-25T01:00:00.000Z",
+  };
+  const organizationDraft = {
+    name: "Draft",
+    savedName: "Store",
+    baseUpdatedAt: "2026-10-25T01:00:00.000Z",
+  };
+  store.write("profile", current, profileDraft);
+  store.write("organization:one", current, organizationDraft);
+  // Writing one scope never drops the other.
+  expect(store.read("profile", current)).toBe(profileDraft);
+  expect(store.read("organization:one", current)).toBe(organizationDraft);
+  // Saving the organization form clears only its own draft.
+  store.write("organization:one", current, null);
+  expect(store.read("organization:one", current)).toBeNull();
+  expect(store.read("profile", current)).toBe(profileDraft);
+  // A different actor drops every entry.
+  store.reconcile(context(actorB));
+  expect(store.read("profile", context(actorB))).toBeNull();
+});

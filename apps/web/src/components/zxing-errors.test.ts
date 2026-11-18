@@ -1,7 +1,11 @@
 import {
   ChecksumException,
   FormatException,
+  IllegalArgumentException,
+  IllegalStateException,
   NotFoundException,
+  ReaderException,
+  ReedSolomonException,
 } from "@zxing/library";
 import { describe, expect, it } from "vitest";
 
@@ -19,6 +23,8 @@ describe("isZxingDecodeException", () => {
       new NotFoundException(),
       new ChecksumException(),
       new FormatException(),
+      new ReaderException(),
+      new ReedSolomonException(),
     ]) {
       expect(isZxingDecodeException(error)).toBe(true);
       expect(isZxingDecodeException(minified(error))).toBe(true);
@@ -28,6 +34,11 @@ describe("isZxingDecodeException", () => {
 
   it("does not treat camera or stream failures as decode exceptions", () => {
     for (const error of [
+      // Real ZXing faults, not empty frames: these still stop the camera.
+      minified(
+        new IllegalArgumentException("Requested row is outside the image"),
+      ),
+      new IllegalStateException(),
       new DOMException("denied", "NotAllowedError"),
       new DOMException("busy", "NotReadableError"),
       new DOMException("gone", "NotFoundError"),

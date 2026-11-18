@@ -7,6 +7,16 @@ import { Prisma, type ProductUnit } from "../generated/prisma/client.ts";
 import { localDateToUtcBoundary } from "../modules/analytics/analytics-period.ts";
 
 export const DEMO_30D_ORGANIZATION = "UAT Demo Siam Mart";
+/**
+ * The presentation organization shows this name. Its id stays derived from
+ * `DEMO_30D_ORGANIZATION` so the deterministic organization id never changes.
+ */
+export const DEMO_PRESENTATION_ORGANIZATION = "Siam Mart";
+/** Names the demo tooling accepts for the deterministic organization. */
+export const DEMO_ORGANIZATION_NAMES: readonly string[] = [
+  DEMO_30D_ORGANIZATION,
+  DEMO_PRESENTATION_ORGANIZATION,
+];
 
 const optionsSchema = z
   .object({
@@ -18,12 +28,8 @@ const optionsSchema = z
 /** Optional widening of the deterministic demo beyond the legacy 30-day shape. */
 export const demoShapeSchema = z
   .object({
-    days: z
-      .number()
-      .int()
-      .min(15)
-      .max(120)
-      .refine((value) => value % 15 === 0),
+    // Three full calendar months plus the days of the run month before today: 89..122.
+    days: z.number().int().min(15).max(123),
     branchLimit: z.number().int().min(1).max(3),
     productLimit: z.number().int().min(3).max(12),
     adjustments: z.boolean(),
@@ -32,13 +38,23 @@ export const demoShapeSchema = z
 
 export type Demo30dShape = z.infer<typeof demoShapeSchema>;
 
-/** Ninety days across three branches and twelve products, plus manual adjustments. */
-export const DEMO_90D_SHAPE: Demo30dShape = {
-  days: 90,
-  branchLimit: 3,
-  productLimit: 12,
-  adjustments: true,
-};
+/**
+ * The presentation window: history starts on the 1st day of the month three full
+ * calendar months before the run month and ends yesterday (`referenceDate` is the
+ * exclusive boundary, so today carries no seeded transaction). Run 2026-11-18
+ * covers 2026-08-01..2026-11-17 (109 days). Three branches, twelve products,
+ * manual adjustments.
+ */
+export function demoWindowShape(referenceDate: string): Demo30dShape {
+  const end = Temporal.PlainDate.from(referenceDate);
+  const start = end.with({ day: 1 }).subtract({ months: 3 });
+  return {
+    days: start.until(end, { largestUnit: "days" }).days,
+    branchLimit: 3,
+    productLimit: 12,
+    adjustments: true,
+  };
+}
 
 export interface Demo30dProduct {
   id: string;
@@ -125,19 +141,19 @@ const DEMO_ADJUSTMENT_TEMPLATES = [
     day: 20,
     delta: "-1",
     reason: "DAMAGE",
-    note: "Synthetic demo: damaged in store",
+    note: "Damaged in store",
   },
   {
     day: 50,
     delta: "2",
     reason: "STOCK_COUNT",
-    note: "Synthetic demo: count found extra",
+    note: "Stock count found extra",
   },
   {
     day: 80,
     delta: "-2",
     reason: "LOSS",
-    note: "Synthetic demo: shrinkage",
+    note: "Shrinkage found at stock count",
   },
 ] as const satisfies readonly Pick<
   Demo30dAdjustment,
@@ -259,39 +275,41 @@ function buildOrders(input: {
     surplus,
   } = input;
   return branches.flatMap((branch) =>
-    Array.from({ length: days / 15 }, (_, k) => k * 15).map((day) => {
-      const date = start.add({ days: day }).toString();
-      return {
-        reference: `${prefix}-po-${branch.code}-${day}`,
-        branchId: branch.id,
-        day,
-        date,
-        at: new Date(
-          localDateToUtcBoundary(date, reportingTimezone).getTime() +
-            8 * 3_600_000,
-        ),
-        items: products.map((product, index) => {
-          const demand = sales
-            .filter(
-              (s) =>
-                s.branchId === branch.id && s.day >= day && s.day < day + 15,
-            )
-            .flatMap((s) => s.items)
-            .filter((i) => i.productId === product.id)
-            .reduce(
-              (sum, item) => sum.plus(item.quantity),
-              new Prisma.Decimal(0),
-            );
-          return {
-            productId: product.id,
-            quantity: demand.plus(surplus({ day, index })).toFixed(4),
-            expectedUnitCost: new Prisma.Decimal(product.basePrice)
-              .div(2)
-              .toFixed(4),
-          };
-        }),
-      };
-    }),
+    Array.from({ length: Math.ceil(days / 15) }, (_, k) => k * 15).map(
+      (day) => {
+        const date = start.add({ days: day }).toString();
+        return {
+          reference: `${prefix}-po-${branch.code}-${day}`,
+          branchId: branch.id,
+          day,
+          date,
+          at: new Date(
+            localDateToUtcBoundary(date, reportingTimezone).getTime() +
+              8 * 3_600_000,
+          ),
+          items: products.map((product, index) => {
+            const demand = sales
+              .filter(
+                (s) =>
+                  s.branchId === branch.id && s.day >= day && s.day < day + 15,
+              )
+              .flatMap((s) => s.items)
+              .filter((i) => i.productId === product.id)
+              .reduce(
+                (sum, item) => sum.plus(item.quantity),
+                new Prisma.Decimal(0),
+              );
+            return {
+              productId: product.id,
+              quantity: demand.plus(surplus({ day, index })).toFixed(4),
+              expectedUnitCost: new Prisma.Decimal(product.basePrice)
+                .div(2)
+                .toFixed(4),
+            };
+          }),
+        };
+      },
+    ),
   );
 }
 
@@ -377,7 +395,11 @@ export function buildDemo30dPlan(input: {
       }),
     )
     .digest("hex");
-  const prefix = `${shape === undefined ? "DEMO30D" : "DEMO90D"}-${signature.slice(0, 24)}`;
+  // The shaped plan feeds user-visible references (PO numbers, transfer references).
+  const prefix =
+    shape === undefined
+      ? `DEMO30D-${signature.slice(0, 24)}`
+      : `SM-${signature.slice(0, 12)}`;
   let state = input.seed >>> 0;
   const random = () => {
     state = (Math.imul(1664525, state) + 1013904223) >>> 0;

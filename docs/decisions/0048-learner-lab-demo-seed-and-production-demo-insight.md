@@ -36,3 +36,16 @@ Demo Insight is served in `STOCKWISE_RUNTIME_ENV=production` only when `STOCKWIS
 - A hosted database can be seeded without Docker, but only while it is empty or demo-only; a real tenant can never be touched.
 - A mis-set variable cannot expose another tenant's data through Demo Insight.
 - The reader still requires `COMPLETE` seed provenance with an unchanged business fingerprint (`ADR-042`), so any live write to the demo organization makes it fail closed (404). The runtime role also needs read access to `stockwise_demo.seed_runs` (infra follow-up owned by Worker C).
+
+## Amendment 2026-11-18: stored seeded reports for the presentation
+
+Owner decision 2026-11-18, M4-S3. The presentation must show a store that looks real, with reports the owner can open one by one. Therefore:
+
+- `demo:seed:90d` now writes **stored** weekly and monthly reports at the end of the seed: `SUCCEEDED` `ai_insight_reports` with their immutable `analytics_snapshots`, for every Monday-Sunday week and every calendar month that lies fully inside the seed window, for the organization scope and for each branch scope. For a run on 2026-11-18 the window is 2026-08-01..2026-11-17 and the seed stores 15 weeks and 3 months over 4 scopes (60 weekly + 12 monthly = 72 reports). The window starts on the 1st day of the month three full calendar months before the run month and ends yesterday; today carries no seeded transaction.
+- They use the existing snapshot and insight job pipeline with a deterministic seed-only provider (`seeded-template`, no network, no environment). The database row says `provider = "seeded-template"` truthfully; the UI never shows provider or model for stored reports. Reruns are idempotent and later POS activity never changes a stored report.
+- The Analytics AI area offers only Weekly and Monthly (default Weekly) and a period picker over the stored reports of the selected scope. The `วิเคราะห์` on-demand button is unchanged.
+- These stored reports **replace production Demo Insight for the presentation**. The Demo Insight reader and its fingerprint check are unchanged and stay available behind `STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID` (§2 above); with the variable unset the UI shows no Demo Insight card and no error. The stored reports carry no `ข้อมูลตัวอย่าง` label: removing the visible sample label is an owner decision.
+- The seeded organization is shown as `Siam Mart` (deterministic id unchanged). User-visible seeded values (branches, products and SKUs, suppliers, user display names, purchase order and transfer references, adjustment notes, refund reason) carry no UAT/Demo wording. The legacy 30-day plan stays byte-identical and `verifyLearnerLabSeedTarget` accepts both the legacy and the presentation organization name with the deterministic id.
+
+**Trade-off recorded:** the stored reports are deterministic template text computed from each period's own metrics, not AI output. They are real stored rows produced by the real pipeline, but nobody should present them as model-generated analysis; the live OpenRouter path remains the only source of genuinely AI-generated reports.
+

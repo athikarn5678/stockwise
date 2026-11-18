@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 
 import { Prisma } from "../generated/prisma/client.ts";
-import { DEMO_30D_ORGANIZATION } from "../demo/demo-30d-plan.ts";
+import { DEMO_ORGANIZATION_NAMES } from "../demo/demo-30d-plan.ts";
 
 /**
  * Operator-approved specification of ONE new, isolated synthetic organization
@@ -88,10 +88,11 @@ export const demoProductionSpecSchema = z
     if (spec.products.some((p) => new Prisma.Decimal(p.basePrice).lte(0)))
       fail("Product prices must be positive.");
     if (
-      spec.organization.name.toLowerCase() ===
-      DEMO_30D_ORGANIZATION.toLowerCase()
+      DEMO_ORGANIZATION_NAMES.some(
+        (name) => name.toLowerCase() === spec.organization.name.toLowerCase(),
+      )
     )
-      fail("The new organization must not reuse the existing UAT name.");
+      fail("The new organization must not reuse an existing UAT demo name.");
     if (new Set(spec.members.map((m) => m.emailSha256)).size !== 5)
       fail("Member accounts must be unique.");
     for (const role of roles)

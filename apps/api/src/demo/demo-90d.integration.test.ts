@@ -30,7 +30,7 @@ import {
   DEMO_INSIGHT_HEADINGS,
 } from "../modules/ai-insights/demo-insight.ts";
 import { bootstrapDemo90d, demo90dCatalog } from "./demo-90d-bootstrap.ts";
-import { DEMO_90D_SHAPE } from "./demo-30d-plan.ts";
+import { demoWindowShape } from "./demo-30d-plan.ts";
 import {
   assertDemoHistory,
   readDemoProvenance,
@@ -50,6 +50,7 @@ const DEMO_PASSWORD = "M4-S1-Integration-Demo-2026!";
 /** The exclusive local boundary of the 90-day window, one day after the seed. */
 const REFERENCE_DATE = "2026-11-17";
 const SEED = 90;
+const ORDER_COUNT = 3 * Math.ceil(demoWindowShape(REFERENCE_DATE).days / 15);
 /** Bootstrap instant is before the window that starts 90 days back. */
 const BOOTSTRAP_CREATED_AT = new Date("2026-08-05T00:00:00.000Z");
 /** The window ends 2026-11-16T17:00Z; analytics must observe it as complete. */
@@ -89,7 +90,7 @@ const seedOptions = () => ({
   organizationId,
   referenceDate: REFERENCE_DATE,
   seed: SEED,
-  shape: DEMO_90D_SHAPE,
+  shape: demoWindowShape(REFERENCE_DATE),
 });
 
 function seededProvenance(): DemoProvenance {
@@ -233,7 +234,7 @@ suite("DEMO-90D one-command seed on disposable PostgreSQL", () => {
     expect(organizations).toHaveLength(1);
     expect(organizations[0]).toEqual({
       id: organizationId,
-      name: "UAT Demo Siam Mart",
+      name: "Siam Mart",
       reportingTimezone: "Asia/Bangkok",
     });
 
@@ -302,12 +303,12 @@ suite("DEMO-90D one-command seed on disposable PostgreSQL", () => {
       where: { organizationId },
       select: { status: true, receipt: { select: { id: true } } },
     });
-    expect(orders).toHaveLength(18);
+    expect(orders).toHaveLength(ORDER_COUNT);
     expect(orders.every((order) => order.status === "RECEIVED")).toBe(true);
     expect(orders.every((order) => order.receipt !== null)).toBe(true);
     expect(
       await prisma.purchaseReceipt.count({ where: { organizationId } }),
-    ).toBe(18);
+    ).toBe(ORDER_COUNT);
 
     const methods = await prisma.payment.findMany({
       distinct: ["method"],
@@ -319,7 +320,7 @@ suite("DEMO-90D one-command seed on disposable PostgreSQL", () => {
     );
 
     expect(await prisma.saleRefund.count({ where: { organizationId } })).toBe(
-      9,
+      plan.sales.filter((sale) => sale.refund).length,
     );
     expect(
       await prisma.inventoryTransaction.count({
@@ -432,7 +433,7 @@ suite("DEMO-90D one-command seed on disposable PostgreSQL", () => {
     const sales = await createPrismaAnalyticsSalesRepository(prisma).read(
       resolved.context,
     );
-    expect(sales.buckets).toHaveLength(90);
+    expect(sales.buckets).toHaveLength(demoWindowShape(REFERENCE_DATE).days);
     expect(sales.buckets[0]?.localStartInclusive).toBe(plan.from);
     expect(sales.buckets.reduce((count, b) => count + b.saleCount, 0)).toBe(
       plan.sales.length,

@@ -1,5 +1,8 @@
 import { Prisma, type PrismaClient } from "../../generated/prisma/client.ts";
-import { DEMO_30D_ORGANIZATION } from "../../demo/demo-30d-plan.ts";
+import {
+  DEMO_30D_ORGANIZATION,
+  DEMO_ORGANIZATION_NAMES,
+} from "../../demo/demo-30d-plan.ts";
 import { demoId } from "../../demo/demo-values.ts";
 import {
   readDemoProvenance,
@@ -70,7 +73,10 @@ export function createDemoInsightReader(input: {
         where: { id: request.organizationId },
         select: { name: true, reportingTimezone: true },
       });
-      if (organization?.name !== DEMO_30D_ORGANIZATION)
+      if (
+        organization === null ||
+        !DEMO_ORGANIZATION_NAMES.includes(organization.name)
+      )
         return { kind: "not_found" } as const;
       const provenance = await readDemoProvenance(
         input.prisma,

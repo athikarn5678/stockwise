@@ -11,8 +11,10 @@ import {
 import {
   buildDemo30dPlan,
   DEMO_30D_ORGANIZATION,
-  DEMO_90D_SHAPE,
+  DEMO_PRESENTATION_ORGANIZATION,
+  demoWindowShape,
 } from "./demo-30d-plan.ts";
+import { demoId } from "./demo-values.ts";
 
 const REFERENCE_DATE = "2026-11-17";
 const SEED = 90;
@@ -27,7 +29,7 @@ function catalogPlan() {
   return buildDemo30dPlan({
     referenceDate: REFERENCE_DATE,
     seed: SEED,
-    shape: DEMO_90D_SHAPE,
+    shape: demoWindowShape(REFERENCE_DATE),
     reportingTimezone: catalog.organization.timezone,
     organizationId: catalog.organization.id,
     branches: catalog.branches.map(({ id, code }) => ({ id, code })),
@@ -47,11 +49,37 @@ function catalogPlan() {
   });
 }
 
+describe("presentation wording", () => {
+  const VISIBLE_TEST_WORDING = /\b(?:uat|demo|synthetic|test|sample)\b/i;
+
+  it("keeps UAT/Demo wording out of every user-visible seeded value", () => {
+    const catalog = demo90dCatalog();
+    const plan = catalogPlan();
+    const visible = [
+      catalog.organization.name,
+      ...catalog.branches.flatMap((branch) => [branch.code, branch.name]),
+      ...catalog.categories.map((category) => category.name),
+      ...catalog.products.flatMap((product) => [product.name, product.sku]),
+      ...catalog.suppliers.map((supplier) => supplier.name),
+      ...catalog.users.map((user) => user.displayName),
+      ...plan.orders.map((order) => order.reference),
+      ...plan.sales.map((sale) => sale.key),
+      ...(plan.adjustments ?? []).map((adjustment) => adjustment.note),
+    ];
+    for (const value of visible)
+      expect(value).not.toMatch(VISIBLE_TEST_WORDING);
+    expect(catalog.organization.name).toBe("Siam Mart");
+  });
+});
+
 describe("demo90dCatalog", () => {
   it("is deterministic and uses the allowlisted organization name", () => {
     const first = demo90dCatalog();
     expect(demo90dCatalog()).toEqual(first);
-    expect(first.organization.name).toBe(DEMO_30D_ORGANIZATION);
+    expect(first.organization.name).toBe(DEMO_PRESENTATION_ORGANIZATION);
+    expect(first.organization.id).toBe(
+      demoId("organization", DEMO_30D_ORGANIZATION),
+    );
     expect(first.organization.id).toBe(DEMO_90D_ORGANIZATION_ID);
     expect(first.organization.timezone).toBe("Asia/Bangkok");
     expect(first.organization.salesVatStatus).toBe("NOT_REGISTERED");
@@ -79,7 +107,7 @@ describe("demo90dCatalog", () => {
     expect(products.map((product) => product.sku)).toEqual(
       Array.from(
         { length: 12 },
-        (_, index) => `DEMO-P${String(index + 1).padStart(2, "0")}`,
+        (_, index) => `SM-P${String(index + 1).padStart(2, "0")}`,
       ),
     );
     expect(new Set(products.map((product) => product.id)).size).toBe(12);
@@ -108,8 +136,8 @@ describe("demo90dCatalog", () => {
   it("defines exactly two suppliers with distinct ids", () => {
     const { suppliers } = demo90dCatalog();
     expect(suppliers.map((supplier) => supplier.name)).toEqual([
-      "Demo Supplier A",
-      "Demo Supplier B",
+      "Siam Beverage Supply Co.",
+      "Thai Fresh Wholesale Co.",
     ]);
     expect(new Set(suppliers.map((supplier) => supplier.id)).size).toBe(2);
   });

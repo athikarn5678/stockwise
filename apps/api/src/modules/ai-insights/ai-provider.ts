@@ -15,7 +15,7 @@ export type AiProviderUsage = Readonly<{
   cost?: string;
 }>;
 
-export type AiProviderName = "openrouter" | "opencode-go";
+export type AiProviderName = "openrouter" | "opencode-go" | "seeded-template";
 
 export type AiProviderAttempt = Readonly<{
   provider: AiProviderName;

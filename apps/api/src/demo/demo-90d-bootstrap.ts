@@ -8,7 +8,11 @@ import {
 import type { OrganizationRole } from "../modules/identity/authorization-policy.ts";
 import { hashFirstOrganizationOnboardingRequest } from "../modules/identity/first-organization-onboarding-schema.ts";
 import { hashPassword } from "../modules/identity/password-hasher.ts";
-import { DEMO_30D_ORGANIZATION, type Demo30dProduct } from "./demo-30d-plan.ts";
+import {
+  DEMO_30D_ORGANIZATION,
+  DEMO_PRESENTATION_ORGANIZATION,
+  type Demo30dProduct,
+} from "./demo-30d-plan.ts";
 import { demoId } from "./demo-values.ts";
 
 const REPORTING_TIMEZONE = "Asia/Bangkok";
@@ -73,89 +77,89 @@ const CATEGORIES = [
 ] as const;
 
 /**
- * Twelve Thai-market retail items in demand order: `DEMO-P01` sells most and
- * `DEMO-P12` least because the plan ranks products by SKU.
+ * Twelve Thai-market retail items in demand order: `SM-P01` sells most and
+ * `SM-P12` least because the plan ranks products by SKU.
  */
 const PRODUCTS = [
   {
-    sku: "DEMO-P01",
+    sku: "SM-P01",
     name: "Siam Drinking Water 600 ml",
     category: "Beverages",
     unit: "EA",
     price: "7.0000",
   },
   {
-    sku: "DEMO-P02",
+    sku: "SM-P02",
     name: "Thai Jasmine Rice 1 kg",
     category: "Dry Goods",
     unit: "PACK",
     price: "65.0000",
   },
   {
-    sku: "DEMO-P03",
+    sku: "SM-P03",
     name: "Instant Noodle Pack",
     category: "Dry Goods",
     unit: "PACK",
     price: "12.0000",
   },
   {
-    sku: "DEMO-P04",
+    sku: "SM-P04",
     name: "Fresh Chicken Breast",
     category: "Fresh Food",
     unit: "KG",
     price: "89.0000",
   },
   {
-    sku: "DEMO-P05",
+    sku: "SM-P05",
     name: "Fresh Pork Shoulder",
     category: "Fresh Food",
     unit: "KG",
     price: "129.0000",
   },
   {
-    sku: "DEMO-P06",
+    sku: "SM-P06",
     name: "Chiang Rai Green Tea 500 ml",
     category: "Beverages",
     unit: "EA",
     price: "20.0000",
   },
   {
-    sku: "DEMO-P07",
+    sku: "SM-P07",
     name: "Seasoning Soy Sauce 700 ml",
     category: "Dry Goods",
     unit: "EA",
     price: "35.0000",
   },
   {
-    sku: "DEMO-P08",
+    sku: "SM-P08",
     name: "Laundry Detergent 3 L",
     category: "Household",
     unit: "L",
     price: "149.0000",
   },
   {
-    sku: "DEMO-P09",
+    sku: "SM-P09",
     name: "Dishwashing Liquid 500 ml",
     category: "Household",
     unit: "EA",
     price: "45.0000",
   },
   {
-    sku: "DEMO-P10",
+    sku: "SM-P10",
     name: "Facial Tissue 4 Pack",
     category: "Household",
     unit: "PACK",
     price: "55.0000",
   },
   {
-    sku: "DEMO-P11",
+    sku: "SM-P11",
     name: "Palm Cooking Oil 1 L",
     category: "Dry Goods",
     unit: "L",
     price: "62.0000",
   },
   {
-    sku: "DEMO-P12",
+    sku: "SM-P12",
     name: "Fresh Eggs 10 Pack",
     category: "Fresh Food",
     unit: "PACK",
@@ -169,37 +173,40 @@ const PRODUCTS = [
   price: string;
 }[];
 
-const SUPPLIERS = ["Demo Supplier A", "Demo Supplier B"] as const;
+const SUPPLIERS = [
+  "Siam Beverage Supply Co.",
+  "Thai Fresh Wholesale Co.",
+] as const;
 
 /** One user per accepted role; exactly one OWNER. */
 const USERS = [
   {
     email: "demo-owner@example.invalid",
-    displayName: "Demo Owner",
+    displayName: "Somchai Wongsakul",
     role: "OWNER",
     branchCodes: [],
   },
   {
     email: "demo-admin@example.invalid",
-    displayName: "Demo Admin",
+    displayName: "Napat Srisuk",
     role: "ADMIN",
     branchCodes: [],
   },
   {
     email: "demo-manager@example.invalid",
-    displayName: "Demo Manager",
+    displayName: "Pimchanok Rattanakul",
     role: "BRANCH_MANAGER",
     branchCodes: ["MAIN", "NORTH"],
   },
   {
     email: "demo-inventory@example.invalid",
-    displayName: "Demo Inventory",
+    displayName: "Anan Chaiyasit",
     role: "INVENTORY_STAFF",
     branchCodes: ["NORTH"],
   },
   {
     email: "demo-cashier@example.invalid",
-    displayName: "Demo Cashier",
+    displayName: "Kanya Boonmee",
     role: "CASHIER",
     branchCodes: ["MAIN"],
   },
@@ -235,7 +242,7 @@ export function demo90dCatalog(): Demo90dCatalog {
   return {
     organization: {
       id: ORGANIZATION_ID,
-      name: DEMO_30D_ORGANIZATION,
+      name: DEMO_PRESENTATION_ORGANIZATION,
       timezone: REPORTING_TIMEZONE,
       salesVatStatus: "NOT_REGISTERED",
       salesVatRate: null,

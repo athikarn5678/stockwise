@@ -9,16 +9,23 @@ provenance (`apps/api/src/demo/demo-30d-*.ts`, parameterised by a "shape") write
 the activity through the production domain writers (purchasing, receiving,
 checkout, refund, inventory adjustment) with injected clocks.
 
-What it creates (organization `UAT Demo Siam Mart`, `Asia/Bangkok`, VAT not
+What it creates (organization `Siam Mart`, `Asia/Bangkok`, VAT not
 registered):
 
-- 3 branches `MAIN`, `NORTH`, `EAST`; 4 categories; 12 products `DEMO-P01`…`DEMO-P12`
-  (EA/PACK/KG/L; `P01` sells most, `P12` least); 2 suppliers.
+- 3 branches `MAIN`, `NORTH`, `EAST`; 4 categories; 12 products `SM-P01`…`SM-P12`
+  (EA/PACK/KG/L; `SM-P01` sells most, `SM-P12` least); 2 suppliers.
 - 5 users, one per role, each with a verified Native credential account.
-- 90 consecutive completed Organization-local days ending the day before the
-  reference date: about 950 CASH/TRANSFER sales (more at weekends, slow growth),
-  18 purchase orders that are ordered and received (every 15 days per branch),
-  9 refunds with restock, and 9 manual stock adjustments (`DAMAGE`,
+- Stored weekly and monthly reports (ADR-048 amendment): `SUCCEEDED` reports with
+  snapshots for every full Monday-Sunday week and calendar month in the window, for
+  the organization and for each branch (run 2026-11-18: 15 weeks + 3 months over
+  4 scopes = 72 reports). They are deterministic template text from each period's
+  own metrics (provider `seeded-template`, no network); open them from the
+  Analytics AI area (Weekly or Monthly, then the report period picker).
+- Completed Organization-local days from the 1st of the month three full calendar
+  months before the run month up to yesterday (run 2026-11-18: 2026-08-01 to
+  2026-11-17, 109 days; today has no seeded transaction): about 1,000 CASH/TRANSFER
+  sales (more at weekends, slow growth), purchase orders ordered and received
+  (every 15 days per branch), refunds with restock, and 9 manual stock adjustments (`DAMAGE`,
   `STOCK_COUNT`, `LOSS`). Four of the twelve products are ordered with a small
   surplus, so some stock is low at the end (reorder/forecast demos).
 
@@ -29,15 +36,22 @@ the next section; the receipt and `_demo` database name are unchanged guards):
 export DEMO_DATABASE_URL='postgresql://<local-user>:<local-password>@127.0.0.1:<port>/<fresh-name>_demo'
 export DEMO_DISPOSABLE_RECEIPT='<absolute-ignored-local-receipt-path>'   # see demo-local-setup.ts
 pnpm demo:seed:90d --preview     # no writes: target check + plan counts
-pnpm demo:seed:90d               # apply: bootstrap + 90 days
+pnpm demo:seed:90d               # apply: bootstrap + activity + stored reports
 ```
 
 Options: `--reference-date YYYY-MM-DD` (default: today in `Asia/Bangkok`; the plan
-covers the 90 days before it), `--seed <n>` (default `90`), `--preview`. A rerun
+covers the month-aligned window ending the day before it), `--seed <n>` (default `90`), `--preview`. A rerun
 without `--reference-date` reuses the recorded reference date, so it validates
 and replays the existing rows without duplicates (the second run is a no-op).
 Changing the seed/date after the first run is refused; use a fresh database.
 A full local apply takes under a minute.
+
+Reseeding after M4-S3: the organization name, SKUs, supplier names, display names
+and references changed (the organization id did not). A database seeded by an earlier
+build still holds the old names and `demo:seed:90d` refuses to bootstrap over it
+(conflicting organization); seed a fresh `*_demo` database instead. Stored report
+growth for the first week of the window is shown as "no comparison" because its
+previous week lies before the seeded history.
 
 Passwords: set `DEMO_USER_PASSWORD` (15–128 characters) to choose one. If it is
 unset, **local runs only** use the documented default

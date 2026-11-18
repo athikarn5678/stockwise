@@ -47,7 +47,7 @@ Changing the seed/date after the first run is refused; use a fresh database.
 A full local apply takes under a minute.
 
 Reseeding after M4-S3: the organization name, SKUs, supplier names, display names, login emails
-and references changed (the organization id did not). A database seeded by an earlier
+and references changed, and so did the user and membership ids (they derive from the email); the organization id did not change. A database seeded by an earlier
 build still holds the old names and `demo:seed:90d` refuses to bootstrap over it
 (conflicting organization); seed a fresh `*_demo` database instead. Stored report
 growth for the first week of the window is shown as "no comparison" because its

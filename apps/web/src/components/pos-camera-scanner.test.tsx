@@ -14,6 +14,7 @@ import { en } from "@/i18n/en";
 import { th } from "@/i18n/th";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { NotFoundException } from "@zxing/library";
 import { PosCameraScanner } from "./pos-camera-scanner";
 
 const fallback = vi.hoisted(() => ({ decode: vi.fn(), stop: vi.fn() }));
@@ -191,6 +192,50 @@ describe("POS single-scan camera", () => {
     await act(async () => finish({ stop: fallback.stop }));
     expect(fallback.stop).toHaveBeenCalledOnce();
     expect(stopTrack).toHaveBeenCalled();
+  });
+  describe("ZXing fallback without BarcodeDetector", () => {
+    // The reader reports a decode exception for nearly every empty frame. A
+    // production build mangles its constructor name, so it must be recognized
+    // by getKind(), never by error.name.
+    function mangled(error: Error) {
+      Object.defineProperty(error, "name", { configurable: true, value: "e" });
+      return error;
+    }
+    async function openFallback() {
+      vi.stubGlobal("BarcodeDetector", undefined);
+      setup();
+      await waitFor(() => expect(fallback.decode).toHaveBeenCalled());
+      return fallback.decode.mock.calls[0]![1] as (
+        result: { getText(): string } | undefined,
+        error?: Error,
+      ) => void;
+    }
+
+    it("keeps the preview live through empty frames with minified exception names", async () => {
+      const onFrame = await openFallback();
+      expect(getUserMedia).toHaveBeenCalledOnce();
+      act(() => {
+        for (let frame = 0; frame < 5; frame += 1)
+          onFrame(undefined, mangled(new NotFoundException()));
+      });
+      expect(stopTrack).not.toHaveBeenCalled();
+      expect(fallback.stop).not.toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByText(en.camScanning)).toBeTruthy();
+      const preview = document.querySelector("video") as HTMLVideoElement;
+      expect(preview.srcObject).not.toBeNull();
+      onFrame({ getText: () => "00AbC" });
+      expect(onDetected).toHaveBeenCalledWith("00AbC");
+    });
+
+    it("still stops on a genuine camera or stream error", async () => {
+      const onFrame = await openFallback();
+      act(() =>
+        onFrame(undefined, new DOMException("lost", "NotReadableError")),
+      );
+      expect(await screen.findByText(en.camErrBusy)).toBeTruthy();
+      expect(stopTrack).toHaveBeenCalled();
+    });
   });
   it("closes and cleans resources when the page enters the background", async () => {
     setup();

@@ -5,10 +5,10 @@ Short, day-to-day procedure for the demo at `https://stockwise.hcn920.com`. The 
 ## 1. Start a lab session
 
 1. In AWS Academy, start the Learner Lab and wait for the green light.
-2. Refresh the temporary credentials with `learnerlab-creds`. For the 24h sprint it writes `~/.aws/credentials` (mode 600); they expire after about 4 hours (planner decision recorded in `docs/PLAN.md`). The operator scripts still check that the identity is `voclabs` and that the account matches the Terraform state.
+2. Refresh the temporary credentials with `learnerlab-creds`. This is a **sprint-only deviation** from the README rule "never write them to a file": for the 24h sprint it writes `~/.aws/credentials` (mode 600), recorded as a planner decision in `docs/PLAN.md`. They expire after about 4 hours. The operator scripts still check that the identity is `voclabs` and that the account matches the Terraform state.
 3. Check access: `aws sts get-caller-identity`.
 4. **Wait 5-10 minutes.** EC2 instances stopped when the previous session ended; the Auto Scaling Group has to start a new one before ECS can place the application task. Until then the site answers 503 and ECS logs `EMPTY CAPACITY PROVIDER`. Nothing is broken.
-5. Confirm: `operator/smoke.sh` (HTTPS, HSTS, redirect), then `curl -s -o /dev/null -w '%{http_code}\n' https://stockwise.hcn920.com/api/health` should print `200`. Also check `aws ecs describe-services --cluster stockwise-demo --services stockwise-demo-app` shows running 1.
+5. Confirm: `operator/smoke.sh` (HTTPS, HSTS, redirect), then `curl -s -o /dev/null -w '%{http_code}\n' https://stockwise.hcn920.com/api/health` should print `200`. Also check `aws ecs describe-services --region us-east-1 --cluster stockwise-demo --services stockwise-demo-app` shows running 1.
 
 If credentials are older than about 3 hours, restart the lab and refresh them before any deploy.
 
@@ -37,16 +37,16 @@ Idempotent; sets only the Siam Mart organization to `EXPIRED` (ADR-050) and prin
 1. Merge to `main` and wait for green CI on the commit you will ship.
 2. Dispatch the `Learner Lab images` workflow on `main` (`gh workflow run learner-lab-images.yml --ref main`) and wait for it. Read the three digests: `docker buildx imagetools inspect ghcr.io/athikarn5678/stockwise-<web|api|ops>:sha-<commit>`.
 3. Mirror by digest into ECR: `operator/mirror-images.sh --web <ghcr digest ref> --api <…> --ops <…> --revision <commit>`. It writes `operator/.state/release-<commit>.env`.
-4. Take a manual RDS snapshot first (`aws rds create-db-snapshot --db-instance-identifier stockwise-demo-postgres --db-snapshot-identifier <name>`) and wait until it is `available`; at least 90 minutes of lab time should remain.
-5. Plan check. Run `terraform plan` with the same variables the deploy uses (`-var-file=terraform/demo.tfvars` and the three image variables from the release file). Expect only the four ECS task definitions to show as replaced (ECS normalizes empty arrays, so this is normal) and no change to RDS, the ALB or the ECS cluster. **Any other destroy or replacement: stop and ask the owner.**
-6. Deploy: `yes yes | operator/deploy.sh --release operator/.state/release-<commit>.env --var-file terraform/demo.tfvars`. It needs stdin for its confirmations, and it runs the additive, forward-only migrations. Read the log; do not trust the exit code alone. Add `--seed-demo` only on a new, empty `*_demo` database: seeding existing data is refused, and `bootstrap-roles` must run **after** the apply that registers the new ops task definition.
+4. Take a manual RDS snapshot first (`aws rds create-db-snapshot --db-instance-identifier stockwise-demo-postgres --db-snapshot-identifier <name>`) and wait until it is `available`; as an operator rule for the sprint, keep at least 90 minutes of lab time (credentials are valid for about 4 hours).
+5. Plan check. Load the three image variables from the release file and run, from `infra/learner-lab/`: `set -a; . operator/.state/release-<commit>.env; set +a; terraform -chdir=terraform plan -input=false -var-file=demo.tfvars -var "web_image=$WEB_IMAGE" -var "api_image=$API_IMAGE" -var "ops_image=$OPS_IMAGE" -var app_desired_count=1` (the same variables `deploy.sh` uses). Expect only the four ECS task definitions to show as replaced (ECS normalizes empty arrays, so this is normal) and no change to RDS, the ALB or the ECS cluster. **Any other destroy or replacement: stop and ask the owner.**
+6. Deploy: `yes yes | operator/deploy.sh --release operator/.state/release-<commit>.env --var-file terraform/demo.tfvars`. It needs stdin for its confirmations, and it runs the additive, forward-only migrations. Read the log; do not trust the exit code alone. Add `--seed-demo` only on a new, empty `*_demo` database (seeding existing data is refused). `--seed-demo` needs the `stockwise_demo` schema, which `operator/run-ops-task.sh bootstrap-roles` creates; run it (idempotent) **after** the apply that registers the new ops task definition, otherwise the seed is refused with "the stockwise_demo schema is missing" (see README "Deployment runbook").
 7. Smoke: `operator/smoke.sh` is run by the deploy; then the checks in section 3 and a quick browser pass.
 
 ## 5. Pause, rollback, teardown
 
 | Need | Command |
 | --- | --- |
-| Previous web/api digests | `operator/rollback.sh --var-file terraform/demo.tfvars` (no down-migrations; restore the snapshot for data) |
+| Previous web/api digests | `operator/rollback.sh --var-file terraform/demo.tfvars` (needs `operator/.state/release-previous.env`, refuses after `demo_end_time`; no down-migrations, so restoring data means restoring a snapshot, which needs owner approval) |
 | Stop EC2 and RDS hours | `operator/capacity.sh pause --var-file terraform/demo.tfvars` (`resume` to restart) |
 | Final export | `operator/run-ops-task.sh export` |
 | Teardown | `operator/teardown.sh --var-file terraform/demo.tfvars --confirm <name_prefix>`: irreversible; owner approval first; refuses unless an export verifies |

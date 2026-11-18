@@ -1,6 +1,12 @@
 import { z } from "zod";
 
-import { BILLING_PLANS, type BillingPlan } from "./billing-plans.ts";
+import {
+  BILLING_PLANS,
+  planAmountSatang,
+  stripeInterval,
+  type BillingInterval,
+  type BillingPlan,
+} from "./billing-plans.ts";
 
 const STRIPE_API = "https://api.stripe.com";
 const TIMEOUT_MILLISECONDS = 15_000;
@@ -19,6 +25,8 @@ const checkoutSessionSchema = z.object({
   id: z.string().regex(CHECKOUT_SESSION_ID),
   object: z.literal("checkout.session"),
   amount_total: z.number().int().nullable(),
+  /** Unix seconds; a renewal must come from a session created after the row expired. */
+  created: z.number().int().nonnegative(),
   client_reference_id: z.string().nullable(),
   currency: z.string().nullable(),
   customer: z.string().nullable(),
@@ -39,6 +47,7 @@ export type StripeResult<T> =
 export type StripeClient = Readonly<{
   createCheckoutSession(input: {
     cancelUrl: string;
+    interval: BillingInterval;
     organizationId: string;
     plan: BillingPlan;
     successUrl: string;
@@ -93,10 +102,15 @@ export function createStripeClient({
         client_reference_id: input.organizationId,
         "line_items[0][price_data][currency]": "thb",
         "line_items[0][price_data][product_data][name]": `StockWise ${plan.label}`,
-        "line_items[0][price_data][recurring][interval]": "month",
-        "line_items[0][price_data][unit_amount]": String(plan.amountSatang),
+        "line_items[0][price_data][recurring][interval]": stripeInterval(
+          input.interval,
+        ),
+        "line_items[0][price_data][unit_amount]": String(
+          planAmountSatang(input.plan, input.interval),
+        ),
         "line_items[0][quantity]": "1",
         mode: "subscription",
+        "metadata[interval]": input.interval,
         "metadata[organization_id]": input.organizationId,
         "metadata[plan]": input.plan,
         success_url: input.successUrl,

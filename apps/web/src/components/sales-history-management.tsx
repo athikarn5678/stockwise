@@ -26,6 +26,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { formatThb } from "@/money-display";
+import { useSubscriptionWriteGate } from "@/providers/subscription-provider";
 import { SaleReceipt } from "@/components/sale-receipt";
 import {
   applicationContextUrl,
@@ -644,6 +645,7 @@ function RefundPanel({
   scopeKey: readonly unknown[];
 }) {
   const { t } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
 
   const queryClient = useQueryClient();
   const [reason, setReason] = useState("");
@@ -831,7 +833,11 @@ function RefundPanel({
           {t("uiRefund")} {mutation.data.reference} {t("uiCompleted")}
         </p>
       ) : null}
-      <Button variant="outline" disabled={mutation.isPending} type="submit">
+      <Button
+        variant="outline"
+        disabled={mutation.isPending || writeBlocked}
+        type="submit"
+      >
         {mutation.isPending
           ? t("uiRecordingRefund")
           : t("uiConfirmIrreversibleRefund")}

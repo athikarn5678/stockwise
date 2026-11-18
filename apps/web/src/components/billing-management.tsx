@@ -44,6 +44,7 @@ const PLAN_LABELS: Record<BillingPlan, TranslationKey> = {
 const STATUS_LABELS: Record<BillingSubscription["status"], TranslationKey> = {
   ACTIVE: "billingStatusActive",
   CANCELED: "billingStatusCanceled",
+  EXPIRED: "billingStatusExpired",
   PAST_DUE: "billingStatusPastDue",
 };
 

@@ -9,19 +9,22 @@ import {
   createTrustedOrganizationScope,
   PERMISSIONS,
 } from "../identity/authorization-policy.ts";
-import type { BillingPlan } from "./billing-plans.ts";
+import type { BillingInterval, BillingPlan } from "./billing-plans.ts";
 
 export type BillingAccess = "owner" | "member" | null;
 
 export type PublicSubscription = Readonly<{
+  interval: BillingInterval;
   plan: BillingPlan;
   status: OrganizationSubscription["status"];
 }>;
 
 export type SaveConfirmedInput = Readonly<{
   customerId: string;
+  interval: BillingInterval;
   organizationId: string;
   plan: BillingPlan;
+  sessionCreatedAt: Date;
   sessionId: string;
   subscriptionId: string;
 }>;
@@ -30,9 +33,18 @@ export type SaveConfirmedResult =
   | Readonly<{ kind: "saved"; subscription: PublicSubscription }>
   | Readonly<{ kind: "conflict" }>;
 
+/** What the central guard and the billing read need to decide access. */
+export type AccessFacts = Readonly<{
+  organizationCreatedAt: Date;
+  subscription: PublicSubscription | null;
+}>;
+
 function publicSubscription(row: OrganizationSubscription): PublicSubscription {
-  return { plan: row.plan, status: row.status };
+  return { interval: row.interval, plan: row.plan, status: row.status };
 }
+
+/** Statuses a renewal Checkout may replace; a live subscription is never swapped. */
+const RENEWABLE_STATUSES = ["EXPIRED", "CANCELED"] as const;
 
 export function createPrismaBillingRepository(prisma: PrismaClient) {
   return {
@@ -91,10 +103,61 @@ export function createPrismaBillingRepository(prisma: PrismaClient) {
       return row === null ? null : publicSubscription(row);
     },
 
+    /** Organization age and stored subscription for the access decision. */
+    async accessFacts(organizationId: string): Promise<AccessFacts | null> {
+      const organization = await prisma.organization.findUnique({
+        select: { createdAt: true, subscription: true },
+        where: { id: organizationId },
+      });
+      if (organization === null) return null;
+      return {
+        organizationCreatedAt: organization.createdAt,
+        subscription:
+          organization.subscription === null
+            ? null
+            : publicSubscription(organization.subscription),
+      };
+    },
+
+    /**
+     * Guard lookup: facts only for an ACTIVE member of an ACTIVE organization.
+     * Anyone else gets null so the guard stays silent and the route answers
+     * with its normal 403/404; subscription state never leaks across tenants.
+     */
+    async accessFactsForMember(
+      actorUserId: string,
+      organizationId: string,
+    ): Promise<AccessFacts | null> {
+      const membership = await prisma.organizationMembership.findUnique({
+        select: {
+          organization: {
+            select: { createdAt: true, status: true, subscription: true },
+          },
+          status: true,
+        },
+        where: {
+          organizationId_userId: { organizationId, userId: actorUserId },
+        },
+      });
+      if (
+        membership === null ||
+        membership.status !== "ACTIVE" ||
+        membership.organization.status !== "ACTIVE"
+      )
+        return null;
+      const { subscription } = membership.organization;
+      return {
+        organizationCreatedAt: membership.organization.createdAt,
+        subscription:
+          subscription === null ? null : publicSubscription(subscription),
+      };
+    },
+
     /**
      * One subscription per Organization. Re-confirming the same Checkout
-     * session is idempotent; a different session never overwrites an existing
-     * subscription (no silent plan swap without payment).
+     * session is idempotent. A different session never overwrites a live
+     * subscription (no silent plan swap), but it renews an EXPIRED/CANCELED
+     * one in place and sets it ACTIVE immediately (ADR-050).
      */
     async saveConfirmed(
       input: SaveConfirmedInput,
@@ -104,8 +167,37 @@ export function createPrismaBillingRepository(prisma: PrismaClient) {
           where: { organizationId: input.organizationId },
         });
         if (row === null) return null;
-        return row.stripeCheckoutSessionId === input.sessionId
-          ? { kind: "saved", subscription: publicSubscription(row) }
+        if (row.stripeCheckoutSessionId === input.sessionId)
+          return { kind: "saved", subscription: publicSubscription(row) };
+        if (!(RENEWABLE_STATUSES as readonly string[]).includes(row.status))
+          return { kind: "conflict" };
+        // A renewal must come from a Checkout started after the row last
+        // changed (it was expired or created EXPIRED). Otherwise an old paid
+        // session whose id was replaced by an earlier renewal could be replayed
+        // for a free renewal after the next expiry. Conditional on the status
+        // and time so a concurrent renewal also wins only once.
+        const renewed = await prisma.organizationSubscription.updateMany({
+          data: {
+            interval: input.interval,
+            plan: input.plan,
+            status: "ACTIVE",
+            stripeCheckoutSessionId: input.sessionId,
+            stripeCustomerId: input.customerId,
+            stripeSubscriptionId: input.subscriptionId,
+          },
+          where: {
+            organizationId: input.organizationId,
+            status: { in: [...RENEWABLE_STATUSES] },
+            updatedAt: { lte: input.sessionCreatedAt },
+          },
+        });
+        if (renewed.count === 0) return { kind: "conflict" };
+        const updated = await prisma.organizationSubscription.findUnique({
+          where: { organizationId: input.organizationId },
+        });
+        return updated !== null &&
+          updated.stripeCheckoutSessionId === input.sessionId
+          ? { kind: "saved", subscription: publicSubscription(updated) }
           : { kind: "conflict" };
       };
       const found = await existing();
@@ -113,6 +205,7 @@ export function createPrismaBillingRepository(prisma: PrismaClient) {
       try {
         const row = await prisma.organizationSubscription.create({
           data: {
+            interval: input.interval,
             organizationId: input.organizationId,
             plan: input.plan,
             status: "ACTIVE",
@@ -128,6 +221,50 @@ export function createPrismaBillingRepository(prisma: PrismaClient) {
           error.code === "P2002"
         )
           return (await existing()) ?? { kind: "conflict" };
+        throw error;
+      }
+    },
+
+    /**
+     * Idempotently marks one organization EXPIRED (operator command only). An
+     * existing subscription keeps its plan and Stripe references; with none, a
+     * Stripe-less EXPIRED row is created. Returns the previous status.
+     */
+    async markExpired(
+      organizationId: string,
+    ): Promise<"CREATED" | OrganizationSubscription["status"] | null> {
+      const attempt = () =>
+        prisma.$transaction(async (tx) => {
+          const organization = await tx.organization.findUnique({
+            select: { id: true },
+            where: { id: organizationId },
+          });
+          if (organization === null) return null;
+          const row = await tx.organizationSubscription.findUnique({
+            where: { organizationId },
+          });
+          if (row === null) {
+            await tx.organizationSubscription.create({
+              data: { organizationId, plan: "STARTER", status: "EXPIRED" },
+            });
+            return "CREATED" as const;
+          }
+          if (row.status !== "EXPIRED")
+            await tx.organizationSubscription.update({
+              data: { status: "EXPIRED" },
+              where: { organizationId },
+            });
+          return row.status;
+        });
+      try {
+        return await attempt();
+      } catch (error) {
+        // A concurrent run created the row first: the second attempt sees it.
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2002"
+        )
+          return attempt();
         throw error;
       }
     },

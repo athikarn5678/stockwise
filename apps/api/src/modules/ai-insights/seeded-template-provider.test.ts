@@ -16,6 +16,7 @@ import {
 } from "./seeded-report-text.ts";
 
 const facts: SeededReportFacts = {
+  baselineInsideSeedWindow: true,
   best: [
     { name: "Siam Drinking Water 600 ml", quantity: "48.0000", unit: "EA" },
   ],

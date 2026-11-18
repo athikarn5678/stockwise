@@ -1,11 +1,14 @@
 import { randomBytes } from "node:crypto";
 
+import { Temporal } from "@js-temporal/polyfill";
+
 import { Prisma, type PrismaClient } from "../generated/prisma/client.ts";
 import { createAnalyticsContextEngine } from "../modules/analytics/analytics-context.ts";
 import { createAnalyticsDimensionCursorCodec } from "../modules/analytics/analytics-dimension-cursor.ts";
 import { createPrismaAnalyticsInventoryRepository } from "../modules/analytics/analytics-inventory-repository.ts";
 import { createAnalyticsInventoryService } from "../modules/analytics/analytics-inventory-service.ts";
 import type { InventoryDimension } from "../modules/analytics/analytics-inventory-values.ts";
+import { validateIanaTimeZone } from "../modules/analytics/analytics-period.ts";
 import { createPrismaAnalyticsScopeRepository } from "../modules/analytics/analytics-scope-repository.ts";
 import type { AnalyticsScopeCandidate } from "../modules/analytics/analytics-scope.ts";
 import {
@@ -19,6 +22,7 @@ import {
 } from "../modules/ai-insights/seeded-report-text.ts";
 import {
   seededReportPeriods,
+  type SeededReportGranularity,
   type SeededReportPeriod,
 } from "./demo-seed-periods.ts";
 
@@ -52,8 +56,11 @@ interface SeedContext extends SeedScope {
   organizationId: string;
   period: SeededReportPeriod;
   prisma: PrismaClient;
+  reportingTimezone: string;
   scopeRepository: ReturnType<typeof createPrismaAnalyticsScopeRepository>;
   actorUserId: string;
+  /** Local inclusive start date of the seeded window the reports stay inside. */
+  windowFrom: string;
 }
 
 function sum(values: readonly string[]): Prisma.Decimal {
@@ -102,6 +109,35 @@ function productFacts(
 }
 
 /**
+ * Whether this period's comparison baseline — the immediately preceding week or
+ * calendar month — starts inside the seed window. A baseline that starts before
+ * the window contains only a few seeded days, so its growth figure is not a
+ * comparable reading and the report must say the comparison is unavailable.
+ */
+function baselineInsideSeedWindow(input: {
+  from: string;
+  granularity: SeededReportGranularity;
+  periodStart: string;
+  reportingTimezone: string;
+}): boolean {
+  // The period start is already the reporting-timezone local date; validating
+  // the timezone keeps this calendar comparison in the same calendar the seed
+  // window's local dates were derived in.
+  validateIanaTimeZone(input.reportingTimezone);
+  const start = Temporal.PlainDate.from(input.periodStart);
+  const baselineStart =
+    input.granularity === "month"
+      ? start.with({ day: 1 }).subtract({ months: 1 })
+      : start.subtract({ days: 7 });
+  return (
+    Temporal.PlainDate.compare(
+      baselineStart,
+      Temporal.PlainDate.from(input.from),
+    ) >= 0
+  );
+}
+
+/**
  * Reads one completed period and scope through the same analytics read path the
  * Demo Insight uses. Sales and per-product sale depletion are cut off at the
  * period end, so a later sale can never change this period's figures. The
@@ -146,6 +182,12 @@ async function readSeededReportFacts(
   } while (cursor !== undefined);
 
   return {
+    baselineInsideSeedWindow: baselineInsideSeedWindow({
+      from: context.windowFrom,
+      granularity: period.granularity,
+      periodStart: period.from,
+      reportingTimezone: context.reportingTimezone,
+    }),
     best: productFacts(dimensions, "best"),
     scopeKind: context.candidate.kind === "branch" ? "branch" : "organization",
     scopeName: context.label,
@@ -273,7 +315,9 @@ export async function seedStoredReports(
             organizationId: input.organizationId,
             period,
             prisma,
+            reportingTimezone: input.reportingTimezone,
             scopeRepository,
+            windowFrom: input.from,
           }),
         ),
       )(jobInput);

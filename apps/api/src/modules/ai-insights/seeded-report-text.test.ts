@@ -40,6 +40,7 @@ function input(
   overrides: Partial<SeededReportTextInput> = {},
 ): SeededReportTextInput {
   return {
+    baselineInsideSeedWindow: true,
     best: [
       { name: "Siam Drinking Water 600 ml", quantity: "48.0000", unit: "EA" },
       { name: "Thai Jasmine Rice 1 kg", quantity: "30.0000", unit: "PACK" },
@@ -83,7 +84,7 @@ describe("seeded stored report text", () => {
     expect(text).toContain("ยอดเฉลี่ยต่อรายการขาย: 250.00 THB");
     expect(text).toContain("การเติบโตเทียบช่วงก่อนหน้า: 12.34%");
     expect(text).toContain("การคืนเงิน: 2 รายการ รวม 120.00 THB");
-    expect(text).toContain("กำไรขั้นต้น: 1234.56 THB (31.25%)");
+    expect(text).toContain("กำไรขั้นต้น: 1234.57 THB (31.25%)");
     expect(text).toContain(
       "สินค้าขายดีตามหน่วยฐาน: Siam Drinking Water 600 ml",
     );
@@ -136,6 +137,87 @@ describe("seeded stored report text", () => {
     }
   });
 
+  it("treats a baseline outside the seed window as no comparison", () => {
+    // The first completed week of the seed window compares against a baseline
+    // week that holds only a couple of seeded days: its stored growth number is
+    // not a comparable reading, however large it is.
+    for (const value of ["412.75", "-93.50", "0"]) {
+      const text = buildSeededReportText(
+        input({
+          baselineInsideSeedWindow: false,
+          sales: salesInput({
+            netSalesGrowthPercent: { reason: null, value },
+          }),
+        }),
+      );
+      expect(text).toContain(
+        "การเติบโตเทียบช่วงก่อนหน้า: ไม่มีข้อมูลเปรียบเทียบ",
+      );
+      expect(text).not.toMatch(/การเติบโตเทียบช่วงก่อนหน้า: [-\d]/u);
+      expect(text).not.toContain("ยอดขายสุทธิเพิ่มขึ้นเมื่อเทียบช่วงก่อนหน้า");
+      expect(text).not.toContain("ยอดขายสุทธิลดลงเมื่อเทียบช่วงก่อนหน้า");
+      expect(text).not.toContain("ยอดขายสุทธิใกล้เคียงช่วงก่อนหน้า");
+      expect(text.split("\n\n")[3]!).toContain(
+        "ไม่มีข้อมูลเปรียบเทียบช่วงก่อนหน้า",
+      );
+    }
+  });
+
+  it("renders the comparison reading when the baseline is inside the window", () => {
+    const readings = [
+      ["12.34", "ยอดขายสุทธิเพิ่มขึ้นเมื่อเทียบช่วงก่อนหน้า"],
+      ["-12.34", "ยอดขายสุทธิลดลงเมื่อเทียบช่วงก่อนหน้า"],
+      ["0", "ยอดขายสุทธิใกล้เคียงช่วงก่อนหน้า"],
+    ] as const;
+    for (const [value, reading] of readings) {
+      const text = buildSeededReportText(
+        input({
+          baselineInsideSeedWindow: true,
+          sales: salesInput({
+            netSalesGrowthPercent: { reason: null, value },
+          }),
+        }),
+      );
+      expect(text).toContain(`การเติบโตเทียบช่วงก่อนหน้า: ${value}%`);
+      expect(text.split("\n\n")[3]!).toContain(reading);
+    }
+  });
+
+  it("rounds money half-up to two decimals for display", () => {
+    const amounts = [
+      ["12.3456789", "12.35"],
+      ["0.004", "0.00"],
+      ["0.005", "0.01"],
+      ["1234.5678900000", "1234.57"],
+      ["250.00", "250.00"],
+    ] as const;
+    for (const [value, rendered] of amounts) {
+      const text = buildSeededReportText(
+        input({
+          sales: salesInput({
+            grossProfitAmount: { reason: null, value },
+          }),
+        }),
+      );
+      expect(text).toContain(`กำไรขั้นต้น: ${rendered} THB (31.25%)`);
+    }
+  });
+
+  it("states cost coverage in Thai words", () => {
+    const coverages = [
+      ["complete", "ครบถ้วน"],
+      ["partial", "บางส่วน"],
+      ["none", "ไม่มี"],
+    ] as const;
+    for (const [coverage, thai] of coverages) {
+      const text = buildSeededReportText(
+        input({ sales: salesInput({ costCoverage: coverage }) }),
+      );
+      expect(text).toContain(`ความครบถ้วนของต้นทุน: ${thai}`);
+      expect(text).not.toContain(`ความครบถ้วนของต้นทุน: ${coverage}`);
+    }
+  });
+
   it("states unavailable comparison and cost facts instead of guessing", () => {
     const text = buildSeededReportText(
       input({
@@ -165,7 +247,7 @@ describe("seeded stored report text", () => {
       "การเติบโตเทียบช่วงก่อนหน้า: ไม่มีข้อมูลเปรียบเทียบ",
     );
     expect(text).toContain("ไม่มีข้อมูลต้นทุนที่ยืนยันได้");
-    expect(text).toContain("ความครบถ้วนของต้นทุน: none");
+    expect(text).toContain("ความครบถ้วนของต้นทุน: ไม่มี");
     const notes = text.split("\n\n")[3]!;
     expect(notes).toContain("ไม่มีข้อมูลเปรียบเทียบช่วงก่อนหน้า");
   });
@@ -174,7 +256,7 @@ describe("seeded stored report text", () => {
     const text = buildSeededReportText(input());
     const actions = text.split("\n\n")[4]!;
     expect(actions).toContain(
-      "ควรเตรียมสต็อกสินค้าขายดีให้เพียงพอ: Siam Drinking Water 600 ml; Thai Jasmine Rice 1 kg",
+      "ควรเตรียมสต็อกสินค้าขายดีต่อหน่วยฐานให้เพียงพอ: Siam Drinking Water 600 ml; Thai Jasmine Rice 1 kg",
     );
     expect(actions).toContain(
       "ทบทวนการสั่งซื้อและโปรโมชันของสินค้าขายช้า: Fresh Eggs 10 Pack; Fresh Pork Shoulder",

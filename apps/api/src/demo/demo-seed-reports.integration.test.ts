@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { Temporal } from "@js-temporal/polyfill";
+
 import { Prisma } from "../generated/prisma/client.ts";
 import { loadTestDatabaseEnvironment } from "../test/database-environment.ts";
 import {
@@ -69,6 +71,8 @@ const reportColumns = {
 let seeded: Awaited<ReturnType<typeof seedStoredReports>> | undefined;
 let beforeReports: string[] = [];
 let beforeSnapshots: string[] = [];
+/** The seed window's local inclusive start, read from the applied demo plan. */
+let windowFrom = "";
 
 function baseline() {
   if (seeded === undefined)
@@ -204,10 +208,35 @@ function lineAfter(content: string, prefix: string): string {
   return line.slice(prefix.length);
 }
 
-/** Display-only shortening mirrored from the text builder. */
+/** Display-only rounding mirrored from the text builder. */
 function money2(value: string): string {
-  const separator = value.indexOf(".");
-  return separator === -1 ? value : value.slice(0, separator + 3);
+  return new Prisma.Decimal(value)
+    .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
+    .toFixed(2);
+}
+
+/** The same calendar test the seed step applies to a period's baseline. */
+function baselineInsideSeedWindow(input: {
+  granularity: "month" | "week";
+  periodStart: string;
+}): boolean {
+  const start = Temporal.PlainDate.from(input.periodStart);
+  const baselineStart =
+    input.granularity === "month"
+      ? start.with({ day: 1 }).subtract({ months: 1 })
+      : start.subtract({ days: 7 });
+  return (
+    Temporal.PlainDate.compare(
+      baselineStart,
+      Temporal.PlainDate.from(windowFrom),
+    ) >= 0
+  );
+}
+
+function growthLine(value: string | null): string {
+  return value === null
+    ? "การเติบโตเทียบช่วงก่อนหน้า: ไม่มีข้อมูลเปรียบเทียบ"
+    : `การเติบโตเทียบช่วงก่อนหน้า: ${value}%`;
 }
 
 async function clearDemoProvenance() {
@@ -235,6 +264,7 @@ suite("seeded stored weekly/monthly AI insight reports", () => {
     });
     expect(applied.status).toBe("APPLIED");
     const plan = (await readDemoProvenance(prisma, organizationId))!.plan;
+    windowFrom = plan.from;
     seeded = await seedStoredReports(prisma, {
       from: plan.from,
       organizationId,
@@ -349,12 +379,13 @@ suite("seeded stored weekly/monthly AI insight reports", () => {
       expect(content).toContain(
         `การคืนเงิน: ${sales.refundCount} รายการ รวม ${money2(sales.refundAmount)} THB`,
       );
-      const growth = sales.netSalesGrowthPercent.value;
-      expect(content).toContain(
-        growth === null
-          ? "การเติบโตเทียบช่วงก่อนหน้า: ไม่มีข้อมูลเปรียบเทียบ"
-          : `การเติบโตเทียบช่วงก่อนหน้า: ${growth}%`,
-      );
+      const growth = baselineInsideSeedWindow({
+        granularity,
+        periodStart: from,
+      })
+        ? sales.netSalesGrowthPercent.value
+        : null;
+      expect(content).toContain(growthLine(growth));
       const reading =
         growth === null
           ? "ไม่มีข้อมูลเปรียบเทียบช่วงก่อนหน้า"
@@ -365,6 +396,53 @@ suite("seeded stored weekly/monthly AI insight reports", () => {
               : "ยอดขายสุทธิเพิ่มขึ้นเมื่อเทียบช่วงก่อนหน้า";
       expect(content.split("\n\n")[3]!).toContain(reading);
     }
+  }, 300_000);
+
+  it("states no comparison for a week whose baseline starts before the seed window", async () => {
+    const weekly = (await storedReports())
+      .filter((row) => row.cadence === "WEEKLY" && row.scope === "ORGANIZATION")
+      .sort(
+        (a, b) =>
+          a.periodStartInclusive.getTime() - b.periodStartInclusive.getTime(),
+      );
+    const [first, second] = [weekly[0]!, weekly[1]!];
+    expect(localDate(first.periodStartInclusive)).toBe("2026-08-03");
+    expect(localDate(second.periodStartInclusive)).toBe("2026-08-10");
+
+    const snapshotValue = async (row: (typeof weekly)[number]) => {
+      const snapshot = await prisma.analyticsSnapshot.findUniqueOrThrow({
+        select: { payload: true },
+        where: { id: row.snapshotId! },
+      });
+      return (
+        snapshot.payload as {
+          sales: { netSalesGrowthPercent: { value: string | null } };
+        }
+      ).sales.netSalesGrowthPercent.value;
+    };
+
+    // The first completed week's baseline (2026-07-27..2026-08-02) holds only
+    // the two seeded days before 2026-08-01, so the stored number is not a
+    // comparable reading and the text says so.
+    const firstValue = await snapshotValue(first);
+    expect(first.content).toContain(growthLine(null));
+    expect(first.content!.split("\n\n")[3]!).toContain(
+      "ไม่มีข้อมูลเปรียบเทียบช่วงก่อนหน้า",
+    );
+    expect(first.content).not.toContain(
+      "ยอดขายสุทธิเพิ่มขึ้นเมื่อเทียบช่วงก่อนหน้า",
+    );
+    if (firstValue !== null)
+      expect(first.content).not.toContain(`${firstValue}%`);
+
+    // The next week's baseline is a full seeded week, so the same reading is a
+    // real comparison unless the snapshot itself has no value.
+    const secondValue = await snapshotValue(second);
+    expect(second.content).toContain(growthLine(secondValue));
+    if (secondValue !== null)
+      expect(second.content).toContain(
+        `การเติบโตเทียบช่วงก่อนหน้า: ${secondValue}%`,
+      );
   }, 300_000);
 
   it("ranks an older week's best and slowest products from that week's own ledger", async () => {
@@ -406,6 +484,31 @@ suite("seeded stored weekly/monthly AI insight reports", () => {
       const quantity = entry.slice(entry.indexOf(": ") + 2).split(" ")[0]!;
       expect(Number(quantity)).toBeGreaterThan(0);
     }
+
+    // The same week read for one branch scope uses that branch's ledger only.
+    const branch = branches[0]!;
+    const branchRow = reports.find(
+      (candidate) =>
+        candidate.cadence === "WEEKLY" &&
+        candidate.scope === "BRANCH" &&
+        candidate.branchId === branch.id &&
+        candidate.periodStartInclusive.getTime() ===
+          row.periodStartInclusive.getTime(),
+    );
+    if (branchRow === undefined)
+      throw new Error("The oldest week has no branch-scope report.");
+    const branchLedger = await ledgerSaleDepletion({
+      branchIds: [branch.id],
+      cutoff: branchRow.periodEndExclusive,
+      from: branchRow.periodStartInclusive,
+      to: branchRow.periodEndExclusive,
+    });
+    expect(lineAfter(branchRow.content!, "สินค้าขายดีตามหน่วยฐาน: ")).toBe(
+      rankedProducts(branchLedger, "best").join("; "),
+    );
+    expect(lineAfter(branchRow.content!, "สินค้าขายช้าตามหน่วยฐาน: ")).toBe(
+      rankedProducts(branchLedger, "slowest").join("; "),
+    );
   }, 300_000);
 
   it("reuses every stored report and snapshot on a rerun", async () => {

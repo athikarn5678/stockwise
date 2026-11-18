@@ -1,7 +1,10 @@
 import { Temporal } from "@js-temporal/polyfill";
 
+import { Prisma } from "../../generated/prisma/client.ts";
 import type { AnalyticsSnapshotPayload } from "../analytics/analytics-snapshot-store.ts";
 import { AI_ANALYZE_HEADINGS } from "./ai-analyze-prompt.ts";
+
+const Decimal = Prisma.Decimal.clone({ precision: 80, rounding: 4 });
 
 /** The `ai_insight_reports.content` storage limit enforced by the database check. */
 export const SEEDED_REPORT_MAX_BYTES = 4096;
@@ -35,6 +38,13 @@ export interface SeededReportProductFact {
  * never describe a current stock level: only sale depletion inside the period.
  */
 export interface SeededReportFacts {
+  /**
+   * Whether the immediately preceding period (this period's comparison
+   * baseline) starts inside the seed window. A baseline that starts before the
+   * window holds only a few seeded days, so its growth figure is not a
+   * comparable reading and must not be presented as growth.
+   */
+  baselineInsideSeedWindow: boolean;
   best: readonly SeededReportProductFact[];
   scopeKind: "organization" | "branch";
   scopeName: string;
@@ -50,6 +60,11 @@ export interface SeededReportTextInput extends SeededReportFacts {
 
 const THAI_GRANULARITY = { month: "เดือน", week: "สัปดาห์" } as const;
 const THAI_SCOPE = { branch: "สาขา", organization: "องค์กร" } as const;
+const THAI_COST_COVERAGE = {
+  complete: "ครบถ้วน",
+  none: "ไม่มี",
+  partial: "บางส่วน",
+} as const;
 
 export class SeededReportTextError extends Error {
   constructor() {
@@ -64,10 +79,14 @@ function truncateName(value: string, limit: number): string {
     : `${characters.slice(0, limit).join("")}…`;
 }
 
-/** Display-only shortening; the authoritative values stay in the snapshot. */
+/**
+ * Display-only rounding to two decimals, half-up; the authoritative values stay
+ * in the snapshot. `grossProfitAmount` can carry up to ten decimals.
+ */
 function money2(value: string): string {
-  const separator = value.indexOf(".");
-  return separator === -1 ? value : value.slice(0, separator + 3);
+  return new Decimal(value)
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    .toFixed(2);
 }
 
 /**
@@ -138,22 +157,27 @@ function renderSeededReportText(
     .subtract({ days: 1 })
     .toString();
   const { sales } = input;
-  // The growth percentage is a Sales fact; Notes re-reads its sign only.
-  const growthValue = sales.netSalesGrowthPercent.value;
+  // A stored growth figure is only a comparable reading when the baseline week
+  // or month itself lies inside the seed window; otherwise the period has no
+  // meaningful comparison even though the snapshot carries a number.
+  const growthValue = input.baselineInsideSeedWindow
+    ? sales.netSalesGrowthPercent.value
+    : null;
   const refunds = `การคืนเงิน: ${sales.refundCount} รายการ รวม ${money2(sales.refundAmount)} THB`;
   const averageOrderValue =
     sales.averageOrderValue.value === null
       ? "ยอดเฉลี่ยต่อรายการขาย: ไม่มีข้อมูล"
       : `ยอดเฉลี่ยต่อรายการขาย: ${money2(sales.averageOrderValue.value)} THB`;
   const growth =
-    sales.netSalesGrowthPercent.value === null
+    growthValue === null
       ? "การเติบโตเทียบช่วงก่อนหน้า: ไม่มีข้อมูลเปรียบเทียบ"
-      : `การเติบโตเทียบช่วงก่อนหน้า: ${sales.netSalesGrowthPercent.value}%`;
+      : `การเติบโตเทียบช่วงก่อนหน้า: ${growthValue}%`;
+  const costCoverage = THAI_COST_COVERAGE[sales.costCoverage];
   const profit =
     sales.grossProfitAmount.value === null ||
     sales.grossMarginPercent.value === null
-      ? `กำไรขั้นต้น: ไม่มีข้อมูลต้นทุนที่ยืนยันได้ (ความครบถ้วนของต้นทุน: ${sales.costCoverage})`
-      : `กำไรขั้นต้น: ${money2(sales.grossProfitAmount.value)} THB (${sales.grossMarginPercent.value}%) · ความครบถ้วนของต้นทุน: ${sales.costCoverage}`;
+      ? `กำไรขั้นต้น: ไม่มีข้อมูลต้นทุนที่ยืนยันได้ (ความครบถ้วนของต้นทุน: ${costCoverage})`
+      : `กำไรขั้นต้น: ${money2(sales.grossProfitAmount.value)} THB (${sales.grossMarginPercent.value}%) · ความครบถ้วนของต้นทุน: ${costCoverage}`;
   // Actions stay deterministic and use only this period's own facts: ranked
   // products and refunds. No action may claim a current stock level.
   const actionLimit = Math.min(2, limits.listLimit);
@@ -166,7 +190,7 @@ function renderSeededReportText(
   const actions: string[] = [];
   if (bestNames.length > 0)
     actions.push(
-      `ควรเตรียมสต็อกสินค้าขายดีให้เพียงพอ: ${bestNames.join("; ")}`,
+      `ควรเตรียมสต็อกสินค้าขายดีต่อหน่วยฐานให้เพียงพอ: ${bestNames.join("; ")}`,
     );
   if (slowestNames.length > 0)
     actions.push(

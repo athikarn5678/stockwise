@@ -46,6 +46,13 @@ and replays the existing rows without duplicates (the second run is a no-op).
 Changing the seed/date after the first run is refused; use a fresh database.
 A full local apply takes under a minute.
 
+Reseeding after M4-S3: the organization name, SKUs, supplier names, display names
+and references changed (the organization id did not). A database seeded by an earlier
+build still holds the old names and `demo:seed:90d` refuses to bootstrap over it
+(conflicting organization); seed a fresh `*_demo` database instead. Stored report
+growth for the first week of the window is shown as "no comparison" because its
+previous week lies before the seeded history.
+
 Passwords: set `DEMO_USER_PASSWORD` (15–128 characters) to choose one. If it is
 unset, **local runs only** use the documented default
 `StockWise-Demo-2026!`. Never use that default on any shared or hosted

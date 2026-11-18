@@ -801,7 +801,6 @@ export const th: Dictionary = {
   uiAmountTenderedTHB: "เงินที่รับ (บาท)",
   uiEnterTenderedCashAtOrAboveTheCurrentPrice:
     "ใส่เงินสดที่รับไม่น้อยกว่ายอดรวมตามราคาปัจจุบัน",
-  uiTransferReferenceOptional: "เลขอ้างอิงการโอน (ไม่บังคับ)",
   paymentPromptPay: "พร้อมเพย์",
   uiPromptPay: "ชำระเงินด้วยพร้อมเพย์",
   uiGeneratePromptPayQr: "สร้าง QR พร้อมเพย์",
@@ -830,6 +829,10 @@ export const th: Dictionary = {
   uiRegistered: "จดทะเบียนแล้ว",
   uiVATRate: "อัตรา VAT (%)",
   uiSavingVAT: "กำลังบันทึก VAT…",
+  uiVatNotConfiguredYet: "ยังไม่ได้ตั้งค่า เลือกสถานะแล้วบันทึกก่อนขาย",
+  uiVatSavedNotRegistered: "ค่าที่บันทึกไว้: ไม่ได้จดทะเบียน",
+  uiVatSavedRegistered: "ค่าที่บันทึกไว้: จดทะเบียน VAT {rate}%",
+  uiVatSaved: "บันทึกโปรไฟล์ VAT แล้ว",
   uiSaveVATProfile: "บันทึกข้อมูล VAT",
   uiSaleCompleted: "บันทึกการขายแล้ว",
   uiNewSale: "รายการขายใหม่",

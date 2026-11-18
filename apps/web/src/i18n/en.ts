@@ -823,7 +823,6 @@ export const en = {
   uiAmountTenderedTHB: "Amount tendered (THB)",
   uiEnterTenderedCashAtOrAboveTheCurrentPrice:
     "Enter tendered cash at or above the current-price subtotal.",
-  uiTransferReferenceOptional: "Transfer reference (optional)",
   paymentPromptPay: "PromptPay",
   uiPromptPay: "PromptPay QR payment",
   uiGeneratePromptPayQr: "Generate PromptPay QR",
@@ -852,6 +851,11 @@ export const en = {
   uiRegistered: "Registered",
   uiVATRate: "VAT rate (%)",
   uiSavingVAT: "Saving VAT…",
+  uiVatNotConfiguredYet:
+    "Not configured yet. Choose a status and save it before selling.",
+  uiVatSavedNotRegistered: "Saved: Not registered",
+  uiVatSavedRegistered: "Saved: Registered, VAT {rate}%",
+  uiVatSaved: "VAT profile saved.",
   uiSaveVATProfile: "Save VAT profile",
   uiSaleCompleted: "Sale completed",
   uiNewSale: "New sale",

@@ -176,7 +176,7 @@ export function ForecastReorderView({
       </div>
       <div className="grid grid-cols-1 items-start gap-4 rounded-lg border bg-card p-4 sm:grid-cols-3">
         <div className="min-w-0">
-          <Label className="form-field">
+          <Label className="form-field flex-col items-stretch gap-1">
             {t("branch")}
             <OptionSelect
               className="w-full "
@@ -193,7 +193,10 @@ export function ForecastReorderView({
           </Label>
         </div>
         <div className="min-w-0 space-y-2">
-          <Label className="form-field" htmlFor={productInputId}>
+          <Label
+            className="form-field flex-col items-stretch gap-1"
+            htmlFor={productInputId}
+          >
             {t("marketingProduct")}
             <Combobox<ProductOption>
               filter={null}
@@ -268,19 +271,9 @@ export function ForecastReorderView({
               </ComboboxContent>
             </Combobox>
           </Label>
-          {products.isLoading && activeBranch ? (
-            <p aria-live="polite" className="text-sm">
-              {t("uiLoadingProducts")}
-            </p>
-          ) : null}
-          {products.isError ? (
-            <p role="alert" className="text-sm form-message">
-              {t("uiProductsCouldNotBeLoaded")}
-            </p>
-          ) : null}
         </div>
         <div className="min-w-0">
-          <Label className="form-field">
+          <Label className="form-field flex-col items-stretch gap-1">
             {t("uiPlanningLeadTime")}
             <OptionSelect
               className="w-full form-control--compact"
@@ -296,6 +289,18 @@ export function ForecastReorderView({
             />
           </Label>
         </div>
+      </div>
+      <div className="empty:hidden">
+        {products.isLoading && activeBranch ? (
+          <p aria-live="polite" className="text-sm">
+            {t("uiLoadingProducts")}
+          </p>
+        ) : null}
+        {products.isError ? (
+          <p role="alert" className="text-sm form-message">
+            {t("uiProductsCouldNotBeLoaded")}
+          </p>
+        ) : null}
       </div>
       <p className="text-sm text-muted-foreground">
         {t("uiForecastReorderHint")}

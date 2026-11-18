@@ -30,6 +30,13 @@ describe("safeNextPath", () => {
     ["/register"],
     ["/reset-password/x"],
     ["/" + "a".repeat(600)],
+    ["/.//evil.test"],
+    ["/..//evil.test"],
+    ["/a/..//evil.test"],
+    ["/.///"],
+    ["/./login"],
+    ["/a/../login"],
+    ["/%2e/%2e//evil.test"],
   ])("falls back for %j", (value) => {
     expect(safeNextPath(value)).toBe("/");
   });

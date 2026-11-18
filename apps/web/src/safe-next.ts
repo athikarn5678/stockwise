@@ -30,7 +30,10 @@ export function safeNextPath(
     return fallback;
   }
   if (url.origin !== "http://stockwise.invalid") return fallback;
+  // Judge the NORMALIZED path: dot segments collapse, so "/.//evil.test" would
+  // otherwise come out as the protocol-relative "//evil.test".
   const path = url.pathname;
+  if (!/^\/(?!\/)/.test(path) || path.includes("\\")) return fallback;
   if (
     BLOCKED_PREFIXES.some(
       (prefix) => path === prefix || path.startsWith(`${prefix}/`),

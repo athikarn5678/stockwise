@@ -127,6 +127,10 @@ export function usePricingBilling(
     if (
       sessionId === null ||
       ownerOrganizationId === null ||
+      // Never confirm a session against a different organization than the one
+      // the Stripe return link names.
+      (requestedOrganizationId !== null &&
+        requestedOrganizationId !== ownerOrganizationId) ||
       attempted.current === sessionId
     )
       return;
@@ -146,7 +150,13 @@ export function usePricingBilling(
         setError(confirmMessage(cause));
       },
     );
-  }, [ownerOrganizationId, queryClient, router, sessionId]);
+  }, [
+    ownerOrganizationId,
+    queryClient,
+    requestedOrganizationId,
+    router,
+    sessionId,
+  ]);
 
   const subscribe = useCallback(
     async (plan: BillingPlan, interval: BillingInterval) => {

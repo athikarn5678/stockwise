@@ -11,7 +11,12 @@ for (const width of [375, 430, 768, 1024, 1280, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       const apiRequests: string[] = [];
       page.on("request", (request) => {
-        if (new URL(request.url()).pathname.startsWith("/api/"))
+        const { pathname } = new URL(request.url());
+        // The header probes the session once to choose guest or signed-in.
+        if (
+          pathname.startsWith("/api/") &&
+          pathname !== "/api/v1/me/access-context"
+        )
           apiRequests.push(request.url());
       });
       await page.goto(path);
@@ -88,9 +93,18 @@ test("public navigation reaches features, pricing, and the actual auth forms", a
     await expect(
       page.getByRole("heading", { name, exact: true }),
     ).toBeVisible();
+  // Guests subscribe through the login page and come back to /pricing.
   await page
-    .getByRole("link", { name: "Create an account", exact: true })
+    .getByRole("link", { name: "Sign in to subscribe", exact: true })
     .first()
+    .click();
+  await expect(page).toHaveURL("/login?next=%2Fpricing");
+  await expect(
+    page.getByRole("button", { name: "Sign in", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: "Sign up", exact: true })
     .click();
   await expect(page).toHaveURL("/register");
   await expect(page.getByLabel("Email address")).toBeVisible();
@@ -160,22 +174,23 @@ for (const detour of [false, true]) {
       throw new Error(`Unexpected API request: ${path}`);
     });
     await page.goto("/");
-    await page.getByRole("link", { name: "Get started" }).first().click();
+    // The one header call to action leads guests to /login; sign-up hangs off it.
+    await page
+      .getByRole("navigation", { name: "Public navigation" })
+      .getByRole("link", { name: "Get started" })
+      .click();
+    await expect(page).toHaveURL("/login");
     if (detour) {
-      await page
-        .getByRole("main")
-        .getByRole("link", { name: "Sign in", exact: true })
-        .click();
       await page.getByRole("link", { name: "Forgot password?" }).click();
       await page
         .getByRole("main")
         .getByRole("link", { name: "Back to sign in" })
         .click();
-      await page
-        .getByRole("main")
-        .getByRole("link", { name: "Create one" })
-        .click();
     }
+    await page
+      .getByRole("main")
+      .getByRole("link", { name: "Sign up", exact: true })
+      .click();
     await expect(page).toHaveURL("/register");
     await page.getByLabel("Email address").fill(user.email);
     await page
@@ -200,15 +215,20 @@ for (const detour of [false, true]) {
       .getByLabel("Password", { exact: true })
       .fill("test password for journey");
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
-    await expect(page).toHaveURL("/app");
-    await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
-    await page.goBack();
+    // A plain sign-in returns to the landing page, now with the account slot.
     await expect(page).toHaveURL("/");
+    await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
+    await expect(
+      page
+        .getByRole("navigation", { name: "Public navigation" })
+        .getByRole("link", { name: "Go to dashboard" }),
+    ).toBeVisible();
+    await page.goBack();
+    await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "Sign in", exact: true }),
     ).toHaveCount(0);
     await page.goForward();
-    await expect(page).toHaveURL("/app");
     await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
   });
 }
@@ -347,7 +367,7 @@ for (const signedIn of [false, true]) {
     await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
     retry.resolve();
     if (signedIn) {
-      await expect(page).toHaveURL("/app");
+      await expect(page).toHaveURL("/");
       await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
     } else {
       await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
@@ -409,22 +429,25 @@ test("authenticated Get Started and browser history cannot reopen guest forms", 
     "/reset-password",
   ]) {
     await page.goto(guest);
-    await expect(page).toHaveURL(workspace);
+    // Sign-in returns to the landing page; the other guest pages open the workspace.
+    await expect(page).toHaveURL(guest === "/login" ? "/" : workspace);
     await expect(
       page.getByRole("button", { name: "Create account" }),
     ).toHaveCount(0);
     await expect(page.getByLabel("Password")).toHaveCount(0);
   }
 
+  // A signed-in visitor on /pricing is never offered account creation.
   await page.goto("/pricing");
-  await page
-    .getByRole("link", { name: "Create an account", exact: true })
-    .first()
-    .click();
-  await expect(page).toHaveURL(workspace);
   await expect(
-    page.getByRole("button", { name: "Create account" }),
+    page.getByRole("link", { name: "Create an account", exact: true }),
   ).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("navigation", { name: "Public navigation" })
+      .getByRole("link", { name: "Go to dashboard" }),
+  ).toBeVisible();
+  await expect(page).toHaveURL("/pricing");
 });
 
 test("mobile menu supports keyboard use, Escape, and closes after a feature link", async ({
@@ -464,9 +487,9 @@ test("mobile menu supports keyboard use, Escape, and closes after a feature link
     .getByRole("dialog")
     .getByRole("link", { name: "Get started" })
     .click();
-  await expect(page).toHaveURL("/register");
+  await expect(page).toHaveURL("/login");
   await expect(
-    page.getByRole("heading", { name: "Create account" }),
+    page.getByRole("button", { name: "Sign in", exact: true }),
   ).toBeVisible();
 });
 
@@ -509,11 +532,16 @@ test("public routes separate from the desktop/mobile app shell and preserve logo
     signedIn = false;
     return route.fulfill({ status: 204 });
   });
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto("/login");
-  await expect(page).toHaveURL(
-    `/app?organizationId=${organizationId}&branchId=${branchId}`,
+  // The workspace reads the plan; this stub has no real session behind it, so a
+  // non-401 answer keeps the read silent instead of reading as a revoked session.
+  await page.route("**/api/v1/organizations/*/billing", (route) =>
+    route.fulfill({ status: 403, json: { error: { code: "FORBIDDEN" } } }),
   );
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const workspaceUrl = `/app?organizationId=${organizationId}&branchId=${branchId}`;
+  const loginToWorkspace = `/login?next=${encodeURIComponent(workspaceUrl)}`;
+  await page.goto(loginToWorkspace);
+  await expect(page).toHaveURL(workspaceUrl);
   const appNav = page.getByRole("navigation", { name: "Primary navigation" });
   await expect(
     appNav.getByRole("link", { name: "Inventory", exact: true }),
@@ -529,7 +557,7 @@ test("public routes separate from the desktop/mobile app shell and preserve logo
       page.getByRole("navigation", { name: "Public navigation" }),
     ).toBeVisible();
   }
-  await page.goto("/login");
+  await page.goto(loginToWorkspace);
   await expect(appNav).toBeVisible();
   await page.setViewportSize({ width: 375, height: 900 });
   await expect(appNav).toBeHidden();

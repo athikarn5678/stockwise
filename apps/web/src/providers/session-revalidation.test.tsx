@@ -434,7 +434,7 @@ it("still removes the tree on pagehide and fully resets on persisted pageshow", 
   expect(restored.value).toBe("");
 });
 
-it("makes no access-context request on marketing lifecycle transitions", async () => {
+it("only probes the access context on marketing lifecycle transitions", async () => {
   pathname = "/";
   mount();
   advance();
@@ -448,7 +448,9 @@ it("makes no access-context request on marketing lifecycle transitions", async (
       new PageTransitionEvent("pageshow", { persisted: true }),
     ),
   );
-  expect(fetch).not.toHaveBeenCalled();
+  // The public header needs the session state; nothing else is requested.
+  for (const [url] of vi.mocked(fetch).mock.calls)
+    expect(String(url)).toBe("/api/v1/me/access-context");
 });
 
 /** A request that only ends when its signal aborts, like a stalled network. */

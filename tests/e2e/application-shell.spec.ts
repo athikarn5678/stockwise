@@ -12,7 +12,7 @@ import {
 const homePath = `/app?organizationId=${E2E_ORGANIZATION_ID}&branchId=${E2E_BRANCH_ID}`;
 
 async function signIn(page: Page, email = E2E_OWNER_EMAIL) {
-  await page.goto("/login");
+  await page.goto("/login?next=%2Fapp");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(E2E_PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -211,6 +211,8 @@ test("small-screen menu supports keyboard navigation and scoped logo links", asy
   await expect(closeMenu).toBeVisible();
   await expect(sidebar.getByRole("button", { name: "Log out" })).toBeVisible();
   await expectNoOverflow(page);
+  // Axe must not sample the sheet mid fade-in (blended colours read as low contrast).
+  await expect(sidebar).toHaveCSS("opacity", "1");
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await page.screenshot({
     path: testInfo.outputPath("mobile-menu.png"),
@@ -299,7 +301,7 @@ test("signed-out public and app surfaces do not expose authenticated navigation"
   await expect(
     page
       .getByRole("navigation", { name: "Public navigation" })
-      .getByRole("link", { name: "Sign in" }),
+      .getByRole("link", { name: "Get started" }),
   ).toBeVisible();
   await expect(page.getByRole("complementary")).toHaveCount(0);
   await page.screenshot({
@@ -327,7 +329,13 @@ test("authenticated marketing stays public and login returns to Home", async ({
     await expect(page).toHaveURL(path);
     await expect(page.getByRole("complementary")).toHaveCount(0);
   }
+  // A signed-in visit to /login returns to the landing page, one click from the app.
   await page.goto("/login");
+  await expect(page).toHaveURL("/");
+  await page
+    .getByRole("navigation", { name: "Public navigation" })
+    .getByRole("link", { name: "Go to dashboard" })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Choose an organization" }),
   ).toBeVisible();

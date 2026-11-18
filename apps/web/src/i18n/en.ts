@@ -6,6 +6,8 @@ export const en = {
   features: "Features",
   pricing: "Pricing",
   signIn: "Sign in",
+  goToDashboard: "Go to dashboard",
+  profileMenu: "Profile menu",
   getStarted: "Get started",
   logout: "Log out",
   loggingOut: "Logging out…",
@@ -51,6 +53,7 @@ export const en = {
   openingSetup: "Opening setup…",
   accessError: "Your access context could not be loaded.",
   accessDenied: "You do not have permission to access this page.",
+  sessionExpiredTitle: "Session ended",
   sessionExpired: "Your session is no longer available. Sign in again.",
   accessRetry: "Try again",
   theme: "Appearance",
@@ -124,6 +127,13 @@ export const en = {
   subscriptionRequired:
     "This action needs an active subscription. The store owner can renew on the pricing page.",
   subscriptionDismiss: "Dismiss",
+  pricingSignInToSubscribe: "Sign in to subscribe",
+  pricingSetUpStore: "Set up your store",
+  pricingCurrentPlanBadge: "Current plan",
+  pricingNonOwnerNotice:
+    "Only the store owner can subscribe or renew. Ask your store owner to renew the plan.",
+  pricingExpiredNotice:
+    "Your subscription has expired. Choose a plan to renew; your data is kept and the workspace is read-only until then.",
   billingErrConfirm:
     "The subscription could not be confirmed. Please try again.",
   organizationSettingsUnsavedConfirm:
@@ -156,8 +166,8 @@ export const en = {
   authCreateAccount: "Create account",
   authCreatingAccount: "Creating account…",
   authForgotPassword: "Forgot password?",
-  authNeedAccount: "Need an account?",
-  authCreateOne: "Create one",
+  authNeedAccount: "No account yet?",
+  authCreateOne: "Sign up",
   authAlreadyAccount: "Already have an account?",
   authInvalidEmail: "Enter a valid email address.",
   authInvalidCredentials: "The email or password is incorrect.",

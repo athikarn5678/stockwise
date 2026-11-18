@@ -47,8 +47,10 @@ const { routerPush, routerReplace } = vi.hoisted(() => ({
   routerReplace: vi.fn(),
 }));
 
+let loginSearchParams = new URLSearchParams();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: routerPush, replace: routerReplace }),
+  useSearchParams: () => loginSearchParams,
 }));
 
 vi.mock("@/api-client", async (importOriginal) => {
@@ -66,6 +68,7 @@ vi.mock("@/api-client", async (importOriginal) => {
 
 afterEach(() => {
   cleanup();
+  loginSearchParams = new URLSearchParams();
   routerPush.mockReset();
   routerReplace.mockReset();
   vi.mocked(forgotPassword).mockReset();
@@ -435,6 +438,35 @@ describe("login form", () => {
     return renderWithQueryClient(<LoginForm />, queryClient);
   }
 
+  it.each([
+    ["/pricing", "/pricing"],
+    ["/pricing?organizationId=abc", "/pricing?organizationId=abc"],
+    ["//evil.test", "/"],
+    ["https://evil.test/x", "/"],
+    ["/\\evil.test", "/"],
+    ["/login", "/"],
+  ])("returns to next=%s as %s after sign-in", async (next, expected) => {
+    loginSearchParams = new URLSearchParams({ next });
+    vi.mocked(login).mockResolvedValue({
+      outcome: "authenticated",
+      user: { displayName: null, email: "person@example.com", id: "user-id" },
+    });
+    renderLoginForm();
+    fillCredentials();
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Sign in" }).closest("form")!,
+    );
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith(expected));
+  });
+
+  it("offers sign-up to visitors without an account", () => {
+    renderLoginForm();
+    expect(screen.getByText("No account yet?")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Sign up" }).getAttribute("href"),
+    ).toBe("/register");
+  });
+
   it("submits exact credentials, prevents a duplicate pending submission, and enters the access-context flow", async () => {
     let resolveLogin: (() => void) | undefined;
     vi.mocked(login).mockImplementation(
@@ -471,7 +503,8 @@ describe("login form", () => {
         .hasAttribute("disabled"),
     ).toBe(true);
     resolveLogin?.();
-    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/app"));
+    // A plain sign-in returns to the landing page; the workspace is one click away.
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/"));
     expect(routerPush).not.toHaveBeenCalled();
     expect(queryClient.getQueryData(["access-context"])).toBeUndefined();
   });

@@ -27,7 +27,7 @@ const roles = [
 ] as const;
 
 async function login(page: Page, role: (typeof roles)[number]) {
-  await page.goto("/login");
+  await page.goto("/login?next=%2Fapp");
   await page
     .getByLabel("Email address", { exact: true })
     .fill(`demo30d-${role.toLowerCase()}@example.invalid`);

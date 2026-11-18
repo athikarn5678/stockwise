@@ -230,7 +230,10 @@ test("delayed resend cannot overwrite the next account after SPA abandonment", a
 async function registerSuccessor(page: Page) {
   await page.locator('header a[href="/"]').click();
   await expect(page).toHaveURL(/\/$/);
+  // The header's one call to action leads to /login; sign-up hangs off it.
   await page.getByRole("link", { name: "Get started" }).first().click();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.getByRole("main").getByRole("link", { name: "Sign up" }).click();
   await expect(page).toHaveURL(/\/register$/);
   await page.getByLabel("Email address").fill("successor@example.com");
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-123");

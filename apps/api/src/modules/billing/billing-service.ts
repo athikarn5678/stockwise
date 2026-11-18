@@ -111,7 +111,7 @@ export function createBillingService(input: {
       const stored = await repository.find(request.organizationId);
       if (stored !== null && subscriptionKeepsAccess(stored.status))
         return { kind: "conflict" };
-      const base = `${publicWebOrigin}/app/billing?organizationId=${request.organizationId}`;
+      const base = `${publicWebOrigin}/pricing?organizationId=${request.organizationId}`;
       const session = await stripe.createCheckoutSession({
         // Stripe requires the literal {CHECKOUT_SESSION_ID} placeholder.
         cancelUrl: `${base}&canceled=1`,

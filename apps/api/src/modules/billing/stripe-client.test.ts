@@ -51,11 +51,11 @@ function checkoutInput(
   interval: "MONTH" | "YEAR" = "MONTH",
 ) {
   return {
-    cancelUrl: `https://app.example.com/app/billing?organizationId=${ORGANIZATION_ID}&canceled=1`,
+    cancelUrl: `https://app.example.com/pricing?organizationId=${ORGANIZATION_ID}&canceled=1`,
     interval,
     organizationId: ORGANIZATION_ID,
     plan,
-    successUrl: `https://app.example.com/app/billing?organizationId=${ORGANIZATION_ID}&session_id={CHECKOUT_SESSION_ID}`,
+    successUrl: `https://app.example.com/pricing?organizationId=${ORGANIZATION_ID}&session_id={CHECKOUT_SESSION_ID}`,
   };
 }
 

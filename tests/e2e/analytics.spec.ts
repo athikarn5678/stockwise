@@ -11,7 +11,7 @@ import {
 } from "./catalog-fixtures.ts";
 
 async function signIn(page: import("@playwright/test").Page, email: string) {
-  await page.goto("/login");
+  await page.goto("/login?next=%2Fapp");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(E2E_PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();

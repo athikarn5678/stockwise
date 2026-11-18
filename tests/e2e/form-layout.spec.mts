@@ -91,7 +91,7 @@ test.beforeAll(async () => {
 });
 
 async function signIn(page: Page, email = E2E_OWNER_EMAIL) {
-  await page.goto("/login");
+  await page.goto("/login?next=%2Fapp");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(E2E_PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();

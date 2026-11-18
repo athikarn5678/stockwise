@@ -132,6 +132,51 @@ export function parseAiAnalyzeOutput(input: {
   return sections;
 }
 
+function singleSection(
+  text: string,
+  heading: string,
+): readonly AiAnalyzeSection[] {
+  return Object.freeze([Object.freeze({ body: text.trim(), heading })]);
+}
+
+/**
+ * Lenient split for text that was already accepted when it was stored: no
+ * heading-order or number validation. Text that no longer splits into the five
+ * expected sections is shown as one section so a stored run is never hidden.
+ */
+export function splitStoredAiAnalyzeSections(
+  text: string,
+  language: AiAnalyzeLanguage,
+): readonly AiAnalyzeSection[] {
+  const expected = AI_ANALYZE_HEADINGS[language];
+  const collected: { heading: string; lines: string[] }[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    if (line.startsWith(HEADING_PREFIX)) {
+      collected.push({
+        heading: line.slice(HEADING_PREFIX.length).trim(),
+        lines: [],
+      });
+      continue;
+    }
+    const current = collected.at(-1);
+    if (current === undefined) {
+      if (line.trim() !== "") return singleSection(text, expected[0]);
+      continue;
+    }
+    current.lines.push(line);
+  }
+  if (collected.length !== expected.length)
+    return singleSection(text, expected[0]);
+  return Object.freeze(
+    collected.map((section) =>
+      Object.freeze({
+        body: section.lines.join("\n").trim(),
+        heading: section.heading,
+      }),
+    ),
+  );
+}
+
 function categoryList(
   categories: AiAnalyzeSnapshot["categories"]["top"],
 ): readonly string[] {

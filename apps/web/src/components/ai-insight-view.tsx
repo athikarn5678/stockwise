@@ -1,12 +1,11 @@
 "use client";
-import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
   NativeSelect,
   NativeSelectOption,
 } from "@/components/ui/native-select";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
 import type { TranslationKey } from "@/i18n/en";
@@ -16,7 +15,6 @@ import {
   getDemoInsight,
   InsightApiError,
   listStoredInsights,
-  postAnalyze,
   type InsightCadence,
   type InsightScope,
 } from "@/ai-insight-api-client";
@@ -52,19 +50,6 @@ function errorMessage(error: unknown, t: (key: TranslationKey) => string) {
     if (error.status === 400) return t("aiErrInvalid");
   }
   return t("aiErrLoad");
-}
-
-function analyzeErrorMessage(
-  error: unknown,
-  t: (key: TranslationKey) => string,
-) {
-  if (error instanceof InsightApiError) {
-    if (error.status === 429) return t("aiAnalyzeErrRate");
-    if (error.status === 401 || error.status === 403 || error.status === 404)
-      return t("aiAnalyzeErrAccess");
-    if (error.status === 502) return t("aiAnalyzeErrProvider");
-  }
-  return t("aiAnalyzeErrLoad");
 }
 
 export function AiInsightView({
@@ -122,11 +107,6 @@ export function AiInsightView({
       : periods.find((report) => report.id === selectedPeriodId)) ??
     periods[0] ??
     null;
-  const analyzeMutation = useMutation({
-    mutationFn: () => postAnalyze(organization.id, scope, language, 7),
-  });
-  const analysis = analyzeMutation.data;
-
   return (
     <section aria-label={t("aiTitle")} className="space-y-5">
       <div className="rounded-lg border bg-card p-4 sm:p-5">
@@ -141,13 +121,22 @@ export function AiInsightView({
           </Link>{" "}
           {t("aiIntroAfter")}
         </p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {t("aiInsightAnalysisHintBefore")}{" "}
+          <Link
+            className="underline"
+            href={`/app/ai-analysis?organizationId=${organization.id}&branchId=${selectedBranchId ?? ""}`}
+          >
+            {t("aiAnalysis")}
+          </Link>
+          {t("aiInsightAnalysisHintAfter")}
+        </p>
         <div className="mt-4 grid max-w-4xl gap-4 sm:grid-cols-2">
           <Label className="form-field">
             {t("aiScope")}
             <NativeSelect
               className="w-full "
               onChange={(event) => {
-                analyzeMutation.reset();
                 setSelectedPeriodId(null);
                 setScopeValue(event.target.value);
               }}
@@ -198,57 +187,6 @@ export function AiInsightView({
           <p className="mt-2 text-sm form-message" role="alert">
             {t("aiBranchesError")}
           </p>
-        ) : null}
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button
-            disabled={!enabled || analyzeMutation.isPending}
-            onClick={() => analyzeMutation.mutate()}
-            type="button"
-          >
-            {t("aiAnalyze")}
-          </Button>
-          <p aria-live="polite" className="text-sm">
-            {analyzeMutation.isPending ? t("aiAnalyzeLoading") : ""}
-          </p>
-        </div>
-        {analyzeMutation.isError ? (
-          <p className="mt-2 text-sm form-message" role="alert">
-            {analyzeErrorMessage(analyzeMutation.error, t)}
-          </p>
-        ) : null}
-        {analysis ? (
-          <article
-            aria-label={t("aiAnalyzeTitle")}
-            className="mt-4 rounded-lg border bg-card p-4"
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-lg font-semibold">{t("aiAnalyzeTitle")}</h3>
-              {analysis.mock ? (
-                <span className="rounded-full border px-2 py-0.5 text-xs font-medium">
-                  {t("aiAnalyzeMockBadge")}
-                </span>
-              ) : null}
-            </div>
-            {analysis.mock ? (
-              <p className="mt-1 text-sm text-muted-foreground">
-                {t("aiAnalyzeMockNote")}
-              </p>
-            ) : null}
-            <p className="mt-1 text-sm text-muted-foreground">
-              {t("aiAnalyzePeriod").replace(
-                "{period}",
-                `${analysis.period.from} – ${analysis.period.to} (${analysis.period.timezone})`,
-              )}
-            </p>
-            {analysis.sections.map((section) => (
-              <div className="mt-4" key={section.heading}>
-                <h4 className="text-base font-semibold">{section.heading}</h4>
-                <p className="mt-1 whitespace-pre-wrap break-words">
-                  {section.body}
-                </p>
-              </div>
-            ))}
-          </article>
         ) : null}
       </div>
 

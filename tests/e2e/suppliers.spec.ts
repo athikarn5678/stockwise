@@ -49,11 +49,11 @@ test("owner creates, edits, filters, and changes Supplier lifecycle", async ({
   await card().getByLabel("Phone (optional)").fill("02-123");
   await card().getByRole("button", { name: "Save changes" }).click();
   await card().getByRole("button", { name: "Deactivate" }).click();
-  await selectOption(page, "Status", { value: "inactive" });
+  await selectOption(page, "Status", { value: "INACTIVE" });
   await expect(page.getByRole("heading", { name: "Tea Supply" })).toBeVisible();
   await expect(card().getByText("Inactive")).toBeVisible();
   await card().getByRole("button", { name: "Reactivate" }).click();
-  await selectOption(page, "Status", { value: "active" });
+  await selectOption(page, "Status", { value: "ACTIVE" });
   await expect(page.getByRole("heading", { name: "Tea Supply" })).toBeVisible();
   await expect(card().getByText("Active")).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);

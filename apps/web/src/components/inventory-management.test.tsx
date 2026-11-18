@@ -255,6 +255,31 @@ describe("inventory management UI", () => {
       );
     },
   );
+  it("sends the selected product status to the inventory query", async () => {
+    renderInventory();
+    await screen.findByRole("button", { name: /Tea/ });
+
+    await chooseOptionByValue(
+      screen.getByLabelText(en.inventoryProductStatus),
+      "INACTIVE",
+    );
+
+    await waitFor(() =>
+      expect(listInventory).toHaveBeenLastCalledWith(
+        { organizationId: ORGANIZATION_ID, branchId: BRANCH_ID },
+        expect.objectContaining({ status: "INACTIVE" }),
+      ),
+    );
+  });
+  it("still reveals the history when the environment has no scrollIntoView", async () => {
+    delete (Element.prototype as Partial<Element>).scrollIntoView;
+    renderInventory();
+    fireEvent.click(await screen.findByRole("button", { name: /Tea/ }));
+
+    expect(
+      await screen.findByRole("region", { name: en.uiTransactionHistory }),
+    ).toBeTruthy();
+  });
   it.each([
     ["MANUAL_ADJUSTMENT", "Manual adjustment"],
     ["PURCHASE_RECEIVE", "Purchase receive"],

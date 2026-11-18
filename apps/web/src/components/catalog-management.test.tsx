@@ -202,9 +202,6 @@ describe("catalog management UI", () => {
     fireEvent.change(screen.getByLabelText("Search catalog"), {
       target: { value: "tea" },
     });
-    fireEvent.submit(
-      screen.getByRole("button", { name: "Search" }).closest("form")!,
-    );
 
     await waitFor(() =>
       expect(listProducts).toHaveBeenLastCalledWith(
@@ -212,6 +209,41 @@ describe("catalog management UI", () => {
         expect.objectContaining({ categoryId: "uncategorized", q: "tea" }),
       ),
     );
+  });
+
+  it("maps the status filter to includeInactive and filters inactive-only rows client-side", async () => {
+    const inactiveProduct = {
+      ...product,
+      id: "40000000-0000-4000-8000-000000000002",
+      name: "Old tea",
+      sku: "TEA-OLD",
+      status: "INACTIVE" as const,
+    };
+    vi.mocked(listProducts).mockResolvedValue({
+      data: { products: [product, inactiveProduct] },
+      meta: { nextCursor: null },
+    });
+    renderCatalog();
+    await screen.findByText("Tea");
+    expect(listProducts).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ includeInactive: false }),
+    );
+
+    await chooseOptionByValue(screen.getByLabelText("Status"), "INACTIVE");
+
+    await waitFor(() =>
+      expect(listProducts).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ includeInactive: true }),
+      ),
+    );
+    expect(await screen.findByText("Old tea")).toBeTruthy();
+    expect(screen.queryByText("Tea")).toBeNull();
+
+    await chooseOptionByValue(screen.getByLabelText("Status"), "ALL");
+    expect(await screen.findByText("Tea")).toBeTruthy();
+    expect(screen.getByText("Old tea")).toBeTruthy();
   });
 
   it("creates a product without numeric price conversion and uses the selected active category", async () => {
@@ -354,15 +386,13 @@ describe("catalog management UI", () => {
     await screen.findByText("Tea");
     expect(screen.queryByRole("button", { name: "Create product" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
-    expect(
-      screen.queryByRole("checkbox", { name: /include inactive/i }),
-    ).toBeNull();
+    expect(screen.queryByLabelText("Status")).toBeNull();
   });
 
   it("switches to category management and creates a category", async () => {
     renderCatalog();
-    await screen.findByRole("tab", { name: "Categories" });
-    fireEvent.click(screen.getByRole("tab", { name: "Categories" }));
+    await screen.findByRole("button", { name: "Categories" });
+    fireEvent.click(screen.getByRole("button", { name: "Categories" }));
 
     expect(
       await screen.findByRole("heading", { name: "Create category" }),
@@ -397,7 +427,7 @@ describe("catalog write gate", () => {
     expect(
       screen.getByRole("button", { name: "Create product" }),
     ).toHaveProperty("disabled", true);
-    expect(screen.getByRole("button", { name: "Search" })).toHaveProperty(
+    expect(screen.getByRole("button", { name: "Refresh" })).toHaveProperty(
       "disabled",
       false,
     );

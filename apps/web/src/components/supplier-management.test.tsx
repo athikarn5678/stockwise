@@ -7,9 +7,11 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchAccessContext } from "@/branch-api-client";
+import { chooseOptionByValue } from "@/test/select-helpers";
 import { SupplierManagement } from "./supplier-management";
 
 const organizationId = "10000000-0000-4000-8000-000000000001";
@@ -139,6 +141,42 @@ describe("Supplier creation through the API client", () => {
     );
     await waitFor(() => expect(input.value).toBe(""));
     expect(persisted).toHaveLength(1);
+  });
+
+  it("renders each supplier as one card with one form and no nested card", async () => {
+    setup();
+    await create();
+    const heading = await screen.findByRole("heading", { name: "Tea Supply" });
+    const card = heading.closest("form")!;
+    expect(card.className).toContain("bg-card");
+    expect(card.querySelectorAll("form")).toHaveLength(0);
+    expect(within(card).getByLabelText("Phone (optional)")).toBeTruthy();
+    expect(
+      within(card).getByRole("button", { name: "Save changes" }),
+    ).toBeTruthy();
+  });
+
+  it("requests the API status value chosen in the toolbar", async () => {
+    const { fetchMock } = setup();
+    await screen.findByRole("button", { name: "Create supplier" });
+
+    await chooseOptionByValue(screen.getByLabelText("Status"), "INACTIVE");
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([url]) =>
+          String(url).includes("status=inactive"),
+        ),
+      ).toBe(true),
+    );
+    await chooseOptionByValue(screen.getByLabelText("Status"), "ACTIVE");
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([url]) =>
+          String(url).includes("status=active"),
+        ),
+      ).toBe(true),
+    );
   });
 
   it("disables the create supplier action while the subscription is expired", async () => {

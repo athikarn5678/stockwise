@@ -21,6 +21,13 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  ListToolbar,
+  PageContainer,
+  PageHeader,
+  StatusFilter,
+  type StatusFilterValue,
+} from "@/components/page-layout";
 import { OptionSelect } from "@/components/option-select";
 import type { TranslationKey } from "@/i18n/en";
 import {
@@ -140,13 +147,13 @@ export function MembershipManagement() {
     (organization.role !== "OWNER" && organization.role !== "ADMIN")
   )
     return (
-      <section className="space-y-4">
-        <h1 className="text-2xl font-semibold">{t("teamUnavailable")}</h1>
+      <PageContainer>
+        <PageHeader title={t("teamUnavailable")} />
         <p>{t("teamDenied")}</p>
         <Link className="underline" href="/app">
           {t("backToWorkspace")}
         </Link>
-      </section>
+      </PageContainer>
     );
   return (
     <TeamWorkspace
@@ -175,7 +182,10 @@ function TeamWorkspace({
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const organizationId = organization.id;
-  const [includeInactive, setIncludeInactive] = useState(false);
+  // The Members API only exposes `includeInactive`; an Inactive-only view is
+  // therefore filtered on the already loaded pages below.
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>("ACTIVE");
+  const includeInactive = statusFilter !== "ACTIVE";
   const [notice, setNotice] = useState<TranslationKey | null>(null);
   const branchesQuery = useQuery({
     queryKey: ["branches", organizationId, false],
@@ -217,7 +227,11 @@ function TeamWorkspace({
       queryClient.invalidateQueries({ queryKey: ["branches", organizationId] }),
     ]);
   }
-  const members = membersQuery.data?.pages.flatMap(({ data }) => data) ?? [];
+  const allMembers = membersQuery.data?.pages.flatMap(({ data }) => data) ?? [];
+  const members =
+    statusFilter === "INACTIVE"
+      ? allMembers.filter((member) => member.status === "INACTIVE")
+      : allMembers;
   const invitations =
     invitationsQuery.data?.pages.flatMap(({ data }) => data) ?? [];
   const branches = branchesQuery.data ?? [];
@@ -229,21 +243,9 @@ function TeamWorkspace({
       </div>
     );
   return (
-    <section className="w-full min-w-0 space-y-8">
-      <header className="space-y-3">
-        <Link
-          className="text-sm underline"
-          href={applicationContextUrl(organizationId, branchId)}
-        >
-          {t("backToWorkspace")}
-        </Link>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold">{t("teamTitle")}</h1>
-            <p className="mt-1 break-words text-sm text-muted-foreground">
-              {t("teamDescription")} {organization.name}.
-            </p>
-          </div>
+    <PageContainer>
+      <PageHeader
+        actions={
           <Button
             variant="outline"
             disabled={
@@ -255,29 +257,38 @@ function TeamWorkspace({
           >
             {t("teamRefresh")}
           </Button>
-        </div>
-        <aside className="rounded-lg border bg-muted/30 p-4">
-          <h2 className="font-semibold">{t("teamRules")}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t("teamRulesHelp")}
-          </p>
-        </aside>
-        <details className="rounded-lg border p-4">
-          <summary className="cursor-pointer font-medium">
-            {t("teamRoleGuide")}
-          </summary>
-          <dl className="mt-4 grid gap-4 md:grid-cols-2">
-            {ALL_ROLES.map((role) => (
-              <div key={role}>
-                <dt className="font-medium">{t(role)}</dt>
-                <dd className="mt-1 text-sm text-muted-foreground">
-                  {t(ROLE_HELP[role])}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </details>
-      </header>
+        }
+        description={`${t("teamDescription")} ${organization.name}.`}
+        title={t("teamTitle")}
+      >
+        <Link
+          className="text-sm underline"
+          href={applicationContextUrl(organizationId, branchId)}
+        >
+          {t("backToWorkspace")}
+        </Link>
+      </PageHeader>
+      <aside className="rounded-lg border bg-muted/30 p-4">
+        <h2 className="font-semibold">{t("teamRules")}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {t("teamRulesHelp")}
+        </p>
+      </aside>
+      <details className="rounded-lg border p-4">
+        <summary className="cursor-pointer font-medium">
+          {t("teamRoleGuide")}
+        </summary>
+        <dl className="mt-4 grid gap-4 md:grid-cols-2">
+          {ALL_ROLES.map((role) => (
+            <div key={role}>
+              <dt className="font-medium">{t(role)}</dt>
+              <dd className="mt-1 text-sm text-muted-foreground">
+                {t(ROLE_HELP[role])}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </details>
       {notice && (
         <p role="status" className="text-sm text-muted-foreground">
           {t(notice)}
@@ -305,18 +316,17 @@ function TeamWorkspace({
         onSaved={refresh}
       />
       <section className="space-y-4" aria-labelledby="organization-members">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-xl font-semibold" id="organization-members">
-            {t("teamMembers")}
-          </h2>
-          <Label className="flex min-h-11 items-center gap-2">
-            <Checkbox
-              checked={includeInactive}
-              onCheckedChange={setIncludeInactive}
+        <h2 className="text-xl font-semibold" id="organization-members">
+          {t("teamMembers")}
+        </h2>
+        <ListToolbar
+          status={
+            <StatusFilter
+              onValueChange={setStatusFilter}
+              value={statusFilter}
             />
-            {t("teamIncludeInactive")}
-          </Label>
-        </div>
+          }
+        />
         {membersQuery.isPending && (
           <p role="status">{t("teamLoadingMembers")}</p>
         )}
@@ -391,7 +401,7 @@ function TeamWorkspace({
           </Button>
         )}
       </section>
-    </section>
+    </PageContainer>
   );
 }
 

@@ -419,7 +419,6 @@ export const en = {
   teamDeactivate: "Deactivate",
   teamRevoke: "Revoke",
   teamReissue: "Reissue",
-  teamIncludeInactive: "Include inactive",
   teamUnavailable: "Member management unavailable",
   teamReadOnlyMember: "This member's access is read-only for you.",
   teamOrganizationScope: "Organization-wide scope",

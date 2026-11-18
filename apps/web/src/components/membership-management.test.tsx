@@ -30,6 +30,7 @@ import { en } from "@/i18n/en";
 import { MembershipManagement } from "./membership-management";
 import {
   chooseOption,
+  chooseOptionByValue,
   expectSelectValue,
   readSelectOptionValues,
 } from "@/test/select-helpers";
@@ -305,11 +306,63 @@ describe("membership management UI", () => {
         expect(self.queryByRole("combobox")).toBeNull();
         expect(self.queryByRole("button")).toBeNull();
       }
+      const statusFilter = screen.getByLabelText(copy.commonStatus);
+      expectSelectValue(statusFilter, copy.commonActive);
       for (const select of screen.getAllByRole("combobox")) {
+        if (select === statusFilter) continue;
         expect(await readSelectOptionValues(select)).toEqual(allowed);
       }
     },
   );
+
+  it("narrows the members list by lifecycle status from the toolbar", async () => {
+    const inactive = {
+      ...membership,
+      id: "30000000-0000-4000-8000-000000000002",
+      status: "INACTIVE" as const,
+      user: {
+        ...membership.user,
+        displayName: "Former cashier",
+        email: "former@example.com",
+        id: "50000000-0000-4000-8000-000000000002",
+      },
+    };
+    vi.mocked(fetchMemberships).mockResolvedValue({
+      data: [membership, inactive],
+      meta: { nextCursor: null },
+    });
+    renderManagement();
+    const statusFilter = await screen.findByLabelText("Status");
+    expect(fetchMemberships).toHaveBeenLastCalledWith(
+      ORGANIZATION_ID,
+      false,
+      null,
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Former cashier" }),
+    ).toBeTruthy();
+
+    await chooseOptionByValue(statusFilter, "INACTIVE");
+
+    await waitFor(() =>
+      expect(fetchMemberships).toHaveBeenLastCalledWith(
+        ORGANIZATION_ID,
+        true,
+        null,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Cashier" })).toBeNull(),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Former cashier" }),
+    ).toBeTruthy();
+
+    await chooseOptionByValue(statusFilter, "ALL");
+    expect(
+      await screen.findByRole("heading", { name: "Cashier" }),
+    ).toBeTruthy();
+  });
 
   it.each(["BRANCH_MANAGER", "INVENTORY_STAFF", "CASHIER"] as const)(
     "denies %s without loading management resources",

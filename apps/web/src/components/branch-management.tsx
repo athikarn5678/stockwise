@@ -20,6 +20,13 @@ import {
   type Branch,
 } from "@/branch-api-client";
 import { applicationContextUrl } from "@/application-context";
+import {
+  ListToolbar,
+  PageContainer,
+  PageHeader,
+  StatusFilter,
+  type StatusFilterValue,
+} from "@/components/page-layout";
 import { useSubscriptionWriteGate } from "@/providers/subscription-provider";
 
 function errorMessage(
@@ -55,6 +62,9 @@ export function BranchManagement() {
   );
   const canManage =
     organization?.role === "OWNER" || organization?.role === "ADMIN";
+  // The Branches API returns active and inactive branches in one list, so the
+  // lifecycle filter below only narrows the already loaded rows.
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>("ALL");
   const branchesQuery = useQuery({
     enabled: organizationId !== null && canManage,
     queryFn: () => fetchBranches(organizationId ?? "", true),
@@ -79,29 +89,38 @@ export function BranchManagement() {
     );
   if (!canManage || organizationId === null) {
     return (
-      <section className="space-y-4">
-        <h1 className="text-2xl font-semibold">{t("branchUnavailable")}</h1>
+      <PageContainer>
+        <PageHeader title={t("branchUnavailable")} />
         <p>{t("branchNoPermission")}</p>
         <Link className="underline" href="/app">
           {t("commonReturnToApp")}
         </Link>
-      </section>
+      </PageContainer>
     );
   }
 
+  const branches = branchesQuery.data ?? [];
+  const visibleBranches =
+    statusFilter === "ALL"
+      ? branches
+      : branches.filter((branch) => branch.status === statusFilter);
+
   return (
-    <section className="w-full space-y-8">
-      <header>
+    <PageContainer>
+      <PageHeader description={organization.name} title={t("branchTitle")}>
         <Link
           className="text-sm underline"
           href={applicationContextUrl(organizationId, branchId)}
         >
           {t("commonReturnToApp")}
         </Link>
-        <h1 className="mt-3 text-2xl font-semibold">{t("branchTitle")}</h1>
-        <p className="text-muted-foreground">{organization.name}</p>
-      </header>
+      </PageHeader>
       <CreateBranchForm organizationId={organizationId} onSaved={refresh} />
+      <ListToolbar
+        status={
+          <StatusFilter onValueChange={setStatusFilter} value={statusFilter} />
+        }
+      />
       {branchesQuery.isPending ? <p>{t("branchLoading")}</p> : null}
       {branchesQuery.isError ? (
         <p className="form-message" role="alert">
@@ -109,7 +128,7 @@ export function BranchManagement() {
         </p>
       ) : null}
       <div className="grid gap-4">
-        {branchesQuery.data?.map((branch) => (
+        {visibleBranches.map((branch) => (
           <BranchEditor
             branch={branch}
             key={branch.id}
@@ -118,7 +137,7 @@ export function BranchManagement() {
           />
         ))}
       </div>
-    </section>
+    </PageContainer>
   );
 }
 
@@ -269,6 +288,7 @@ function BranchEditor({
         <Button
           variant="outline"
           className=""
+          aria-busy={updateMutation.isPending}
           disabled={
             updateMutation.isPending ||
             lifecycleMutation.isPending ||
@@ -281,6 +301,7 @@ function BranchEditor({
         <Button
           variant="outline"
           className=""
+          aria-busy={lifecycleMutation.isPending}
           disabled={
             updateMutation.isPending ||
             lifecycleMutation.isPending ||

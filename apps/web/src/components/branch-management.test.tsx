@@ -17,6 +17,7 @@ import {
 } from "@/branch-api-client";
 
 import { BranchManagement } from "./branch-management";
+import { chooseOptionByValue, expectSelectValue } from "@/test/select-helpers";
 
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const BRANCH_ID = "20000000-0000-4000-8000-000000000001";
@@ -104,9 +105,8 @@ describe("branch management UI", () => {
   it("presents create, edit, and lifecycle controls to an OWNER", async () => {
     renderManagement();
 
-    expect(
-      await screen.findByRole("heading", { name: "Branches" }),
-    ).toBeTruthy();
+    const heading = await screen.findByRole("heading", { name: "Branches" });
+    expect(heading.closest('[data-slot="page-header"]')).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Create branch" })).toBeTruthy();
     expect(
       await screen.findByRole("button", { name: "Save changes" }),
@@ -131,6 +131,36 @@ describe("branch management UI", () => {
         phone: "",
       }),
     );
+  });
+
+  it("filters the branch list by lifecycle status", async () => {
+    const inactiveBranch = {
+      ...branch,
+      code: "OLD",
+      id: "20000000-0000-4000-8000-000000000003",
+      name: "Closed shop",
+      status: "INACTIVE" as const,
+    };
+    vi.mocked(fetchBranches).mockResolvedValue([branch, inactiveBranch]);
+    renderManagement();
+
+    const statusFilter = await screen.findByLabelText("Status");
+    // Both lifecycles stay visible by default, as before this filter existed.
+    expectSelectValue(statusFilter, "All");
+    expect(await screen.findByRole("heading", { name: "OLD" })).toBeTruthy();
+
+    await chooseOptionByValue(statusFilter, "INACTIVE");
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "MAIN" })).toBeNull(),
+    );
+    expect(screen.getByRole("heading", { name: "OLD" })).toBeTruthy();
+    // The lifecycle control matches the Suppliers page: one outline button.
+    const reactivate = screen.getByRole("button", { name: "Reactivate" });
+    expect(reactivate.className).toContain("outline");
+
+    await chooseOptionByValue(statusFilter, "ACTIVE");
+    expect(await screen.findByRole("heading", { name: "MAIN" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "OLD" })).toBeNull();
   });
 
   it("does not load or present management controls to a branch-only role", async () => {

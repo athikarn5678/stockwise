@@ -20,6 +20,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { formatMoney } from "@/money-display";
+import { PageContainer, PageHeader } from "@/components/page-layout";
 import {
   applicationContextUrl,
   resolveApplicationContext,
@@ -227,55 +228,52 @@ export function PurchaseOrderManagement() {
     );
   if (resolved?.organization === null) {
     return (
-      <section className="space-y-4">
-        <h1 className="text-2xl font-semibold">
-          {t("uiPurchaseOrdersUnavailable")}
-        </h1>
-        <p className="text-muted-foreground">
-          {t("uiChooseAnActiveOrganizationFromTheWorkspaceFirst")}
-        </p>
+      <PageContainer>
+        <PageHeader
+          description={t("uiChooseAnActiveOrganizationFromTheWorkspaceFirst")}
+          title={t("uiPurchaseOrdersUnavailable")}
+        />
         <Link className="underline" href="/app">
           {t("uiReturnToWorkspace")}
         </Link>
-      </section>
+      </PageContainer>
     );
   }
   if (resolved === null) return null;
   if (resolved.branch === null) {
     return (
-      <section className="space-y-4">
-        <h1 className="text-2xl font-semibold">
-          {t("uiBranchContextRequired")}
-        </h1>
-        <p className="text-muted-foreground">
-          {t("uiChooseAnActiveBranchBeforeManagingPurchaseOrders")}
-        </p>
+      <PageContainer>
+        <PageHeader
+          description={t("uiChooseAnActiveBranchBeforeManagingPurchaseOrders")}
+          title={t("uiBranchContextRequired")}
+        />
         <Link
           className="underline"
           href={applicationContextUrl(resolved.organization.id, null)}
         >
           {t("uiReturnToWorkspace")}
         </Link>
-      </section>
+      </PageContainer>
     );
   }
   if (!MANAGEMENT_ROLES.has(resolved.organization.role)) {
     return (
-      <section className="space-y-4">
-        <Link
-          className="text-sm underline"
-          href={applicationContextUrl(
-            resolved.organization.id,
-            resolved.branch.id,
-          )}
-        >
-          {t("backToWorkspace")}
-        </Link>
-        <h1 className="text-2xl font-semibold">{t("purchaseOrders")}</h1>
+      <PageContainer>
+        <PageHeader title={t("purchaseOrders")}>
+          <Link
+            className="text-sm underline"
+            href={applicationContextUrl(
+              resolved.organization.id,
+              resolved.branch.id,
+            )}
+          >
+            {t("backToWorkspace")}
+          </Link>
+        </PageHeader>
         <p className="form-message" role="alert">
           {t("uiYouDoNotHavePermissionToManagePurchaseOrders")}
         </p>
-      </section>
+      </PageContainer>
     );
   }
   return (
@@ -397,20 +395,18 @@ function PurchaseOrderContent({
   };
 
   return (
-    <section className="w-full min-w-0 space-y-6 [overflow-wrap:anywhere]">
-      <header className="space-y-2">
+    <PageContainer className="[overflow-wrap:anywhere]">
+      <PageHeader
+        description={`${t("uiManageBranchOrdersFor")} ${branch.name}${t("uiTotalsAreCalculatedByTheServerInTHB")}`}
+        title={t("purchaseOrders")}
+      >
         <Link
           className="text-sm underline"
           href={applicationContextUrl(organization.id, branch.id)}
         >
           {t("backToWorkspace")}
         </Link>
-        <h1 className="text-2xl font-semibold">{t("purchaseOrders")}</h1>
-        <p className="text-muted-foreground">
-          {t("uiManageBranchOrdersFor")} {branch.name}
-          {t("uiTotalsAreCalculatedByTheServerInTHB")}
-        </p>
-      </header>
+      </PageHeader>
       {notice ? (
         <p className="form-message" role="alert">
           {t(notice)}
@@ -544,7 +540,9 @@ function PurchaseOrderContent({
             </p>
           ) : null}
           {detail.isPending ? (
-            <p aria-live="polite">{t("uiLoadingPurchaseOrder")}</p>
+            <p aria-live="polite" className="sr-only" role="status">
+              {t("uiLoadingPurchaseOrder")}
+            </p>
           ) : null}
           {detail.isError ? (
             <p className="form-message" role="alert">
@@ -564,7 +562,7 @@ function PurchaseOrderContent({
           ) : null}
         </div>
       </div>
-    </section>
+    </PageContainer>
   );
 }
 

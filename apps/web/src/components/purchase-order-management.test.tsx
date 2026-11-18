@@ -330,6 +330,32 @@ describe("purchase order management UI", () => {
     expect(listProducts).not.toHaveBeenCalled();
     expect(listSuppliers).not.toHaveBeenCalled();
   });
+  it("renders the purchase order page through the shared header", async () => {
+    renderManagement();
+    const heading = await screen.findByRole("heading", {
+      level: 1,
+      name: "Purchase orders",
+    });
+    const header = heading.closest('[data-slot="page-header"]');
+    expect(header).not.toBeNull();
+    expect(
+      within(header as HTMLElement).getByRole("link", {
+        name: "Back to workspace",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Manage branch orders for/).closest("p"),
+    ).toBeTruthy();
+  });
+  it("keeps the detail loading announcement off the visible page", async () => {
+    vi.mocked(getPurchaseOrder).mockReturnValue(new Promise(() => {}));
+    renderManagement();
+    fireEvent.click(await screen.findByRole("button", { name: /PO-0001/ }));
+
+    const announcement = await screen.findByRole("status");
+    expect(announcement.textContent).toBe("Loading purchase order…");
+    expect(announcement.className).toContain("sr-only");
+  });
   it.each(["en", "th"] as const)(
     "preserves long order values in wrapping cards and read-only details in %s",
     async (language) => {

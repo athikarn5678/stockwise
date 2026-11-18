@@ -6,6 +6,12 @@ import { OptionSelect } from "@/components/option-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  ListToolbar,
+  PageContainer,
+  PageHeader,
+  StatusFilter,
+} from "@/components/page-layout";
 
 import {
   type InfiniteData,
@@ -254,45 +260,38 @@ function InventoryContent({
   }, [branch.id, organization.id]);
 
   return (
-    <section className="w-full space-y-8">
-      <header className="space-y-2">
+    <PageContainer>
+      <PageHeader
+        description={t("inventorySubtitle").replace(
+          "{branch}",
+          `${branch.code} — ${branch.name}`,
+        )}
+        title={t("inventoryTitle")}
+      >
         <Link
           className="text-sm underline"
           href={applicationContextUrl(organization.id, branch.id)}
         >
           {t("backToWorkspace")}
         </Link>
-        <h1 className="text-2xl font-semibold">{t("inventoryTitle")}</h1>
-        <p className="text-muted-foreground">
-          {t("inventorySubtitle").replace(
-            "{branch}",
-            `${branch.code} — ${branch.name}`,
-          )}
-        </p>
-      </header>
+      </PageHeader>
 
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <Label className="form-field">
-          {t("inventoryProductStatus")}
-          <OptionSelect
-            className="w-full "
-            onValueChange={(value) => setStatus(value as InventoryStatus)}
-            options={[
-              { label: t("inventoryActiveProducts"), value: "ACTIVE" },
-              { label: t("inventoryInactiveProducts"), value: "INACTIVE" },
-              { label: t("inventoryAllProducts"), value: "ALL" },
-            ]}
+      <ListToolbar
+        onRefresh={() => void balancesQuery.refetch()}
+        refreshLabel={t("inventoryRefresh")}
+        status={
+          <StatusFilter
+            label={t("inventoryProductStatus")}
+            labels={{
+              active: t("inventoryActiveProducts"),
+              all: t("inventoryAllProducts"),
+              inactive: t("inventoryInactiveProducts"),
+            }}
+            onValueChange={setStatus}
             value={status}
           />
-        </Label>
-        <Button
-          variant="outline"
-          onClick={() => void balancesQuery.refetch()}
-          type="button"
-        >
-          {t("inventoryRefresh")}
-        </Button>
-      </div>
+        }
+      />
 
       <BalanceList
         error={balancesQuery.error}
@@ -317,7 +316,7 @@ function InventoryContent({
           scopeKey={scopeKey}
         />
       ) : null}
-    </section>
+    </PageContainer>
   );
 }
 
@@ -446,8 +445,11 @@ function InventoryDetail({
 
   useEffect(() => {
     if (detailQuery.isPending || historyQuery.isPending) return;
-    historyRef.current?.scrollIntoView({ block: "start" });
-    historyRef.current?.focus({ preventScroll: true });
+    const section = historyRef.current;
+    if (section === null) return;
+    // jsdom has no layout engine and may not implement scrollIntoView at all.
+    section.scrollIntoView?.({ block: "start" });
+    section.focus({ preventScroll: true });
   }, [
     detailQuery.isPending,
     historyQuery.isPending,
@@ -681,6 +683,7 @@ function HistoryList({
     <section
       aria-labelledby="inventory-history-heading"
       className="scroll-mt-20 space-y-4"
+      id="inventory-history"
       ref={historyRef}
       tabIndex={-1}
     >

@@ -407,7 +407,6 @@ export const th: Dictionary = {
   teamDeactivate: "ปิดใช้งาน",
   teamRevoke: "เพิกถอน",
   teamReissue: "ส่งคำเชิญใหม่",
-  teamIncludeInactive: "รวมสมาชิกที่ปิดใช้งาน",
   teamUnavailable: "การจัดการสมาชิกไม่พร้อมใช้งาน",
   teamReadOnlyMember: "คุณดูสิทธิ์ของสมาชิกคนนี้ได้เท่านั้น",
   teamOrganizationScope: "ขอบเขตทั่วทั้งองค์กร",

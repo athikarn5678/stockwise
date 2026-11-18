@@ -149,10 +149,8 @@ function mockFetch(input: RequestInfo | URL): Promise<Response> {
     );
   if (url.includes("/branches?includeInactive=true"))
     return Promise.resolve(json({ data: [] }));
-  if (url.includes("/ai-insights/latest?"))
-    return Promise.resolve(
-      json({ data: { latest: null, lastSuccess: null, stale: false } }),
-    );
+  if (url.includes("/ai-insights?"))
+    return Promise.resolve(json({ data: [], meta: { nextCursor: null } }));
   if (url.includes("/analytics/sales?") && salesError)
     return Promise.resolve(
       json({ error: { code: salesError.code } }, salesError.status),

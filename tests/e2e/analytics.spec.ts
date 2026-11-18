@@ -94,15 +94,15 @@ test("cashier sees no analytics navigation and direct link remains inaccessible"
   ).toContainText("Analytics is not available");
 });
 
-test("owner reads a stale AI summary safely on mobile", async ({ page }) => {
+test("owner reads a stored AI report safely on mobile", async ({ page }) => {
   await signIn(page, E2E_OWNER_EMAIL);
-  await page.route(/\/ai-insights\/latest\?/, async (route) => {
+  await page.route(/\/ai-insights\?/, async (route) => {
     expect(route.request().method()).toBe("GET");
     const success = {
       id: "30000000-0000-4000-8000-000000000001",
-      cadence: "DAILY",
+      cadence: "WEEKLY",
       reportingTimezone: "Asia/Bangkok",
-      periodStartInclusive: "2026-09-26T17:00:00.000Z",
+      periodStartInclusive: "2026-09-20T17:00:00.000Z",
       periodEndExclusive: "2026-09-27T17:00:00.000Z",
       state: "SUCCEEDED",
       content: "<script>alert('x')</script>\n<b>hello</b>",
@@ -111,22 +111,7 @@ test("owner reads a stale AI summary safely on mobile", async ({ page }) => {
       completedAt: "2026-09-27T23:01:00.000Z",
     };
     await route.fulfill({
-      json: {
-        data: {
-          latest: {
-            ...success,
-            id: "30000000-0000-4000-8000-000000000002",
-            periodStartInclusive: "2026-09-27T17:00:00.000Z",
-            periodEndExclusive: "2026-09-28T17:00:00.000Z",
-            state: "FAILED",
-            content: null,
-            failureCategory: "PROVIDER_ERROR",
-            generatedAt: null,
-          },
-          lastSuccess: success,
-          stale: true,
-        },
-      },
+      json: { data: [success], meta: { nextCursor: null } },
     });
   });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -134,9 +119,10 @@ test("owner reads a stale AI summary safely on mobile", async ({ page }) => {
   await page.getByRole("button", { name: "Menu", exact: true }).click();
   await page.getByRole("link", { name: "Analytics" }).click();
   await page.getByRole("button", { name: "AI insights" }).click();
-  await expect(page.getByText("Latest scheduled report failed")).toBeVisible();
-  await expect(page.getByText(/Latest period: Sep 28, 2026/)).toBeVisible();
-  await expect(page.getByText(/Report period: Sep 27, 2026/)).toBeVisible();
+  await expect(page.getByLabel("Report period")).toHaveValue(
+    "30000000-0000-4000-8000-000000000001",
+  );
+  await expect(page.getByText(/Report period: Sep 21, 2026/)).toBeVisible();
   await expect(page.locator("article")).toContainText(
     "<script>alert('x')</script>",
   );

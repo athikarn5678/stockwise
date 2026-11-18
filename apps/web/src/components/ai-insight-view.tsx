@@ -13,9 +13,9 @@ import type { TranslationKey } from "@/i18n/en";
 import { useLanguage } from "@/providers/language-provider";
 
 import {
-  getLatestInsight,
   getDemoInsight,
   InsightApiError,
+  listStoredInsights,
   postAnalyze,
   type InsightCadence,
   type InsightScope,
@@ -81,7 +81,8 @@ export function AiInsightView({
       ? "organization"
       : (selectedBranchId ?? organization.branches[0]?.id ?? ""),
   );
-  const [cadence, setCadence] = useState<InsightCadence>("DAILY");
+  const [cadence, setCadence] = useState<InsightCadence>("WEEKLY");
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null);
   const branchesQuery = useQuery({
     queryKey: ["branches", organization.id, true],
     queryFn: () => fetchBranches(organization.id, true),
@@ -96,7 +97,7 @@ export function AiInsightView({
       ? { scope: "organization" }
       : { scope: "branch", branchId: branch?.id ?? "" };
   const enabled = scope.scope === "organization" || scope.branchId !== "";
-  const insightQuery = useQuery({
+  const reportsQuery = useQuery({
     queryKey: [
       "ai-insights",
       organization.id,
@@ -105,11 +106,22 @@ export function AiInsightView({
       cadence,
     ],
     queryFn: ({ signal }) =>
-      getLatestInsight(organization.id, scope, cadence, signal),
+      listStoredInsights(organization.id, scope, cadence, signal),
     enabled,
   });
-  const latest = insightQuery.data?.latest;
-  const success = insightQuery.data?.lastSuccess;
+  // The list is newest first, and only completed reports carry report text.
+  const periods = (reportsQuery.data ?? []).filter(
+    (report) =>
+      report.state === "SUCCEEDED" && (report.content ?? "").trim() !== "",
+  );
+  // `null` means "the newest stored report", so switching scope or cadence
+  // always restarts at the newest report of the new list.
+  const selected =
+    (selectedPeriodId === null
+      ? undefined
+      : periods.find((report) => report.id === selectedPeriodId)) ??
+    periods[0] ??
+    null;
   const analyzeMutation = useMutation({
     mutationFn: () => postAnalyze(organization.id, scope, language, 7),
   });
@@ -136,6 +148,7 @@ export function AiInsightView({
               className="w-full "
               onChange={(event) => {
                 analyzeMutation.reset();
+                setSelectedPeriodId(null);
                 setScopeValue(event.target.value);
               }}
               value={
@@ -161,22 +174,17 @@ export function AiInsightView({
             {t("aiCadence")}
             <NativeSelect
               className="w-full "
-              onChange={(event) =>
-                setCadence(event.target.value as InsightCadence)
-              }
+              onChange={(event) => {
+                setSelectedPeriodId(null);
+                setCadence(event.target.value as InsightCadence);
+              }}
               value={cadence}
             >
-              <NativeSelectOption value="DAILY">
-                {t("cadenceDaily")}
-              </NativeSelectOption>
               <NativeSelectOption value="WEEKLY">
                 {t("cadenceWeekly")}
               </NativeSelectOption>
               <NativeSelectOption value="MONTHLY">
                 {t("cadenceMonthly")}
-              </NativeSelectOption>
-              <NativeSelectOption value="YEARLY">
-                {t("cadenceYearly")}
               </NativeSelectOption>
             </NativeSelect>
           </Label>
@@ -250,50 +258,50 @@ export function AiInsightView({
 
       {!enabled ? (
         <p>{t("aiChooseBranch")}</p>
-      ) : insightQuery.isPending ? (
-        <p aria-live="polite">{t("aiLoadingInsight")}</p>
-      ) : insightQuery.isError ? (
-        <p className="form-message" role="alert">
-          {errorMessage(insightQuery.error, t)}
-        </p>
-      ) : !latest ? (
-        <p className="rounded-lg border bg-card p-4">{t("aiNone")}</p>
       ) : (
         <>
-          <div className="rounded-lg border bg-card p-4" role="status">
-            <p className="font-medium">
-              {latest.state === "SUCCEEDED"
-                ? t("aiStateSucceeded")
-                : latest.state === "FAILED"
-                  ? t("aiStateFailed")
-                  : latest.state === "INSUFFICIENT"
-                    ? t("aiStateInsufficient")
-                    : t("aiStatePreparing")}
-            </p>
-            <p className="mt-1 text-sm">
-              {t("aiLatestPeriod").replace(
-                "{period}",
-                period(latest, language),
-              )}
-            </p>
-            {insightQuery.data.stale && success ? (
-              <p className="mt-1 text-sm">{t("aiStale")}</p>
-            ) : null}
-            {!success ? (
-              <p className="mt-1 text-sm">{t("aiNoSuccess")}</p>
-            ) : null}
+          <div className="rounded-lg border bg-card p-4">
+            <Label className="form-field max-w-md">
+              {t("aiReportPeriodPicker")}
+              <NativeSelect
+                className="w-full"
+                disabled={reportsQuery.isPending || periods.length === 0}
+                onChange={(event) => setSelectedPeriodId(event.target.value)}
+                value={selected?.id ?? ""}
+              >
+                {periods.length === 0 ? (
+                  <NativeSelectOption value="">
+                    {t("aiNoReportPeriods")}
+                  </NativeSelectOption>
+                ) : (
+                  periods.map((report) => (
+                    <NativeSelectOption key={report.id} value={report.id}>
+                      {period(report, language)}
+                    </NativeSelectOption>
+                  ))
+                )}
+              </NativeSelect>
+            </Label>
           </div>
-          {success?.content ? (
+          {reportsQuery.isPending ? (
+            <p aria-live="polite">{t("aiLoadingInsight")}</p>
+          ) : reportsQuery.isError ? (
+            <p className="form-message" role="alert">
+              {errorMessage(reportsQuery.error, t)}
+            </p>
+          ) : !selected ? (
+            <p className="rounded-lg border bg-card p-4">{t("aiNone")}</p>
+          ) : (
             <article className="rounded-lg border bg-card p-4 sm:p-5">
               <h3 className="text-lg font-semibold">{t("aiSuccessTitle")}</h3>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t("aiReportPeriod").replace(
                   "{period}",
-                  period(success, language),
+                  period(selected, language),
                 )}{" "}
-                · {success.reportingTimezone}
+                · {selected.reportingTimezone}
               </p>
-              {success.completedAt ? (
+              {selected.completedAt ? (
                 <p className="text-sm text-muted-foreground">
                   {t("aiCompleted")}{" "}
                   {new Intl.DateTimeFormat(
@@ -301,16 +309,16 @@ export function AiInsightView({
                     {
                       dateStyle: "medium",
                       timeStyle: "short",
-                      timeZone: success.reportingTimezone,
+                      timeZone: selected.reportingTimezone,
                     },
-                  ).format(new Date(success.completedAt))}
+                  ).format(new Date(selected.completedAt))}
                 </p>
               ) : null}
               <p className="mt-4 whitespace-pre-wrap break-words">
-                {success.content}
+                {selected.content}
               </p>
             </article>
-          ) : null}
+          )}
         </>
       )}
     </section>

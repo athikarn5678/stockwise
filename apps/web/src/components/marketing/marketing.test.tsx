@@ -436,6 +436,7 @@ describe("pricing as the only place to subscribe", () => {
       expect((subscribeButtons()[0] as HTMLButtonElement).disabled).toBe(false),
     );
     expect(screen.queryByText("Current plan")).toBeNull();
+    expect(screen.queryByTestId("active-plan-panel")).toBeNull();
   });
 
   it("shows the active plan and offers no second subscription", async () => {
@@ -443,11 +444,21 @@ describe("pricing as the only place to subscribe", () => {
     world.access = access("ACTIVE");
     world.subscription = { interval: "YEAR", plan: "GROWTH", status: "ACTIVE" };
     renderPage(<PricingContent navigate={vi.fn()} />);
-    expect(await screen.findByText("Current plan")).toBeTruthy();
-    expect(
-      screen.getByText("Current plan: Growth (Yearly)", { exact: false }),
-    ).toBeTruthy();
-    for (const button of subscribeButtons())
+    // One emphasized panel (not a second "Current plan" line) and a highlighted
+    // card without a button-like control on the active plan.
+    const panel = await screen.findByTestId("active-plan-panel");
+    expect(panel.textContent).toContain("Subscription active");
+    expect(panel.textContent).toContain("Growth plan · Yearly");
+    expect(screen.queryByText(/Current plan:/)).toBeNull();
+    const growth = screen
+      .getByRole("heading", { name: "Growth", exact: true })
+      .closest("article")!;
+    expect(within(growth).queryByRole("button")).toBeNull();
+    expect(within(growth).getByText("Current plan")).toBeTruthy();
+    // Other plans cannot be bought while a subscription is active.
+    const others = subscribeButtons();
+    expect(others).toHaveLength(2);
+    for (const button of others)
       expect((button as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -490,7 +501,10 @@ describe("pricing as the only place to subscribe", () => {
       session_id: "cs_test_x1",
     });
     renderPage(<PricingContent navigate={vi.fn()} />);
-    expect(await screen.findByText("Subscription active: Growth")).toBeTruthy();
+    expect(
+      (await screen.findByTestId("active-plan-panel")).textContent,
+    ).toContain("Growth plan · Yearly");
+    expect(screen.queryByText("Subscription active: Growth")).toBeNull();
     expect(replace).toHaveBeenCalledWith(`/pricing?organizationId=${ORG}`);
     expect(
       calls.filter((call) => call.url.endsWith("/billing/confirm")),

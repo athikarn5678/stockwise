@@ -129,6 +129,8 @@ export const en = {
   subscriptionDismiss: "Dismiss",
   pricingSignInToSubscribe: "Sign in to subscribe",
   pricingSetUpStore: "Set up your store",
+  pricingActivePanelTitle: "Subscription active",
+  pricingActivePanelBody: "{plan} plan · {period}",
   pricingCurrentPlanBadge: "Current plan",
   pricingNonOwnerNotice:
     "Only the store owner can subscribe or renew. Ask your store owner to renew the plan.",

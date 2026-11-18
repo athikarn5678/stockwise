@@ -129,6 +129,8 @@ export const th: Dictionary = {
   subscriptionDismiss: "ปิด",
   pricingSignInToSubscribe: "เข้าสู่ระบบเพื่อสมัครสมาชิก",
   pricingSetUpStore: "ตั้งค่าร้านค้าของคุณ",
+  pricingActivePanelTitle: "การสมัครสมาชิกใช้งานอยู่",
+  pricingActivePanelBody: "แพ็กเกจ {plan} · {period}",
   pricingCurrentPlanBadge: "แพ็กเกจปัจจุบัน",
   pricingNonOwnerNotice:
     "เฉพาะเจ้าของร้านเท่านั้นที่สมัครหรือต่ออายุได้ โปรดแจ้งเจ้าของร้านให้ต่ออายุแพ็กเกจ",

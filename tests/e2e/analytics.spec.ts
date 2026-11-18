@@ -157,11 +157,9 @@ test("owner selects a Branch/Product and lead time for deterministic advisory st
   await expect(
     page.getByRole("region", { name: "Forecast and reorder", exact: true }),
   ).toBeVisible();
-  await selectOption(
-    page,
-    page.getByRole("combobox", { name: "Branch", exact: true }),
-    { value: E2E_BRANCH_ID },
-  );
+  await selectOption(page, page.getByRole("combobox", { name: /^Branch\b/ }), {
+    value: E2E_BRANCH_ID,
+  });
   await chooseComboboxOption(
     page,
     // The wrapping <label> also holds the clear/show-options buttons, so the

@@ -128,7 +128,7 @@ test("exact monetary displays stay consistent from catalog through receiving and
     await create.getByLabel("Base price").fill(price!);
     await selectOption(
       page,
-      create.getByRole("combobox", { name: "Unit", exact: true }),
+      create.getByRole("combobox", { name: /^Unit\b/ }),
       { value: "KG" },
     );
     await create.getByRole("button", { name: "Create product" }).click();

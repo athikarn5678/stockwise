@@ -64,11 +64,17 @@ export async function expectSelectValue(
   await expect(trigger).toHaveText(label);
 }
 
+function labelPrefix(label: string): RegExp {
+  return new RegExp(
+    `^${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\b|\\s|$)`,
+  );
+}
+
 function resolveTrigger(page: Page, labelOrLocator: string | Locator): Locator {
   return typeof labelOrLocator === "string"
-    ? // A wrapping <label> also contains the trigger's value text, so an exact
-      // label match finds nothing; the combobox accessible name is reliable.
-      page.getByRole("combobox", { name: labelOrLocator, exact: true })
+    ? // A wrapping <label> makes the trigger's accessible name "<label> <value>",
+      // so match the label as a prefix of the combobox name.
+      page.getByRole("combobox", { name: labelPrefix(labelOrLocator) })
     : labelOrLocator;
 }
 

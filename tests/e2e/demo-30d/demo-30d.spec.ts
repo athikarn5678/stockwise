@@ -157,7 +157,7 @@ test("owner sees 30 real daily analytics buckets, sales history, forecast and re
   await expect(page.getByText(/EA total/)).toBeVisible();
   await selectOption(
     page,
-    page.getByRole("combobox", { name: "Planning lead time", exact: true }),
+    page.getByRole("combobox", { name: /^Planning lead time\b/ }),
     { value: "7" },
   );
   await expect(page.getByText(/Recommend .* EA/)).toBeVisible();

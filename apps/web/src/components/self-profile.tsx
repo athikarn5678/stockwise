@@ -14,7 +14,8 @@ import { useLanguage } from "@/providers/language-provider";
 import { useAccountDraft } from "@/providers/account-draft";
 import { currentPrivateSessionSignal } from "@/session-lifecycle";
 
-export function SelfProfile() {
+export function SelfProfile({ embedded = false }: { embedded?: boolean }) {
+  const Heading = embedded ? "h2" : "h1";
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const { restored: candidate, remember } = useAccountDraft("profile");
@@ -198,7 +199,13 @@ export function SelfProfile() {
   if (profileQuery.isError)
     return (
       <section className="w-full max-w-2xl space-y-4">
-        <h1 className="text-2xl font-semibold">{t("profileTitle")}</h1>
+        <Heading
+          className={
+            embedded ? "text-xl font-semibold" : "text-2xl font-semibold"
+          }
+        >
+          {t("profileTitle")}
+        </Heading>
         <p role="alert">{t("profileLoadError")}</p>
         <Button type="button" onClick={() => void profileQuery.refetch()}>
           {t("profileRetry")}
@@ -206,13 +213,23 @@ export function SelfProfile() {
       </section>
     );
   return (
-    <section className="w-full max-w-2xl space-y-6">
+    <section
+      className={embedded ? "w-full space-y-6" : "w-full max-w-2xl space-y-6"}
+    >
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold">{t("profileTitle")}</h1>
+        <Heading
+          className={
+            embedded ? "text-xl font-semibold" : "text-2xl font-semibold"
+          }
+        >
+          {t("profileTitle")}
+        </Heading>
         <p className="text-muted-foreground">{t("profileDescription")}</p>
       </header>
       <form
-        className="space-y-5 rounded-lg border bg-card p-5"
+        className={
+          embedded ? "space-y-5" : "space-y-5 rounded-lg border bg-card p-5"
+        }
         onSubmit={submit}
         noValidate
       >

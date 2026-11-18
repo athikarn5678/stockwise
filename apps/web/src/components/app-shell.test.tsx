@@ -259,12 +259,13 @@ describe("web application shell", () => {
         .getAttribute("href"),
     ).toBe(`/app/sales?organizationId=${ORG}&branchId=${BRANCH}`);
     expect(
-      within(nav)
-        .getByRole("link", { name: "Organization settings" })
-        .getAttribute("href"),
-    ).toBe(
-      `/app/organization-settings?organizationId=${ORG}&branchId=${BRANCH}`,
-    );
+      within(nav).getByRole("link", { name: "Settings" }).getAttribute("href"),
+    ).toBe(`/app/settings?organizationId=${ORG}&branchId=${BRANCH}`);
+    // Profile and organization settings are one Settings entry now.
+    expect(within(nav).queryByRole("link", { name: "My profile" })).toBeNull();
+    expect(
+      within(nav).queryByRole("link", { name: "Organization settings" }),
+    ).toBeNull();
     for (const logo of screen.getAllByRole("link", { name: "StockWise" })) {
       expect(logo.getAttribute("href")).toBe(
         `/app?organizationId=${ORG}&branchId=${BRANCH}`,
@@ -537,9 +538,10 @@ describe("web application shell", () => {
       expect(!!screen.queryByRole("link", { name: "Catalog" })).toBe(
         role !== "INVENTORY_STAFF",
       );
+      expect(screen.getByRole("link", { name: "Settings" })).toBeTruthy();
       expect(
-        !!screen.queryByRole("link", { name: "Organization settings" }),
-      ).toBe(manage);
+        screen.queryByRole("link", { name: "Organization settings" }),
+      ).toBeNull();
     },
   );
 

@@ -93,7 +93,7 @@ production build, without API/database setup.
 
 ### Self-profile maintenance
 
-`/app/profile` uses the existing shell, EN/TH provider and theme components.
+The profile card on `/app/settings` (the old `/app/profile` route redirects there) uses the existing shell, EN/TH provider and theme components.
 It is account-scoped, not tenant-scoped, and remains available without an
 organization membership. Express owns `GET /me` and `PATCH /me/profile`;
 the existing selected authentication middleware supplies the trusted actor
@@ -112,7 +112,7 @@ No browser storage or general private-data cache is used. Browser Back/Forward
 is not intercepted; internal-link/unload warnings are not a history blocker.
 No new auth authority, schema, dependency or live cutover is introduced.
 
-`/app/organization-settings` resolves its selected organization from validated
+The organization card on `/app/settings` (visible to OWNER/ADMIN only; the old `/app/organization-settings` route redirects there) resolves its selected organization from validated
 access context and is OWNER/ADMIN-only UX. Express independently enforces
 `organization-settings.manage` and the name-only ADR-037 GET/PATCH contract,
 including locked mutation-boundary authorization and atomic optimistic versions.

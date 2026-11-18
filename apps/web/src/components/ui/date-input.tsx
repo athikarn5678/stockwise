@@ -72,11 +72,12 @@ export function DateInput({
   }
 
   return (
-    <span className="inline-flex w-full min-w-0 max-w-full items-center gap-1">
+    <span className="inline-flex w-full min-w-[calc(10ch+4.25rem)] max-w-full items-center gap-1">
       <Input
         {...props}
         aria-invalid={props["aria-invalid"] ?? (invalid ? true : undefined)}
-        className={cn("min-w-0 flex-1", className)}
+        // Always wide enough for a full YYYY-MM-DD (10 characters plus padding).
+        className={cn("min-w-[calc(10ch+1.75rem)] flex-1", className)}
         disabled={disabled}
         inputMode="numeric"
         maxLength={10}

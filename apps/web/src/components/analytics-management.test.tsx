@@ -383,6 +383,14 @@ describe("analytics management", () => {
     expect(labels[insights + 1]).toBe("AI analysis");
   });
 
+  it("offers the AI analysis tab to a branch manager with an assigned branch", async () => {
+    role = "BRANCH_MANAGER";
+    renderPage();
+    expect(
+      await screen.findByRole("button", { name: "AI analysis" }),
+    ).toBeTruthy();
+  });
+
   it("does not offer the AI analysis tab to inventory staff", async () => {
     role = "INVENTORY_STAFF";
     renderPage();

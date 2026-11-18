@@ -560,7 +560,7 @@ export function AnalyticsManagement() {
     );
   return (
     <AnalyticsContent
-      key={`${resolved.organization.id}:${resolved.organization.role}:${resolved.organization.branches.map((branch) => branch.id).join(",")}`}
+      key={`${resolved.organization.id}:${resolved.organization.role}:${resolved.organization.branches.map((branch) => branch.id).join(",")}:${searchParams.get("view") ?? ""}`}
       organization={resolved.organization}
       selectedBranchId={resolved.branch?.id ?? null}
       requestedView={searchParams.get("view")}
@@ -791,6 +791,9 @@ function AnalyticsContent({
       ) : view === "insights" ? (
         <AiInsightView
           key={selectedBranchId ?? ""}
+          {...(canAnalyze
+            ? { onOpenAnalysis: () => setView("ai-analysis") }
+            : {})}
           organization={organization}
           selectedBranchId={selectedBranchId}
         />

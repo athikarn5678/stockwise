@@ -641,8 +641,6 @@ export const en = {
   aiAnalysisHistoryBothLanguages: "Thai and English",
   aiAnalysisHistoryOneLanguage: "{language} only",
   aiAnalysisHistoryLoadMore: "Load more",
-  aiAnalysisNotPermitted:
-    "AI analysis is available to owners, admins, and branch managers with an assigned branch.",
   aiAnalysisLoadingPage: "Loading AI analysis…",
   aiAnalysisLoadError: "AI analysis could not be loaded.",
   aiInsightAnalysisHintBefore:

@@ -1134,7 +1134,7 @@ export const th: Dictionary = {
   uiChooseAPlanningLeadTimeToSeeAReorder:
     "เลือกระยะเวลารอสินค้าเพื่อดูคำแนะนำการสั่งซื้อ",
   uiPlanningLeadTimeMustBeAWholeNumberFrom:
-    "ระยะเวลารอสินค้าต้องเป็นจำนวนเต็มตั้งแต่ 1 ถึง 7 วัน",
+    "ระยะเวลารอสินค้าต้องเป็น 7 หรือ 30 วัน",
   uiInventoryBalanceOrLedgerIntegrityNeedsReviewBeforeRecommending:
     "ต้องตรวจสอบความถูกต้องของยอดคงเหลือหรือบัญชีการเคลื่อนไหวก่อนแนะนำจำนวนสั่งซื้อ",
   uiTheCalculatedQuantityExceedsTheSupportedRange:
@@ -1158,7 +1158,13 @@ export const th: Dictionary = {
   uiNoProductsMatchThisSearch: "ไม่มีสินค้าที่ตรงกับการค้นหา",
   uiLoadMoreProducts: "โหลดสินค้าเพิ่มเติม",
   uiPlanningLeadTime: "ระยะเวลารอสินค้า",
-  uiChoose17Days: "เลือก 1–7 วัน",
+  uiChoose7Or30Days: "เลือก 7 หรือ 30 วัน",
+  uiLeadTime7Days: "7 วัน",
+  uiLeadTime30Days: "30 วัน",
+  uiPlanningLeadTimeExplanation:
+    "ระยะเวลารอสินค้าคือจำนวนวันระหว่างการสั่งซื้อจนได้รับสินค้า คำแนะนำจะครอบคลุมยอดขายที่คาดว่าจะเกิดขึ้นในช่วงจำนวนวันนั้น",
+  uiWhyRecommendedQuantityCanBeZero:
+    "จำนวนที่แนะนำอาจเป็น 0 ได้ เมื่อสต็อกคงเหลือเพียงพอกับความต้องการที่พยากรณ์ไว้ตลอดระยะเวลารอสินค้าที่เลือก จึงยังไม่ต้องสั่งซื้อเพิ่ม",
   uiNoAccessibleActiveBranchIsAvailable:
     "ไม่มีสาขาที่ใช้งานอยู่ซึ่งคุณมีสิทธิ์เข้าถึง",
   uiChooseAProductToSeeItsForecastAndReorder:
@@ -1188,7 +1194,7 @@ export const th: Dictionary = {
   uiForecastUsesASimpleMeanOfObservedCompletedSale:
     "การพยากรณ์ใช้ค่าเฉลี่ยอย่างง่ายของจำนวนขายที่เสร็จสมบูรณ์ใน 28 วันท้องถิ่นที่ครบวัน วันที่ไม่มีการขายนับเป็นศูนย์ ไม่ปรับตามฤดูกาลหรือความต้องการที่สูญเสีย การขาดสต็อกอาจทำให้ความต้องการที่สังเกตต่ำลง และไม่นับวันปัจจุบันที่ยังไม่ครบวัน",
   uiReorderUsesYourSelectedLeadTimeOfAtMost:
-    "คำแนะนำใช้ระยะเวลารอสินค้าที่เลือกไม่เกิน 7 วัน สต็อกสำรองเป็นศูนย์และไม่นับใบสั่งซื้อที่รอรับ ไม่คำนึงถึงผู้จัดจำหน่าย จำนวนสั่งซื้อขั้นต่ำ หรือขนาดบรรจุ เป็นเพียงคำแนะนำและไม่สร้างคำสั่งซื้ออัตโนมัติ",
+    "คำแนะนำใช้ระยะเวลารอสินค้าที่เลือก 7 หรือ 30 วัน สต็อกสำรองเป็นศูนย์และไม่นับใบสั่งซื้อที่รอรับ ไม่คำนึงถึงผู้จัดจำหน่าย จำนวนสั่งซื้อขั้นต่ำ หรือขนาดบรรจุ เป็นเพียงคำแนะนำและไม่สร้างคำสั่งซื้ออัตโนมัติ",
   uiTheSelectedPeriodIsNotComplete: "ช่วงเวลาที่เลือกยังไม่ครบ",
   uiFewerThan28CompleteDaysOfInventoryHistory:
     "มีประวัติสินค้าคงคลังไม่ครบ 28 วัน",

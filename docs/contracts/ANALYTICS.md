@@ -646,27 +646,35 @@ separately defines Forecasting V1; `ADR-032` later accepts Reorder V1 policy.
 
 ### M-107 Reorder recommendation
 
-**Status: Accepted by `ADR-032`; internal advisory `reorder-v1` runtime implemented by P6-M4-T03 in `48215068d19fc320093941cfc147234fb563d51e`; Forecast/Reorder API/UI implemented by P6-M4-T04 in `ca8509a1b54af66b3b3bdf3d3af75fdd72ae2448`.**
+**Status: Accepted by `ADR-032`; internal advisory `reorder-v1` runtime implemented by P6-M4-T03 in `48215068d19fc320093941cfc147234fb563d51e`; Forecast/Reorder API/UI implemented by P6-M4-T04 in `ca8509a1b54af66b3b3bdf3d3af75fdd72ae2448`. Amended 2026-11-18 (owner decision): planning lead time options are exactly 7 and 30 days, and the reorder computation uses a 30-day internal forecast horizon with the unchanged `forecast-sale-mean-28d-v1` method; the published forecast and its chart stay at seven days.**
 One advisory result applies to one authorized, active Branch/Product in its immutable
 Product base unit. It consumes the `ADR-031` forecast from the **same read
 snapshot**. No Organization/Product or mixed-unit quantity is produced.
 
-The caller explicitly supplies `leadTimeDays` as a planning assumption: a whole
-number from 1 through 7 Organization-local forecast days, beginning with the
-forecast's first local day. It is not derived from Supplier or PO history and is
-not persisted. Missing lead time returns `UNAVAILABLE/LEAD_TIME_REQUIRED`;
-zero, fractional, negative, and greater-than-seven inputs return
-`UNAVAILABLE/UNSUPPORTED_LEAD_TIME`. The seven-day limit avoids claiming a
-validated forecast beyond the accepted horizon. At a non-midnight cutoff, the
-current partial local day is outside both training and lead-time demand; the
-recommendation does not cover demand before the first forecast day.
+The caller explicitly supplies `leadTimeDays` as a planning assumption: exactly
+7 or 30 Organization-local forecast days, beginning with the forecast's first
+local day. It is not derived from Supplier or PO history and is not persisted.
+Missing lead time returns `UNAVAILABLE/LEAD_TIME_REQUIRED`. Any other present
+value (zero, negative, fractional, 1–6, 8, 31, or non-numeric) is rejected at
+the HTTP boundary with the canonical `400 VALIDATION_ERROR`; the internal value
+builder also rejects it defensively as `UNAVAILABLE/UNSUPPORTED_LEAD_TIME`. The
+two options are the accepted planning choices, and the 30-day option is why the
+reorder computation extends the horizon to 30 days. That extension uses the
+unchanged forecast method: one 28-day observed-sale mean repeated for every
+horizon day, with the same HALF_UP four-place daily rounding. The published
+forecast endpoint, its seven daily values, its seven-day total, and its chart
+are unchanged. At a non-midnight cutoff, the current partial local day is
+outside both training and lead-time demand; the recommendation does not cover
+demand before the first forecast day.
 
 For an available forecast, sum the `quantity` strings from its first
 `leadTimeDays` serialized daily outputs using exact Decimal arithmetic:
 `leadTimeDemand = sum(forecast.days[0 ... leadTimeDays - 1].quantity)`, with no
 intermediate rounding. Forecasting V1 repeats one rounded four-place daily
 expectation, so this equals that displayed daily value times `leadTimeDays`;
-never recalculate from its unrounded 28-day mean. `safetyStock = 0.0000`:
+never recalculate from its unrounded 28-day mean. `dailyForecast` in the reorder
+result stays the first seven forecast days even when the internal horizon is 30
+days; the 30-day option must not return 30 rows. `safetyStock = 0.0000`:
 current data supports no
 service-level or demand-variance rule. This baseline does not protect against
 forecast error, demand variability, or stockout-censored Sales.
@@ -1571,7 +1579,7 @@ part of this task.
 | Final 28-day forecasts | A/B STABLE daily `2.0000`/`1.0000`; A WEIGHT `0.5000`; A WEEKLY `1.7500`; A SPARSE `0.1429`, seven-day total `1.0003`; B SPARSE AVAILABLE with daily/total zero. |
 | Forecast unavailability | A NEW has first movement on 2026-09-12, after training start 2026-08-29: `INSUFFICIENT_DATA`; A ARCHIVED: `INACTIVE_PRODUCT` even with old movement history. |
 | Current coverage/classification | A STABLE 3 EA / 2 per day = `1.50` days `LOW_STOCK`; B STABLE 10 EA / 1 = `10.00` days `NORMAL`; A WEEKLY 110 EA / 1.75 = `62.86` days `OVERSTOCK`; B SPARSE has `NO_RECENT_DEMAND` and null classification. |
-| Reorder at fixed cutoff | With lead time 2, A STABLE recommends `1.0000` EA and B STABLE `0.0000`; with lead time 7, A SPARSE's serialized demand `1.0003` minus 1 on-hand gives `0.0003` raw need and whole-unit ceiling `1.0000`; with lead time 3, A WEIGHT recommends `0.5000` KG. B SPARSE with lead time 2 recommends zero; A NEW and A ARCHIVED with lead time 2 propagate their forecast reasons. |
+| Reorder at fixed cutoff | With lead time 7, A STABLE's serialized demand `14.0000` minus 3 on-hand gives `11.0000` EA; B STABLE recommends `0.0000`; A WEIGHT's `3.5000` demand minus 1 on-hand gives `2.5000` KG. A SPARSE's serialized demand `1.0003` minus 1 on-hand gives `0.0003` raw need and whole-unit ceiling `1.0000`. B SPARSE with lead time 7 recommends zero; A NEW and A ARCHIVED with lead time 7 propagate their forecast reasons. |
 | Refund and adjustments | The 2026-09-21 refund contributes THB `50.00` refund amount, `0.5000` KG financial quantity, `0.2500` KG return, and `10.0000000000` COGS reversal in its own period. A/STABLE adjustment movements are separately +1/-1, net zero. |
 
 The fixture has 1 Organization, 2 Branches, 2 Categories, 6 Products, 1 Supplier,

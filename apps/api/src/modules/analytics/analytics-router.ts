@@ -56,11 +56,8 @@ const pairQuerySchema = z
   })
   .strict();
 const reorderQuerySchema = pairQuerySchema.extend({
-  leadTimeDays: z
-    .string()
-    .regex(/^-?\d+(?:\.\d+)?$/)
-    .transform(Number)
-    .optional(),
+  // ADR-032 amendment: planning lead time options are exactly 7 and 30 days.
+  leadTimeDays: z.enum(["7", "30"]).transform(Number).optional(),
 });
 
 function requestId(response: Response): string {

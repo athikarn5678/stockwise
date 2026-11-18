@@ -74,7 +74,7 @@ export function ForecastReorderView({
   const [branchId, setBranchId] = useState(organization.branches[0]?.id ?? "");
   const [productId, setProductId] = useState("");
   const [search, setSearch] = useState("");
-  const [leadTimeDays, setLeadTimeDays] = useState<number | null>(null);
+  const [leadTimeDays, setLeadTimeDays] = useState<7 | 30 | null>(null);
   const activeBranch = organization.branches.find(
     (branch) => branch.id === branchId,
   );
@@ -214,27 +214,33 @@ export function ForecastReorderView({
             </Button>
           ) : null}
         </div>
-        <Label className="form-field">
-          {t("uiPlanningLeadTime")}
-          <NativeSelect
-            value={leadTimeDays ?? ""}
-            onChange={(event) =>
-              setLeadTimeDays(
-                event.target.value === "" ? null : Number(event.target.value),
-              )
-            }
-            className="w-full form-control--compact"
-          >
-            <NativeSelectOption value="">
-              {t("uiChoose17Days")}
-            </NativeSelectOption>
-            {[1, 2, 3, 4, 5, 6, 7].map((days) => (
-              <NativeSelectOption key={days} value={days}>
-                {days} {days === 1 ? "day" : "days"}
+        <div className="space-y-2">
+          <Label className="form-field">
+            {t("uiPlanningLeadTime")}
+            <NativeSelect
+              value={leadTimeDays ?? ""}
+              onChange={(event) => {
+                const value = event.target.value;
+                setLeadTimeDays(value === "7" ? 7 : value === "30" ? 30 : null);
+              }}
+              className="w-full form-control--compact"
+            >
+              <NativeSelectOption value="">
+                {t("uiChoose7Or30Days")}
               </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        </Label>
+              <NativeSelectOption value={7}>
+                {t("uiLeadTime7Days")}
+              </NativeSelectOption>
+              <NativeSelectOption value={30}>
+                {t("uiLeadTime30Days")}
+              </NativeSelectOption>
+            </NativeSelect>
+          </Label>
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <p>{t("uiPlanningLeadTimeExplanation")}</p>
+            <p>{t("uiWhyRecommendedQuantityCanBeZero")}</p>
+          </div>
+        </div>
       </div>
       {!activeBranch ? (
         <p className="form-message" role="alert">

@@ -583,7 +583,7 @@ describe("Reorder V1 in one forecast and inventory snapshot", () => {
       organizationId: f.org.id,
       branchId: f.branchA.id,
       productId: f.product.id,
-      leadTimeDays: 0,
+      leadTimeDays: 7,
     };
     for (const allowed of [f.owner, admin, f.manager]) {
       expect(
@@ -654,7 +654,7 @@ describe("Reorder V1 in one forecast and inventory snapshot", () => {
       occurredAt: new Date(window.trainingStartInclusive),
       delta: "-1",
     });
-    expect(await reorder({ ...base, leadTimeDays: 3 })).toMatchObject({
+    expect(await reorder({ ...base, leadTimeDays: 7 })).toMatchObject({
       kind: "success",
       recommendation: {
         status: "AVAILABLE",
@@ -668,7 +668,7 @@ describe("Reorder V1 in one forecast and inventory snapshot", () => {
       },
     });
     expect(
-      await reorder({ ...base, actorUserId: f.staff.user.id, leadTimeDays: 3 }),
+      await reorder({ ...base, actorUserId: f.staff.user.id, leadTimeDays: 7 }),
     ).toMatchObject({
       kind: "forbidden",
     });
@@ -676,7 +676,7 @@ describe("Reorder V1 in one forecast and inventory snapshot", () => {
       kind: "success",
       recommendation: { reason: "LEAD_TIME_REQUIRED" },
     });
-    expect(await reorder({ ...base, leadTimeDays: 8 })).toMatchObject({
+    expect(await reorder({ ...base, leadTimeDays: 31 })).toMatchObject({
       kind: "success",
       recommendation: { reason: "UNSUPPORTED_LEAD_TIME" },
     });
@@ -684,7 +684,7 @@ describe("Reorder V1 in one forecast and inventory snapshot", () => {
       where: { id: f.product.id },
       data: { status: "INACTIVE" },
     });
-    expect(await reorder({ ...base, leadTimeDays: 8 })).toMatchObject({
+    expect(await reorder({ ...base, leadTimeDays: 31 })).toMatchObject({
       kind: "success",
       recommendation: { reason: "INACTIVE_PRODUCT" },
     });
@@ -697,7 +697,7 @@ describe("Reorder V1 in one forecast and inventory snapshot", () => {
       branchId: f.branchA.id,
       productId: f.product.id,
       actorUserId: f.owner.user.id,
-      leadTimeDays: 1,
+      leadTimeDays: 7,
     };
     await movement({
       ...base,
@@ -733,7 +733,7 @@ describe("Reorder V1 in one forecast and inventory snapshot", () => {
       branchId: f.branchA.id,
       productId: f.product.id,
       actorUserId: f.owner.user.id,
-      leadTimeDays: 3,
+      leadTimeDays: 7,
     };
     await movement({
       ...base,
@@ -790,10 +790,21 @@ describe("Reorder V1 in one forecast and inventory snapshot", () => {
       kind: "success",
       recommendation: {
         status: "AVAILABLE",
-        leadTimeDemand: "0.1071",
+        leadTimeDemand: "0.2499",
         onHand: "0.0000",
-        rawNeed: "0.1071",
+        rawNeed: "0.2499",
         recommendedQuantity: "1.0000",
+      },
+    });
+    expect(await reorder({ ...base, leadTimeDays: 30 })).toMatchObject({
+      kind: "success",
+      recommendation: {
+        status: "AVAILABLE",
+        leadTimeDays: 30,
+        leadTimeDemand: "1.0710",
+        onHand: "0.0000",
+        rawNeed: "1.0710",
+        recommendedQuantity: "2.0000",
       },
     });
   });
@@ -805,7 +816,7 @@ describe("Reorder V1 in one forecast and inventory snapshot", () => {
       branchId: f.branchA.id,
       productId: f.product.id,
       actorUserId: f.owner.user.id,
-      leadTimeDays: 1,
+      leadTimeDays: 7,
     };
     await movement({
       ...base,

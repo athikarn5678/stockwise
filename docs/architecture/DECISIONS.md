@@ -2108,6 +2108,18 @@ accepted replenishment policy before implementing those calculations; risk
 classification needs a separate decision. Future seasonal or other models need
 new identifiers and measured comparisons. T01 adds documentation only.
 
+### Amendment (2026-11-18): 30-day horizon for reorder
+
+Owner decision. The planning lead time options are exactly 7 and 30 days. The
+forecast horizon used for the reorder computation extends to 30 days with the
+same `forecast-sale-mean-28d-v1` method: one 28-day observed-sale mean repeated
+for every horizon day, with the same HALF_UP four-place daily rounding. The
+published forecast endpoint, its seven daily values, its seven-day total, and
+the forecast chart stay at seven days. The horizon length is a parameter of the
+window builder and the forecast builder; the seven-day default is unchanged,
+and the reorder response's `dailyForecast` still exposes only the first seven
+days. The model, training window, backtest, and output fields are unchanged.
+
 ## ADR-032 — Fix advisory Reorder V1 policy
 
 - **Date:** 2026-09-25
@@ -2165,6 +2177,21 @@ semantics, longer forecast horizons, supplier lead-time master data, MOQ/pack
 conversion, supplier choice, and automated ordering need separate accepted
 rules and evidence. No schema, migration, dependency, persistence, or
 configuration is required for this policy gate; T03 runtime is still pending.
+
+### Amendment (2026-11-18): planning lead time is exactly 7 or 30 days
+
+Owner decision. `leadTimeDays` accepts exactly 7 or 30 Organization-local
+forecast days. Any other present value (`0`, `1`–`6`, `8`, `31`, fractional, or
+non-numeric) is rejected at the API boundary with the canonical
+`400 VALIDATION_ERROR`; the internal value builder still reports
+`UNAVAILABLE/UNSUPPORTED_LEAD_TIME` defensively, and a missing value keeps
+`UNAVAILABLE/LEAD_TIME_REQUIRED`. The reorder computation uses a 30-day internal
+forecast horizon so the 30-day option has demand to sum, with the unchanged
+method from the `ADR-031` amendment. `leadTimeDemand` sums the first N forecast
+days, `dailyForecast` remains the first seven days, and `rawNeed` and unit
+rounding are unchanged. The published forecast stays at seven days. Every other
+part of this decision stands, including zero safety stock, excluded incoming
+orders, and advisory-only behaviour.
 
 ## ADR-033 — Bound scheduled AI insight generation
 

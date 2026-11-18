@@ -19,6 +19,7 @@ import {
 } from "@/analytics-api-client";
 import { listProducts, type CatalogProduct } from "@/catalog-api-client";
 import type { AccessibleOrganization } from "@/branch-api-client";
+import { LanguageProvider } from "@/providers/language-provider";
 import { ForecastReorderView } from "./forecast-reorder-view";
 
 vi.mock("@/analytics-api-client", async (load) => {
@@ -93,7 +94,7 @@ const availableReorder: AnalyticsReorder = {
   forecastVersion: "forecast-sale-mean-28d-v1",
   reorderVersion: "reorder-v1",
   sourceCutoff: day.bucketStartInclusive,
-  leadTimeDays: 2,
+  leadTimeDays: 7,
   dailyForecast: [day],
   onHand: "0.0000",
   status: "AVAILABLE",
@@ -103,19 +104,26 @@ const availableReorder: AnalyticsReorder = {
   recommendedQuantity: "0.0000",
 };
 
-function mount(organization: AccessibleOrganization = org) {
+function mount(
+  organization: AccessibleOrganization = org,
+  language?: "en" | "th",
+) {
+  if (language !== undefined)
+    localStorage.setItem("stockwise.language", language);
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <ForecastReorderView organization={organization} />
+      <LanguageProvider>
+        <ForecastReorderView organization={organization} />
+      </LanguageProvider>
     </QueryClientProvider>,
   );
 }
-async function chooseProduct() {
+async function chooseProduct(productLabel = "Product") {
   await screen.findByRole("option", { name: "ONE — One" });
-  fireEvent.change(screen.getByLabelText("Product", { exact: true }), {
+  fireEvent.change(screen.getByLabelText(productLabel, { exact: true }), {
     target: { value: product.id },
   });
 }
@@ -134,6 +142,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   vi.clearAllMocks();
 });
 
@@ -167,11 +176,93 @@ describe("Forecast and reorder view", () => {
       screen.queryByRole("button", { name: /purchase|order/i }),
     ).toBeNull();
     fireEvent.change(screen.getByLabelText("Planning lead time"), {
-      target: { value: "2" },
+      target: { value: "7" },
     });
     await waitFor(() =>
       expect(reorderMock).toHaveBeenLastCalledWith(
-        expect.objectContaining({ leadTimeDays: 2 }),
+        expect.objectContaining({ leadTimeDays: 7 }),
+        expect.anything(),
+      ),
+    );
+  });
+
+  it("offers exactly 7 and 30 day lead times and explains the planning assumption", async () => {
+    mount();
+    await chooseProduct();
+    const select = screen.getByLabelText("Planning lead time");
+    expect(
+      within(select)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Choose 7 or 30 days", "7 days", "30 days"]);
+    expect(
+      screen.getByText(
+        "Planning lead time is the number of days between placing a purchase order and receiving the goods. The recommendation covers expected sales over that many days.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "The recommended order quantity can be 0 when stock on hand already covers the forecast demand for the selected lead time, so nothing needs to be ordered now.",
+      ),
+    ).toBeTruthy();
+    fireEvent.change(select, { target: { value: "7" } });
+    await waitFor(() =>
+      expect(reorderMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ leadTimeDays: 7 }),
+        expect.anything(),
+      ),
+    );
+    reorderMock.mockResolvedValue({
+      data: {
+        recommendation: {
+          ...availableReorder,
+          leadTimeDays: 30,
+          leadTimeDemand: "3.2130",
+          rawNeed: "3.2130",
+          recommendedQuantity: "4.0000",
+        },
+      },
+    } as Awaited<ReturnType<typeof getAnalyticsReorder>>);
+    fireEvent.change(select, { target: { value: "30" } });
+    await waitFor(() =>
+      expect(reorderMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ leadTimeDays: 30 }),
+        expect.anything(),
+      ),
+    );
+    expect(
+      await within(screen.getByLabelText("Reorder result")).findAllByText(
+        "3.2130 EA",
+      ),
+    ).toHaveLength(2);
+    expect(await screen.findByText("Recommend 4.0000 EA")).toBeTruthy();
+  });
+
+  it("localizes the lead time options and explanation in Thai", async () => {
+    mount(org, "th");
+    await chooseProduct("สินค้า");
+    const select = await screen.findByLabelText("ระยะเวลารอสินค้า");
+    await waitFor(() =>
+      expect(
+        within(select)
+          .getAllByRole("option")
+          .map((option) => option.textContent),
+      ).toEqual(["เลือก 7 หรือ 30 วัน", "7 วัน", "30 วัน"]),
+    );
+    expect(
+      screen.getByText(
+        "ระยะเวลารอสินค้าคือจำนวนวันระหว่างการสั่งซื้อจนได้รับสินค้า คำแนะนำจะครอบคลุมยอดขายที่คาดว่าจะเกิดขึ้นในช่วงจำนวนวันนั้น",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "จำนวนที่แนะนำอาจเป็น 0 ได้ เมื่อสต็อกคงเหลือเพียงพอกับความต้องการที่พยากรณ์ไว้ตลอดระยะเวลารอสินค้าที่เลือก จึงยังไม่ต้องสั่งซื้อเพิ่ม",
+      ),
+    ).toBeTruthy();
+    fireEvent.change(select, { target: { value: "30" } });
+    await waitFor(() =>
+      expect(reorderMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ leadTimeDays: 30 }),
         expect.anything(),
       ),
     );

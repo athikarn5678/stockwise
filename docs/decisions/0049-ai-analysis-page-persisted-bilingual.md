@@ -3,9 +3,9 @@ status: proposed
 date: 2026-11-18
 ---
 
-# ADR-048 — AI analysis page: persisted, bilingual runs
+# ADR-049 — AI analysis page: persisted, bilingual runs
 
-Numbering continues the global sequence (`ADR-001`…`ADR-047`). Plan: `docs/PLAN.md` M5-S2. Amends `ADR-046` (on-demand analysis v1): the endpoint, persistence and language handling change; provider, authorization, snapshot minimization and the output contract do not.
+Numbering continues the global sequence (`ADR-001`…`ADR-048`). Plan: `docs/PLAN.md` M5-S2. Amends `ADR-046` (on-demand analysis v1): the endpoint, persistence and language handling change; provider, authorization, snapshot minimization and the output contract do not.
 
 ## Context and Problem Statement
 
@@ -22,6 +22,7 @@ Numbering continues the global sequence (`ADR-001`…`ADR-047`). Plan: `docs/PLA
 
 ## Consequences
 
+- A retry rebuilds the snapshot for the stored period from live data, so a refund or edit made after the original run can make the two languages of one run differ slightly.
 - Provider cost is two calls per click; the limiter still bounds one click per minute per user.
 - Stored analyses are visible to everyone authorized for that scope; they contain aggregates only (`ADR-046` §3).
 - No retention/deletion policy yet; rows are append-only apart from filling a missing language.

@@ -157,6 +157,8 @@ function renderContent(input?: {
 }
 
 beforeEach(() => {
+  // jsdom has no layout; Base UI scrolls the highlighted option into view.
+  Element.prototype.scrollIntoView = vi.fn();
   searchParams.delete("organizationId");
   searchParams.delete("branchId");
   mocks.createRun.mockReset();
@@ -197,6 +199,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  Reflect.deleteProperty(Element.prototype, "scrollIntoView");
 });
 
 describe("AI analysis page access", () => {
@@ -312,6 +315,45 @@ describe("AI analysis viewer", () => {
     );
   });
 
+  it("shows the other language when the viewed language failed to generate", async () => {
+    // The UI language is English by default; only Thai is present here.
+    mocks.createRun.mockResolvedValue(
+      run({
+        languages: {
+          en: null,
+          th: [{ body: "เนื้อหาภาพรวม", heading: "ภาพรวม" }],
+        },
+        missing: ["en"],
+      }),
+    );
+    renderContent();
+    fireEvent.click(screen.getByRole("button", { name: "Generate analysis" }));
+    expect(await screen.findByText("เนื้อหาภาพรวม")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "English" }));
+    expect(screen.getByRole("button", { name: "Retry English" })).toBeTruthy();
+  });
+
+  it("locks the selectors and history while a request is in flight", async () => {
+    mocks.listRuns.mockResolvedValue(page([olderRun]));
+    mocks.createRun.mockReturnValue(new Promise(() => undefined));
+    renderContent();
+    await screen.findByRole("button", { name: /older-model/ });
+    fireEvent.click(screen.getByRole("button", { name: "Generate analysis" }));
+    await waitFor(() => {
+      expect(
+        (
+          screen.getByRole("combobox", {
+            name: "Insight scope",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+    });
+    expect(
+      (screen.getByRole("button", { name: /older-model/ }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
   it("explains the one-per-minute limit", async () => {
     mocks.createRun.mockRejectedValue(new mocks.AiAnalysisApiError(429));
     renderContent();
@@ -362,9 +404,11 @@ describe("AI analysis history", () => {
     fireEvent.click(screen.getByRole("button", { name: "Generate analysis" }));
     expect(await screen.findByText("English overview body")).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText("Insight scope"), {
-      target: { value: B },
-    });
+    fireEvent.click(screen.getByRole("combobox", { name: "Insight scope" }));
+    const option = await screen.findByRole("option", { name: /Beta/ });
+    // Base UI arms pointer selection on pointerdown; click alone is ignored.
+    fireEvent.pointerDown(option, { pointerType: "mouse" });
+    fireEvent.click(option);
     expect(screen.queryByText("English overview body")).toBeNull();
     expect(
       await screen.findByText("No analysis is saved for this scope yet."),

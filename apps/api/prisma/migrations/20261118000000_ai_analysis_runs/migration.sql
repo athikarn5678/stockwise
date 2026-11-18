@@ -1,4 +1,4 @@
--- M5-S2 / ADR-048: persisted on-demand AI analysis runs (tenant scoped).
+-- M5-S2 / ADR-049: persisted on-demand AI analysis runs (tenant scoped).
 -- Additive only: one new table, no existing table rewritten or locked. The branch
 -- FK is the composite same-organization key used by ai_insight_reports. CHECKs:
 -- supported day windows, a valid local period, and at least one language stored

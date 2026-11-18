@@ -1168,7 +1168,7 @@ model OrganizationSubscription {
   @@map("organization_subscriptions")
 }
 
-/// On-demand AI business analysis run (ADR-048): one row per successful click,
+/// On-demand AI business analysis run (ADR-049): one row per successful click,
 /// both languages generated together; a language that failed stays NULL until retried.
 model AiAnalysisRun {
   id                String   @id @default(uuid()) @db.Uuid

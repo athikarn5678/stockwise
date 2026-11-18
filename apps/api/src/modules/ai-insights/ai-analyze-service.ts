@@ -83,9 +83,13 @@ export function createAiAnalyzeService(input: {
   }
 
   function modelOf(result: { actualModel: string; requestedModel: string }) {
-    return result.actualModel.trim() === ""
-      ? result.requestedModel
-      : result.actualModel;
+    // The column is VARCHAR(128); an oversized id must not fail the insert
+    // after the provider cost was already spent.
+    return (
+      result.actualModel.trim() === ""
+        ? result.requestedModel
+        : result.actualModel
+    ).slice(0, 128);
   }
 
   function parseLanguage(

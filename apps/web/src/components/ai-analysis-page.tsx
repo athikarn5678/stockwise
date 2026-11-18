@@ -31,9 +31,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TranslationKey } from "@/i18n/en";
 import { useLanguage } from "@/providers/language-provider";
@@ -156,6 +159,23 @@ export function AiAnalysisContent({
       ? { scope: "organization" }
       : { scope: "branch", branchId: branch?.id ?? "" };
   const enabled = scope.scope === "organization" || scope.branchId !== "";
+  const scopeItems = [
+    ...(wide
+      ? [{ value: "organization", label: t("aiAnalysisAllBranches") }]
+      : []),
+    ...branches.map((item) => ({
+      value: item.id,
+      label: `${item.code} — ${item.name}${
+        "status" in item && item.status === "INACTIVE"
+          ? t("aiInactiveSuffix")
+          : ""
+      }`,
+    })),
+  ];
+  const dayItems = DAY_OPTIONS.map((option) => ({
+    value: String(option),
+    label: t("aiAnalysisDaysOption").replace("{days}", String(option)),
+  }));
   const historyQuery = useInfiniteQuery<
     AiAnalysisRunPage,
     Error,
@@ -176,10 +196,20 @@ export function AiAnalysisContent({
     ],
   });
   const runs = historyQuery.data?.pages.flatMap((page) => page.data) ?? [];
+  // Show a run; if the viewed language is the missing one, show the other.
+  const showRun = (run: AiAnalysisRun) => {
+    setViewer(run);
+    setViewLanguage((current) => {
+      const other = current === "th" ? "en" : "th";
+      return run.missing.includes(current) && !run.missing.includes(other)
+        ? other
+        : current;
+    });
+  };
   const createMutation = useMutation({
     mutationFn: () => createRun(organization.id, scope, days),
     onSuccess: (run) => {
-      setViewer(run);
+      showRun(run);
       void queryClient.invalidateQueries({
         queryKey: ["ai-analysis", organization.id],
       });
@@ -189,12 +219,14 @@ export function AiAnalysisContent({
     mutationFn: (request: { language: AiAnalysisLanguage; runId: string }) =>
       retryRun(organization.id, scope, request.runId, request.language),
     onSuccess: (run) => {
-      setViewer(run);
+      showRun(run);
       void queryClient.invalidateQueries({
         queryKey: ["ai-analysis", organization.id],
       });
     },
   });
+  // A late response must not land under a different scope selector.
+  const busy = createMutation.isPending || retryMutation.isPending;
   const retryError = retryMutation.isError ? retryMutation.error : null;
   const sections = viewer?.languages[viewLanguage] ?? null;
   const viewerMissing =
@@ -211,57 +243,58 @@ export function AiAnalysisContent({
 
       <div className="space-y-4 rounded-lg border bg-card p-4 sm:p-5">
         <div className="grid max-w-4xl gap-4 sm:grid-cols-2">
-          <Label className="form-field">
-            {t("aiScope")}
-            <NativeSelect
-              className="w-full"
-              onChange={(event) => {
+          <div className="form-field">
+            <Label htmlFor="ai-analysis-scope">{t("aiScope")}</Label>
+            <Select
+              disabled={busy}
+              id="ai-analysis-scope"
+              items={scopeItems}
+              onValueChange={(next) => {
+                if (typeof next !== "string") return;
                 createMutation.reset();
                 retryMutation.reset();
                 setViewer(null);
-                setScopeValue(event.target.value);
+                setScopeValue(next);
               }}
               value={
                 scope.scope === "organization" ? "organization" : scope.branchId
               }
             >
-              {wide ? (
-                <NativeSelectOption value="organization">
-                  {t("aiAnalysisAllBranches")}
-                </NativeSelectOption>
-              ) : null}
-              {branches.map((item) => (
-                <NativeSelectOption key={item.id} value={item.id}>
-                  {item.code} — {item.name}
-                  {"status" in item && item.status === "INACTIVE"
-                    ? t("aiInactiveSuffix")
-                    : ""}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </Label>
-          <Label className="form-field">
-            {t("aiAnalysisDays")}
-            <NativeSelect
-              className="w-full"
-              onChange={(event) =>
-                setDays(
-                  event.target.value === "30"
-                    ? 30
-                    : event.target.value === "14"
-                      ? 14
-                      : 7,
-                )
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {scopeItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="form-field">
+            <Label htmlFor="ai-analysis-days">{t("aiAnalysisDays")}</Label>
+            <Select
+              disabled={busy}
+              id="ai-analysis-days"
+              items={dayItems}
+              onValueChange={(next) =>
+                setDays(next === "30" ? 30 : next === "14" ? 14 : 7)
               }
               value={String(days)}
             >
-              {DAY_OPTIONS.map((option) => (
-                <NativeSelectOption key={option} value={String(option)}>
-                  {t("aiAnalysisDaysOption").replace("{days}", String(option))}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </Label>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {dayItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {wide && branchesQuery.isError ? (
@@ -410,10 +443,11 @@ export function AiAnalysisContent({
                 <li key={run.id ?? run.createdAt}>
                   <button
                     className="w-full rounded-md border p-3 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+                    disabled={busy}
                     onClick={() => {
                       createMutation.reset();
                       retryMutation.reset();
-                      setViewer(run);
+                      showRun(run);
                     }}
                     type="button"
                   >

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted (2026-11-18, planner decision)
 date: 2026-11-18
 ---
 

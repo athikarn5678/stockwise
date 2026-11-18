@@ -201,11 +201,19 @@ export function ForecastReorderView({
               items={items}
               onInputValueChange={(value, details) => {
                 // Base UI also reports its own input writes (item press, popup
-                // close). Only a user edit or the clear button may drop the
-                // selected product.
-                if (!USER_INPUT_REASONS.has(details.reason)) {
+                // close, value sync). Only a user edit or the clear button may
+                // drop the selected product. An `input-clear` while a product
+                // is selected is the user deleting the label itself (the only
+                // path that skips `input-change` is IME composition).
+                const dropSelection =
+                  USER_INPUT_REASONS.has(details.reason) ||
+                  (details.reason === "input-clear" && selectedItem !== null);
+                if (!dropSelection) {
                   return;
                 }
+                // Seed the query with exactly what the input now shows, so the
+                // first edit after a selection searches the edited text
+                // instead of re-sending the pre-selection query.
                 setQueryText(value);
                 setProductId("");
               }}
@@ -222,10 +230,16 @@ export function ForecastReorderView({
               <ComboboxContent>
                 <ComboboxEmpty>
                   {/* A new server query empties the list while it loads; only a
-                      settled empty result is a true "no matches" state. */}
-                  {products.isPending
-                    ? t("uiLoadingProducts")
-                    : t("uiNoProductsMatchThisSearch")}
+                      settled empty result is a true "no matches" state. A
+                      disabled query (no active Branch) stays pending forever,
+                      so it gets its own hint instead of a loading label. */}
+                  {activeBranch === undefined
+                    ? t("uiChooseABranchToSearchProducts")
+                    : products.isError
+                      ? t("uiProductsCouldNotBeLoaded")
+                      : products.isLoading
+                        ? t("uiLoadingProducts")
+                        : t("uiNoProductsMatchThisSearch")}
                 </ComboboxEmpty>
                 <ComboboxList>
                   {items.map((item) => (
@@ -252,7 +266,7 @@ export function ForecastReorderView({
               </ComboboxContent>
             </Combobox>
           </Label>
-          {products.isPending && activeBranch ? (
+          {products.isLoading && activeBranch ? (
             <p aria-live="polite" className="text-sm">
               {t("uiLoadingProducts")}
             </p>

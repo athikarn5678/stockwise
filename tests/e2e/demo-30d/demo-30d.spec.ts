@@ -147,7 +147,10 @@ test("owner sees 30 real daily analytics buckets, sales history, forecast and re
     .click();
   await chooseComboboxOption(
     page,
-    page.getByRole("combobox", { name: "Product", exact: true }),
+    // The combobox input is the labelled control of a wrapping <label> that
+    // also contains the clear/show-options buttons, so match on the leading
+    // label text instead of requiring the whole accessible name.
+    page.getByRole("combobox", { name: /^Product\b/ }),
     "Daily Rice",
     { value: state.productId },
   );

@@ -162,9 +162,14 @@ test("owner selects a Branch/Product and lead time for deterministic advisory st
     page.getByRole("combobox", { name: "Branch", exact: true }),
     { value: E2E_BRANCH_ID },
   );
-  await chooseComboboxOption(page, "Product", "Inventory test tea", {
-    value: E2E_INVENTORY_PRODUCT_ID,
-  });
+  await chooseComboboxOption(
+    page,
+    // The wrapping <label> also holds the clear/show-options buttons, so the
+    // combobox accessible name can carry more than the label text alone.
+    page.getByRole("combobox", { name: /^Product\b/ }),
+    "Inventory test tea",
+    { value: E2E_INVENTORY_PRODUCT_ID },
+  );
   await selectOption(page, "Planning lead time", { value: "2" });
   await expect(page.getByLabel("Forecast result")).toContainText(
     "forecast-sale-mean-28d-v1",

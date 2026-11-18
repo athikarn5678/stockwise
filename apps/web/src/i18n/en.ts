@@ -1173,6 +1173,7 @@ export const en = {
   uiLoadingProducts: "Loading Products…",
   uiProductsCouldNotBeLoaded: "Products could not be loaded.",
   uiNoProductsMatchThisSearch: "No Products match this search.",
+  uiChooseABranchToSearchProducts: "Choose a Branch to search Products.",
   uiLoadMoreProducts: "Load more Products",
   uiPlanningLeadTime: "Planning lead time",
   uiChoose17Days: "Choose 1–7 days",

@@ -1147,6 +1147,7 @@ export const th: Dictionary = {
   uiLoadingProducts: "กำลังโหลดสินค้า…",
   uiProductsCouldNotBeLoaded: "ไม่สามารถโหลดสินค้าได้",
   uiNoProductsMatchThisSearch: "ไม่มีสินค้าที่ตรงกับการค้นหา",
+  uiChooseABranchToSearchProducts: "เลือกสาขาเพื่อค้นหาสินค้า",
   uiLoadMoreProducts: "โหลดสินค้าเพิ่มเติม",
   uiPlanningLeadTime: "ระยะเวลารอสินค้า",
   uiChoose17Days: "เลือก 1–7 วัน",

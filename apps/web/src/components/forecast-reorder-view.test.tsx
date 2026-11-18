@@ -351,6 +351,122 @@ describe("Forecast and reorder view", () => {
     expect(productInput().value).toBe("other");
   });
 
+  it("shows a localized hint instead of loading while no Branch is active", async () => {
+    mount({ ...org, branches: [] });
+    await openProductCombobox();
+    const popup = document.querySelector("[data-slot='combobox-content']");
+    expect(popup).toBeTruthy();
+    expect(
+      // Base UI appends an invisible joiner to empty-state text.
+      within(popup as HTMLElement).getByText(
+        /^Choose a Branch to search Products\./,
+      ),
+    ).toBeTruthy();
+    expect(
+      within(popup as HTMLElement).queryByText("Loading Products…"),
+    ).toBeNull();
+    expect(productMock).not.toHaveBeenCalled();
+  });
+
+  it("shows the loading state only while the product query is fetching", async () => {
+    productMock.mockImplementation(
+      () => new Promise<Awaited<ReturnType<typeof listProducts>>>(() => {}),
+    );
+    mount();
+    await openProductCombobox();
+    const popup = document.querySelector("[data-slot='combobox-content']");
+    expect(
+      await within(popup as HTMLElement).findByText("Loading Products…"),
+    ).toBeTruthy();
+    expect(
+      within(popup as HTMLElement).queryByText(
+        /^No Products match this search\./,
+      ),
+    ).toBeNull();
+    expect(productMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the settled empty result message when the search matches nothing", async () => {
+    productMock.mockResolvedValue({
+      data: { products: [] },
+      meta: { nextCursor: null },
+    });
+    mount();
+    await openProductCombobox();
+    const popup = document.querySelector("[data-slot='combobox-content']");
+    expect(
+      await within(popup as HTMLElement).findByText(
+        /^No Products match this search\./,
+      ),
+    ).toBeTruthy();
+    expect(
+      within(popup as HTMLElement).queryByText(/^Loading Products/),
+    ).toBeNull();
+  });
+
+  it("shows the localized error instead of an empty result when loading fails", async () => {
+    productMock.mockRejectedValue(new Error("catalog unavailable"));
+    mount();
+    await openProductCombobox();
+    const popup = document.querySelector("[data-slot='combobox-content']");
+    expect(
+      await within(popup as HTMLElement).findByText(
+        /^Products could not be loaded\./,
+      ),
+    ).toBeTruthy();
+    expect(
+      within(popup as HTMLElement).queryByText("Loading Products…"),
+    ).toBeNull();
+    expect(
+      within(popup as HTMLElement).queryByText(
+        "No Products match this search.",
+      ),
+    ).toBeNull();
+  });
+
+  it("starts a fresh search from the first edit after a Product is selected", async () => {
+    mount();
+    await chooseProduct();
+    await screen.findByText("0.0000 EA total");
+    await waitFor(() => expect(productInput().value).toBe("ONE — One"));
+
+    // Backspacing inside the selected label must search for what is now in the
+    // input, not keep the pre-selection query.
+    fireEvent.change(productInput(), { target: { value: "ONE — On" } });
+
+    await waitFor(() =>
+      expect(productMock).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ q: "ONE — On" }),
+      ),
+    );
+    expect(productMock).not.toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ q: "one" }),
+    );
+    // The selection is dropped, so the old forecast is not shown for new text.
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "Choose a Product to see its forecast and reorder status.",
+        ),
+      ).toBeTruthy(),
+    );
+    expect(screen.queryByText("0.0000 EA total")).toBeNull();
+    expect(productInput().value).toBe("ONE — On");
+
+    // Deleting the rest of the selected label searches for the empty query
+    // instead of keeping either the label or the pre-selection text.
+    fireEvent.change(productInput(), { target: { value: "" } });
+    await waitFor(() =>
+      expect(productMock).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ q: "" }),
+      ),
+    );
+    expect(productInput().value).toBe("");
+  });
+
   it("searches the server from the combobox and appends the next page", async () => {
     productMock.mockImplementation(async (_context, options) =>
       options?.cursor === undefined

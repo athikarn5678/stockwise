@@ -66,7 +66,9 @@ export async function expectSelectValue(
 
 function resolveTrigger(page: Page, labelOrLocator: string | Locator): Locator {
   return typeof labelOrLocator === "string"
-    ? page.getByLabel(labelOrLocator, { exact: true })
+    ? // A wrapping <label> also contains the trigger's value text, so an exact
+      // label match finds nothing; the combobox accessible name is reliable.
+      page.getByRole("combobox", { name: labelOrLocator, exact: true })
     : labelOrLocator;
 }
 

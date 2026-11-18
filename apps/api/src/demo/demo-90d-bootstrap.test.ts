@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import { Prisma } from "../generated/prisma/client.ts";
@@ -69,6 +73,34 @@ describe("presentation wording", () => {
     for (const value of visible)
       expect(value).not.toMatch(VISIBLE_TEST_WORDING);
     expect(catalog.organization.name).toBe("Siam Mart");
+  });
+});
+
+describe("store login emails", () => {
+  it("uses the store addresses, one per role, without demo wording", () => {
+    const emails = Object.fromEntries(
+      demo90dCatalog().users.map((user) => [user.role, user.email]),
+    );
+    expect(emails).toEqual({
+      OWNER: "owner@hcn920.com",
+      ADMIN: "admin@hcn920.com",
+      BRANCH_MANAGER: "manager@hcn920.com",
+      INVENTORY_STAFF: "inventory@hcn920.com",
+      CASHIER: "cashier@hcn920.com",
+    });
+  });
+
+  it("never wires an email provider into the seeding code", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    for (const file of [
+      "demo-90d-bootstrap.ts",
+      "demo-seed-main.ts",
+      "demo-seed-reports.ts",
+      "demo-30d-runner.ts",
+    ]) {
+      const source = readFileSync(join(here, file), "utf8");
+      expect(source, file).not.toMatch(/email-provider|resend|IdentityEmail/i);
+    }
   });
 });
 

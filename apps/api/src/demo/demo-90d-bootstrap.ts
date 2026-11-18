@@ -178,34 +178,38 @@ const SUPPLIERS = [
   "Thai Fresh Wholesale Co.",
 ] as const;
 
-/** One user per accepted role; exactly one OWNER. */
+/**
+ * One user per accepted role; exactly one OWNER. The addresses are visible at login
+ * and belong to the project owner: seeding writes verified accounts directly and
+ * never sends an email to them.
+ */
 const USERS = [
   {
-    email: "demo-owner@example.invalid",
+    email: "owner@hcn920.com",
     displayName: "Somchai Wongsakul",
     role: "OWNER",
     branchCodes: [],
   },
   {
-    email: "demo-admin@example.invalid",
+    email: "admin@hcn920.com",
     displayName: "Napat Srisuk",
     role: "ADMIN",
     branchCodes: [],
   },
   {
-    email: "demo-manager@example.invalid",
+    email: "manager@hcn920.com",
     displayName: "Pimchanok Rattanakul",
     role: "BRANCH_MANAGER",
     branchCodes: ["MAIN", "NORTH"],
   },
   {
-    email: "demo-inventory@example.invalid",
+    email: "inventory@hcn920.com",
     displayName: "Anan Chaiyasit",
     role: "INVENTORY_STAFF",
     branchCodes: ["NORTH"],
   },
   {
-    email: "demo-cashier@example.invalid",
+    email: "cashier@hcn920.com",
     displayName: "Kanya Boonmee",
     role: "CASHIER",
     branchCodes: ["MAIN"],

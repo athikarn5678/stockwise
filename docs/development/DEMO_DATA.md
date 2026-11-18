@@ -46,8 +46,8 @@ and replays the existing rows without duplicates (the second run is a no-op).
 Changing the seed/date after the first run is refused; use a fresh database.
 A full local apply takes under a minute.
 
-Reseeding after M4-S3: the organization name, SKUs, supplier names, display names
-and references changed (the organization id did not). A database seeded by an earlier
+Reseeding after M4-S3: the organization name, SKUs, supplier names, display names, login emails
+and references changed, and so did the user and membership ids (they derive from the email); the organization id did not change. A database seeded by an earlier
 build still holds the old names and `demo:seed:90d` refuses to bootstrap over it
 (conflicting organization); seed a fresh `*_demo` database instead. Stored report
 growth for the first week of the window is shown as "no comparison" because its
@@ -61,11 +61,11 @@ Credentials and hashes are never printed.
 
 | Role | Email | Branches | What to try |
 | --- | --- | --- | --- |
-| OWNER | `demo-owner@example.invalid` | all | Everything: members/invitations, branches, catalog, suppliers, purchase orders and receiving, POS, sales history, refunds, analytics, forecast/reorder, AI analysis |
-| ADMIN | `demo-admin@example.invalid` | all | Same as OWNER except owner governance (owner membership/transfer) |
-| BRANCH_MANAGER | `demo-manager@example.invalid` | MAIN, NORTH | Branch operations in those two branches only: inventory and adjustments, purchase orders/receiving, POS with discounts, refunds, analytics, forecast/reorder, AI analysis; `EAST` is invisible |
-| INVENTORY_STAFF | `demo-inventory@example.invalid` | NORTH | Inventory balances, history and manual adjustments, non-cost inventory analytics; no catalog, suppliers, purchase orders or forecast (ADR-042) |
-| CASHIER | `demo-cashier@example.invalid` | MAIN | POS checkout (CASH/TRANSFER) and sales history; can view but not create refunds |
+| OWNER | `owner@hcn920.com` | all | Everything: members/invitations, branches, catalog, suppliers, purchase orders and receiving, POS, sales history, refunds, analytics, forecast/reorder, AI analysis |
+| ADMIN | `admin@hcn920.com` | all | Same as OWNER except owner governance (owner membership/transfer) |
+| BRANCH_MANAGER | `manager@hcn920.com` | MAIN, NORTH | Branch operations in those two branches only: inventory and adjustments, purchase orders/receiving, POS with discounts, refunds, analytics, forecast/reorder, AI analysis; `EAST` is invisible |
+| INVENTORY_STAFF | `inventory@hcn920.com` | NORTH | Inventory balances, history and manual adjustments, non-cost inventory analytics; no catalog, suppliers, purchase orders or forecast (ADR-042) |
+| CASHIER | `cashier@hcn920.com` | MAIN | POS checkout (CASH/TRANSFER) and sales history; can view but not create refunds |
 
 Demo Insight (`STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID` = the printed
 organization id; development/test, and production only for this deterministic demo organization per ADR-048) renders deterministic text from

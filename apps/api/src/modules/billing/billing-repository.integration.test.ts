@@ -44,8 +44,12 @@ async function membership(
   });
 }
 
+// Checkout sessions in these tests are started "now", after any expiry.
+const sessionCreatedAt = () => new Date(Date.now() + 60_000);
+
 function confirmed(organizationId: string, suffix = "abc123") {
   return repository.saveConfirmed({
+    sessionCreatedAt: sessionCreatedAt(),
     customerId: "cus_abc123",
     interval: "MONTH",
     organizationId,
@@ -173,6 +177,7 @@ describe("billing repository with PostgreSQL", () => {
       interval: "YEAR",
       organizationId: target.id,
       plan: "BUSINESS",
+      sessionCreatedAt: sessionCreatedAt(),
       sessionId: sessionId("renew1"),
       subscriptionId: "sub_renew1",
     });
@@ -192,6 +197,7 @@ describe("billing repository with PostgreSQL", () => {
         interval: "YEAR",
         organizationId: target.id,
         plan: "BUSINESS",
+        sessionCreatedAt: sessionCreatedAt(),
         sessionId: sessionId("renew1"),
         subscriptionId: "sub_renew1",
       }),
@@ -201,6 +207,38 @@ describe("billing repository with PostgreSQL", () => {
     });
     // Re-running the operator command on a paid ACTIVE org expires it again.
     await expect(repository.markExpired(target.id)).resolves.toBe("ACTIVE");
+    await expect(repository.find(target.id)).resolves.toMatchObject({
+      status: "EXPIRED",
+    });
+  });
+
+  it("refuses to replay an old paid session for a free renewal after a later expiry", async () => {
+    const target = await organization();
+    const renew = (suffix: string, createdAt: Date) =>
+      repository.saveConfirmed({
+        customerId: `cus_${suffix}`,
+        interval: "MONTH",
+        organizationId: target.id,
+        plan: "STARTER",
+        sessionCreatedAt: createdAt,
+        sessionId: sessionId(suffix),
+        subscriptionId: `sub_${suffix}`,
+      });
+    const started = new Date(Date.now() - 60_000);
+    // Rehearsal: expire, pay A (started before ... after the expiry), expire, pay B.
+    await repository.markExpired(target.id);
+    await expect(renew("sessiona", sessionCreatedAt())).resolves.toMatchObject({
+      kind: "saved",
+    });
+    await repository.markExpired(target.id);
+    await expect(renew("sessionb", sessionCreatedAt())).resolves.toMatchObject({
+      kind: "saved",
+    });
+    await repository.markExpired(target.id);
+    // Session A is still paid at Stripe, but it was started before this expiry.
+    await expect(renew("sessiona", started)).resolves.toEqual({
+      kind: "conflict",
+    });
     await expect(repository.find(target.id)).resolves.toMatchObject({
       status: "EXPIRED",
     });

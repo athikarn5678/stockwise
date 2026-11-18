@@ -63,6 +63,7 @@ describe("expire rehearsal subscription", () => {
       interval: "YEAR",
       organizationId: REHEARSAL_ORGANIZATION_ID,
       plan: "GROWTH",
+      sessionCreatedAt: new Date(Date.now() + 60_000),
       sessionId: "cs_test_renew2",
       subscriptionId: "sub_renew2",
     });

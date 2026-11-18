@@ -24,6 +24,7 @@ export type SaveConfirmedInput = Readonly<{
   interval: BillingInterval;
   organizationId: string;
   plan: BillingPlan;
+  sessionCreatedAt: Date;
   sessionId: string;
   subscriptionId: string;
 }>;
@@ -170,7 +171,11 @@ export function createPrismaBillingRepository(prisma: PrismaClient) {
           return { kind: "saved", subscription: publicSubscription(row) };
         if (!(RENEWABLE_STATUSES as readonly string[]).includes(row.status))
           return { kind: "conflict" };
-        // Conditional on the status read above so a concurrent renewal wins once.
+        // A renewal must come from a Checkout started after the row last
+        // changed (it was expired or created EXPIRED). Otherwise an old paid
+        // session whose id was replaced by an earlier renewal could be replayed
+        // for a free renewal after the next expiry. Conditional on the status
+        // and time so a concurrent renewal also wins only once.
         const renewed = await prisma.organizationSubscription.updateMany({
           data: {
             interval: input.interval,
@@ -183,6 +188,7 @@ export function createPrismaBillingRepository(prisma: PrismaClient) {
           where: {
             organizationId: input.organizationId,
             status: { in: [...RENEWABLE_STATUSES] },
+            updatedAt: { lte: input.sessionCreatedAt },
           },
         });
         if (renewed.count === 0) return { kind: "conflict" };
@@ -227,28 +233,40 @@ export function createPrismaBillingRepository(prisma: PrismaClient) {
     async markExpired(
       organizationId: string,
     ): Promise<"CREATED" | OrganizationSubscription["status"] | null> {
-      return prisma.$transaction(async (tx) => {
-        const organization = await tx.organization.findUnique({
-          select: { id: true },
-          where: { id: organizationId },
-        });
-        if (organization === null) return null;
-        const row = await tx.organizationSubscription.findUnique({
-          where: { organizationId },
-        });
-        if (row === null) {
-          await tx.organizationSubscription.create({
-            data: { organizationId, plan: "STARTER", status: "EXPIRED" },
+      const attempt = () =>
+        prisma.$transaction(async (tx) => {
+          const organization = await tx.organization.findUnique({
+            select: { id: true },
+            where: { id: organizationId },
           });
-          return "CREATED";
-        }
-        if (row.status !== "EXPIRED")
-          await tx.organizationSubscription.update({
-            data: { status: "EXPIRED" },
+          if (organization === null) return null;
+          const row = await tx.organizationSubscription.findUnique({
             where: { organizationId },
           });
-        return row.status;
-      });
+          if (row === null) {
+            await tx.organizationSubscription.create({
+              data: { organizationId, plan: "STARTER", status: "EXPIRED" },
+            });
+            return "CREATED" as const;
+          }
+          if (row.status !== "EXPIRED")
+            await tx.organizationSubscription.update({
+              data: { status: "EXPIRED" },
+              where: { organizationId },
+            });
+          return row.status;
+        });
+      try {
+        return await attempt();
+      } catch (error) {
+        // A concurrent run created the row first: the second attempt sees it.
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2002"
+        )
+          return attempt();
+        throw error;
+      }
     },
   };
 }

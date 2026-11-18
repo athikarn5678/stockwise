@@ -22,11 +22,16 @@ export type SubscriptionContextValue = Readonly<{
   billing: BillingState | null;
   /** True only when the API reports the organization EXPIRED (writes are refused). */
   readOnly: boolean;
+  /** True after a write was refused with 402, until dismissed or the plan is renewed. */
+  refusedNotice: boolean;
+  dismissRefusedNotice: () => void;
 }>;
 
 const SubscriptionContext = createContext<SubscriptionContextValue>({
   billing: null,
+  dismissRefusedNotice: () => undefined,
   readOnly: false,
+  refusedNotice: false,
 });
 
 /**
@@ -47,17 +52,27 @@ export function SubscriptionProvider({
     organizationId: string;
   } | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const [refusedNotice, setRefusedNotice] = useState(false);
   const bump = useCallback(() => setRefresh((value) => value + 1), []);
+  const onRefused = useCallback(() => {
+    setRefusedNotice(true);
+    bump();
+  }, [bump]);
+  const dismissRefusedNotice = useCallback(() => setRefusedNotice(false), []);
 
   useEffect(() => {
     // A confirmed payment and a 402 answer both mean the state just changed.
-    window.addEventListener(BILLING_CHANGED_EVENT, bump);
-    window.addEventListener(SUBSCRIPTION_REQUIRED_EVENT, bump);
-    return () => {
-      window.removeEventListener(BILLING_CHANGED_EVENT, bump);
-      window.removeEventListener(SUBSCRIPTION_REQUIRED_EVENT, bump);
+    const onBillingChanged = () => {
+      setRefusedNotice(false);
+      bump();
     };
-  }, [bump]);
+    window.addEventListener(BILLING_CHANGED_EVENT, onBillingChanged);
+    window.addEventListener(SUBSCRIPTION_REQUIRED_EVENT, onRefused);
+    return () => {
+      window.removeEventListener(BILLING_CHANGED_EVENT, onBillingChanged);
+      window.removeEventListener(SUBSCRIPTION_REQUIRED_EVENT, onRefused);
+    };
+  }, [bump, onRefused]);
 
   useEffect(() => {
     if (organizationId === undefined) return;
@@ -74,8 +89,13 @@ export function SubscriptionProvider({
       state !== null && state.organizationId === organizationId
         ? state.billing
         : null;
-    return { billing, readOnly: billing?.access?.state === "EXPIRED" };
-  }, [state, organizationId]);
+    return {
+      billing,
+      dismissRefusedNotice,
+      readOnly: billing?.access?.state === "EXPIRED",
+      refusedNotice,
+    };
+  }, [state, organizationId, refusedNotice, dismissRefusedNotice]);
 
   return (
     <SubscriptionContext.Provider value={value}>

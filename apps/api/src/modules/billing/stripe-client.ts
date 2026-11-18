@@ -25,6 +25,8 @@ const checkoutSessionSchema = z.object({
   id: z.string().regex(CHECKOUT_SESSION_ID),
   object: z.literal("checkout.session"),
   amount_total: z.number().int().nullable(),
+  /** Unix seconds; a renewal must come from a session created after the row expired. */
+  created: z.number().int().nonnegative(),
   client_reference_id: z.string().nullable(),
   currency: z.string().nullable(),
   customer: z.string().nullable(),

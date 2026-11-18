@@ -22,6 +22,7 @@ function session(
     currency: "thb",
     customer: "cus_abc123",
     id: SESSION_ID,
+    created: 1_794_960_000,
     livemode: false,
     metadata: { organization_id: ORGANIZATION_ID, plan: "STARTER" },
     mode: "subscription",

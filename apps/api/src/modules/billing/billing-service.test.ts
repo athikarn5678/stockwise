@@ -35,6 +35,7 @@ function session(
     currency: "thb",
     customer: "cus_abc123",
     id: SESSION_ID,
+    created: 1_794_960_000,
     livemode: false,
     metadata: { organization_id: ORGANIZATION_ID, plan: "STARTER" },
     mode: "subscription",
@@ -378,6 +379,7 @@ describe("billing service", () => {
       interval: "MONTH",
       organizationId: ORGANIZATION_ID,
       plan: "GROWTH",
+      sessionCreatedAt: new Date(1_794_960_000 * 1000),
       sessionId: SESSION_ID,
       subscriptionId: "sub_abc123",
     });

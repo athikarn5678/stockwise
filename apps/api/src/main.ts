@@ -205,7 +205,12 @@ async function main(): Promise<void> {
   // only while billing is enabled (a test-mode Stripe key): without a way to
   // pay, an expired trial would lock an organization out for good.
   const billingRepository = createPrismaBillingRepository(prisma);
-  if (environment.STRIPE_SECRET_KEY !== undefined)
+  if (environment.STRIPE_SECRET_KEY === undefined)
+    logger.info(
+      {},
+      "Billing is disabled (no STRIPE_SECRET_KEY): the subscription guard is not mounted and nothing is enforced",
+    );
+  else
     apiRouter.use(
       createSubscriptionGuard({
         authenticationMiddleware,

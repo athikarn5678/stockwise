@@ -34,32 +34,44 @@ function sourceFiles(directory: string): string[] {
   });
 }
 
-/** Every mutating route registered by any API source file, as written in code. */
-function mutatingRoutes(): Route[] {
+/**
+ * Every mutating route registered by any API source file, as written in code.
+ * The receiver can have any name (`router`, `app`, `apiRouter`, a local
+ * variable); a call counts when its first argument is a "/..." path literal or
+ * an array of them. Express routers named router/app/apiRouter with a
+ * non-literal path cannot be classified and fail loudly instead of being
+ * skipped. Mounting a sub-router on an organization path with `.use(...)` is
+ * reported too, because its inner routes would be invisible to this scan.
+ */
+function mutatingRoutes(): { mounts: Route[]; routes: Route[] } {
   const routes: Route[] = [];
+  const mounts: Route[] = [];
   const registration =
-    /\b(?:router|app|apiRouter)\.(post|put|patch|delete|all)\(\s*(\[[^\]]*\]|"[^"]*"|`[^`]*`|[A-Za-z_.]+)/g;
+    /\b(\w+)\.(post|put|patch|delete|all)\(\s*(\[\s*["'`]\/[^\]]*\]|"\/[^"]*"|`\/[^`]*`|[A-Za-z_][\w.]*)/g;
+  const mount = /\b(\w+)\.use\(\s*["'`](\/organizations[^"'`]*)["'`]/g;
   for (const file of sourceFiles(SOURCE_ROOT)) {
+    const name = relative(SOURCE_ROOT, file);
     const text = readFileSync(file, "utf8");
     for (const match of text.matchAll(registration)) {
-      const [, method, argument] = match;
+      const [, receiver, method, argument] = match;
+      const literal = argument!.startsWith("[") || /^["'`]/.test(argument!);
+      // `map.delete(key)`, `prisma.x.delete(...)` and similar are not routes.
+      if (!literal && !["router", "app", "apiRouter"].includes(receiver!))
+        continue;
       const paths = [...argument!.matchAll(/["'`]([^"'`]*)["'`]/g)].map(
         (quoted) => quoted[1]!,
       );
-      // A non-literal path cannot be classified: fail loudly instead of skipping.
       if (paths.length === 0)
-        paths.push(
-          `<non-literal ${argument} in ${relative(SOURCE_ROOT, file)}>`,
-        );
+        paths.push(`<non-literal ${argument} in ${name}>`);
       for (const path of paths)
-        routes.push({
-          file: relative(SOURCE_ROOT, file),
-          method: method!.toUpperCase(),
-          path,
-        });
+        routes.push({ file: name, method: method!.toUpperCase(), path });
     }
+    // The guard itself mounts on the organization prefix on purpose.
+    if (name.endsWith("subscription-guard.ts")) continue;
+    for (const match of text.matchAll(mount))
+      mounts.push({ file: name, method: "USE", path: match[2]! });
   }
-  return routes;
+  return { mounts, routes };
 }
 
 const ORGANIZATION_PREFIX = "/organizations/:organizationId/";
@@ -101,7 +113,7 @@ function concretePath(path: string): string {
 }
 
 describe("subscription guard route table", () => {
-  const routes = mutatingRoutes();
+  const { mounts, routes } = mutatingRoutes();
 
   it("finds the real mutating routes (the scan itself is not empty)", () => {
     expect(routes.length).toBeGreaterThan(30);
@@ -127,6 +139,10 @@ describe("subscription guard route table", () => {
     expect(
       [...UNSCOPED_EXEMPT_PATHS].filter((path) => !registered.has(path)),
     ).toEqual([]);
+  });
+
+  it("finds no sub-router mounted on an organization path (its routes would escape the scan)", () => {
+    expect(mounts).toEqual([]);
   });
 
   it("exempts exactly the billing checkout/confirm and AI analyze routes under the prefix", () => {

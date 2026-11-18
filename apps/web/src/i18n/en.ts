@@ -123,7 +123,7 @@ export const en = {
   subscriptionViewPlans: "View plans",
   subscriptionRequired:
     "This action needs an active subscription. The store owner can renew on the pricing page.",
-  subscriptionActionDisabled: "Unavailable while the subscription is expired.",
+  subscriptionDismiss: "Dismiss",
   billingErrConfirm:
     "The subscription could not be confirmed. Please try again.",
   organizationSettingsUnsavedConfirm:

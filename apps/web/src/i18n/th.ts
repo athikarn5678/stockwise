@@ -123,7 +123,7 @@ export const th: Dictionary = {
   subscriptionViewPlans: "ดูแพ็กเกจ",
   subscriptionRequired:
     "การดำเนินการนี้ต้องมีการสมัครสมาชิกที่ใช้งานอยู่ เจ้าของร้านสามารถต่ออายุได้ที่หน้าราคา",
-  subscriptionActionDisabled: "ใช้งานไม่ได้ขณะที่การสมัครสมาชิกหมดอายุ",
+  subscriptionDismiss: "ปิด",
   billingErrConfirm: "ไม่สามารถยืนยันการสมัครสมาชิกได้ กรุณาลองอีกครั้ง",
   organizationSettingsUnsavedConfirm:
     "คุณมีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก ต้องการออกจากหน้านี้หรือไม่?",

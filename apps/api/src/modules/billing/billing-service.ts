@@ -178,6 +178,7 @@ export function createBillingService(input: {
         interval: interval.data,
         organizationId: request.organizationId,
         plan: plan.data,
+        sessionCreatedAt: new Date(session.created * 1000),
         sessionId: session.id,
         subscriptionId: session.subscription,
       });

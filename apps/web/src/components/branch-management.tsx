@@ -20,6 +20,7 @@ import {
   type Branch,
 } from "@/branch-api-client";
 import { applicationContextUrl } from "@/application-context";
+import { useSubscriptionWriteGate } from "@/providers/subscription-provider";
 
 function errorMessage(
   error: unknown,
@@ -129,6 +130,7 @@ function CreateBranchForm({
   organizationId: string;
 }) {
   const { t } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
   const [error, setError] = useState<unknown>(null);
   const mutation = useMutation({
     mutationFn: (form: HTMLFormElement) => {
@@ -173,7 +175,11 @@ function CreateBranchForm({
           {errorMessage(error, t)}
         </p>
       ) : null}
-      <Button className="mt-4" disabled={mutation.isPending} type="submit">
+      <Button
+        className="mt-4"
+        disabled={mutation.isPending || writeBlocked}
+        type="submit"
+      >
         {mutation.isPending ? t("branchCreating") : t("branchCreate")}
       </Button>
     </form>
@@ -190,6 +196,7 @@ function BranchEditor({
   organizationId: string;
 }) {
   const { t } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
 
   const [error, setError] = useState<unknown>(null);
   const updateMutation = useMutation({
@@ -262,7 +269,11 @@ function BranchEditor({
         <Button
           variant="outline"
           className=""
-          disabled={updateMutation.isPending || lifecycleMutation.isPending}
+          disabled={
+            updateMutation.isPending ||
+            lifecycleMutation.isPending ||
+            writeBlocked
+          }
           type="submit"
         >
           {t("saveChanges")}
@@ -270,7 +281,11 @@ function BranchEditor({
         <Button
           variant="outline"
           className=""
-          disabled={updateMutation.isPending || lifecycleMutation.isPending}
+          disabled={
+            updateMutation.isPending ||
+            lifecycleMutation.isPending ||
+            writeBlocked
+          }
           onClick={() => void run(() => lifecycleMutation.mutateAsync())}
           type="button"
         >

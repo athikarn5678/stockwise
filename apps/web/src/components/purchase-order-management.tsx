@@ -56,6 +56,7 @@ import {
   ReceivingApiError,
   type Receipt,
 } from "@/receiving-api-client";
+import { useSubscriptionWriteGate } from "@/providers/subscription-provider";
 
 type PurchaseOrderRole = AccessibleOrganization["role"];
 type DraftLine = PurchaseOrderInput["items"][number];
@@ -588,6 +589,7 @@ function PurchaseOrderForm({
   products: CatalogProduct[];
 }) {
   const { t } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
 
   const [input, setInput] = useState<DraftInput>(() =>
     draftFromOrder(initialOrder),
@@ -864,7 +866,7 @@ function PurchaseOrderForm({
       <Button
         aria-busy={mutation.isPending}
         className="mt-5"
-        disabled={mutation.isPending}
+        disabled={mutation.isPending || writeBlocked}
         type="submit"
       >
         {mutation.isPending ? t("commonSaving") : label}
@@ -891,6 +893,7 @@ function PurchaseOrderEditor({
   requestContext: PurchaseOrderRequestContext;
 }) {
   const { t } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
 
   const [intent, setIntent] = useState<LifecycleIntent | null>(null);
   const update = useMutation({
@@ -937,7 +940,7 @@ function PurchaseOrderEditor({
           </p>
           <div className="flex flex-wrap gap-3">
             <Button
-              disabled={pending}
+              disabled={pending || writeBlocked}
               onClick={() => setIntent("ORDERED")}
               type="button"
             >
@@ -945,7 +948,7 @@ function PurchaseOrderEditor({
             </Button>
             <Button
               variant="outline"
-              disabled={pending}
+              disabled={pending || writeBlocked}
               onClick={() => setIntent("CANCELLED")}
               type="button"
             >
@@ -965,7 +968,7 @@ function PurchaseOrderEditor({
       {order.status === "ORDERED" ? (
         <Button
           variant="outline"
-          disabled={pending}
+          disabled={pending || writeBlocked}
           onClick={() => setIntent("CANCELLED")}
           type="button"
         >
@@ -999,6 +1002,7 @@ function ReceivingPanel({
   onReceived: (order: PurchaseOrder) => Promise<void>;
 }) {
   const { t } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
 
   const queryClient = useQueryClient();
   const [costs, setCosts] = useState<Record<string, string>>(() =>
@@ -1285,7 +1289,7 @@ function ReceivingPanel({
         </p>
       ) : null}
       <Button
-        disabled={!complete || !vatValid || pending}
+        disabled={!complete || !vatValid || pending || writeBlocked}
         aria-busy={pending}
         onClick={() => setConfirm(true)}
         type="button"
@@ -1329,7 +1333,7 @@ function ReceivingPanel({
               <Button
                 aria-busy={pending}
                 className=""
-                disabled={pending}
+                disabled={pending || writeBlocked}
                 onClick={() => void submit()}
                 ref={confirmButton}
                 type="button"
@@ -1408,6 +1412,7 @@ function ConfirmationDialog({
   onConfirm: () => void;
 }) {
   const { t } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
 
   const cancel = useRef<HTMLButtonElement>(null);
   const confirm = useRef<HTMLButtonElement>(null);
@@ -1463,7 +1468,7 @@ function ConfirmationDialog({
           <Button
             aria-busy={busy}
             className=""
-            disabled={busy}
+            disabled={busy || writeBlocked}
             onClick={onConfirm}
             ref={confirm}
             type="button"

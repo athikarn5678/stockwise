@@ -36,6 +36,7 @@ import {
   type SupplierStatusFilter,
   updateSupplier,
 } from "@/supplier-api-client";
+import { useSubscriptionWriteGate } from "@/providers/subscription-provider";
 
 const MANAGEMENT_ROLES = new Set(["OWNER", "ADMIN", "BRANCH_MANAGER"]);
 const LIFECYCLE_ROLES = new Set(["OWNER", "ADMIN"]);
@@ -251,6 +252,7 @@ function SupplierForm({
   onSave: (input: SupplierInput) => Promise<unknown>;
 }) {
   const { t } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
   const mutation = useMutation({ mutationFn: onSave });
   return (
     <form
@@ -309,7 +311,7 @@ function SupplierForm({
       <Button
         aria-busy={mutation.isPending}
         className="mt-4"
-        disabled={mutation.isPending}
+        disabled={mutation.isPending || writeBlocked}
         type="submit"
       >
         {mutation.isPending ? t("commonSaving") : label}
@@ -331,6 +333,7 @@ function SupplierCard({
   supplier: Supplier;
 }) {
   const { t } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
   const edit = useMutation({
     mutationFn: (input: SupplierInput) =>
       updateSupplier(organizationId, supplier.id, input),
@@ -368,7 +371,7 @@ function SupplierCard({
           variant="outline"
           aria-busy={lifecycle.isPending}
           className="mt-3"
-          disabled={pending}
+          disabled={pending || writeBlocked}
           onClick={() => void lifecycle.mutateAsync().catch(onError)}
           type="button"
         >

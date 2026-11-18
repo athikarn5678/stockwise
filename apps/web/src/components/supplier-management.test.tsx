@@ -21,6 +21,11 @@ vi.mock("@/branch-api-client", async (importOriginal) => ({
   fetchAccessContext: vi.fn(),
 }));
 
+const subscriptionGate = vi.hoisted(() => ({ blocked: false }));
+vi.mock("@/providers/subscription-provider", () => ({
+  useSubscriptionWriteGate: () => ({ writeBlocked: subscriptionGate.blocked }),
+}));
+
 function setup(
   failure?: "create" | "list",
   role: "OWNER" | "INVENTORY_STAFF" = "OWNER",
@@ -90,6 +95,7 @@ async function create() {
 }
 afterEach(() => {
   cleanup();
+  subscriptionGate.blocked = false;
   vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
@@ -133,5 +139,18 @@ describe("Supplier creation through the API client", () => {
     );
     await waitFor(() => expect(input.value).toBe(""));
     expect(persisted).toHaveLength(1);
+  });
+
+  it("disables the create supplier action while the subscription is expired", async () => {
+    subscriptionGate.blocked = true;
+    setup();
+
+    expect(
+      await screen.findByRole("button", { name: "Create supplier" }),
+    ).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Refresh" })).toHaveProperty(
+      "disabled",
+      false,
+    );
   });
 });

@@ -28,6 +28,8 @@ import {
 } from "./promptpay-panel";
 import { SaleReceipt } from "./sale-receipt";
 
+import { useSubscriptionWriteGate } from "@/providers/subscription-provider";
+
 import { formatThb } from "@/money-display";
 import {
   applicationContextUrl,
@@ -293,6 +295,7 @@ function PosContent({
   organization: AccessibleOrganization;
 }) {
   const { t } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
 
   const queryClient = useQueryClient();
   const context = {
@@ -758,7 +761,8 @@ function PosContent({
                     cart.length === 0 ||
                     checkoutMutation.isPending ||
                     scansPending > 0 ||
-                    vatBlocked
+                    vatBlocked ||
+                    writeBlocked
                   }
                   type="submit"
                 >
@@ -1172,6 +1176,7 @@ function VatProfilePanel({
   profile: SalesVatProfile | undefined;
 }) {
   const { t } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
 
   const [status, setStatus] =
     useState<SalesVatProfile["salesVatStatus"]>("NOT_REGISTERED");
@@ -1265,7 +1270,7 @@ function VatProfilePanel({
       <Button
         aria-busy={mutation.isPending}
         className="self-end"
-        disabled={mutation.isPending}
+        disabled={mutation.isPending || writeBlocked}
         type="submit"
       >
         {mutation.isPending ? t("uiSavingVAT") : t("uiSaveVATProfile")}

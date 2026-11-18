@@ -54,6 +54,16 @@ export async function chooseComboboxOption(
   await expect(listbox).toBeHidden();
 }
 
+/**
+ * Asserts the label a select trigger shows for its current value.
+ */
+export async function expectSelectValue(
+  trigger: Locator,
+  label: string | RegExp,
+): Promise<void> {
+  await expect(trigger).toHaveText(label);
+}
+
 function resolveTrigger(page: Page, labelOrLocator: string | Locator): Locator {
   return typeof labelOrLocator === "string"
     ? page.getByLabel(labelOrLocator, { exact: true })

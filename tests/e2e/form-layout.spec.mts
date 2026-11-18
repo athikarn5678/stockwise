@@ -101,7 +101,7 @@ async function signIn(page: Page, email = E2E_OWNER_EMAIL) {
 
 async function inspect(page: Page, info: TestInfo, name: string) {
   const controls = page.locator(
-    '[data-slot="input"]:visible, [data-slot="native-select"]:visible, [data-slot="textarea"]:visible',
+    '[data-slot="input"]:visible, [data-slot="select-trigger"]:visible, [data-slot="textarea"]:visible',
   );
   await expect(controls.first()).toBeVisible();
   const layout = await controls.evaluateAll((elements) =>

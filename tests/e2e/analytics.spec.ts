@@ -9,7 +9,11 @@ import {
   E2E_OWNER_EMAIL,
   E2E_PASSWORD,
 } from "./catalog-fixtures.ts";
-import { chooseComboboxOption, selectOption } from "./select-helpers.ts";
+import {
+  chooseComboboxOption,
+  expectSelectValue,
+  selectOption,
+} from "./select-helpers.ts";
 
 async function signIn(page: import("@playwright/test").Page, email: string) {
   await page.goto("/login");
@@ -120,8 +124,9 @@ test("owner reads a stored AI report safely on mobile", async ({ page }) => {
   await page.getByRole("button", { name: "Menu", exact: true }).click();
   await page.getByRole("link", { name: "Analytics" }).click();
   await page.getByRole("button", { name: "AI insights" }).click();
-  await expect(page.getByLabel("Report period")).toHaveValue(
-    "30000000-0000-4000-8000-000000000001",
+  await expectSelectValue(
+    page.getByLabel("Report period"),
+    "Sep 21, 2026–Sep 27, 2026",
   );
   await expect(page.getByText(/Report period: Sep 21, 2026/)).toBeVisible();
   await expect(page.locator("article")).toContainText(

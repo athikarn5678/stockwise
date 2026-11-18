@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { TranslationKey } from "@/i18n/en";
 import { useLanguage } from "@/providers/language-provider";
+import { isZxingDecodeException } from "./zxing-errors";
 
 const FORMATS = ["code_128", "ean_13", "ean_8", "upc_a", "upc_e"];
 interface NativeDetector {
@@ -92,14 +93,9 @@ export function PosCameraScanner({
         preview,
         (result, error) => {
           if (result) accept(result.getText());
-          else if (
-            error &&
-            ![
-              "NotFoundException",
-              "ChecksumException",
-              "FormatException",
-            ].includes(error.name)
-          )
+          // A decode exception only means "no barcode in this frame yet"; stop
+          // the camera for genuine camera or stream errors alone.
+          else if (error && !isZxingDecodeException(error))
             fail(cameraError(error));
         },
       );

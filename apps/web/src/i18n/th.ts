@@ -1114,8 +1114,9 @@ export const th: Dictionary = {
   uiForecastAndReorder: "พยากรณ์และแนะนำสั่งซื้อ",
   uiOneBranchAndProductForecastDatesAndTrainingWindow:
     "ข้อมูลสำหรับหนึ่งสาขาและหนึ่งสินค้า วันที่พยากรณ์และช่วงข้อมูลฝึกอ้างอิงเขตเวลารายงานขององค์กร",
-  uiFindProduct: "ค้นหาสินค้า",
-  uiChooseAProduct2: "เลือกสินค้า",
+  uiSearchProductsPlaceholder: "ค้นหาสินค้า…",
+  uiShowProductOptions: "แสดงตัวเลือกสินค้า",
+  uiClearProductSearch: "ล้างการค้นหาสินค้า",
   uiLoadingProducts: "กำลังโหลดสินค้า…",
   uiProductsCouldNotBeLoaded: "ไม่สามารถโหลดสินค้าได้",
   uiNoProductsMatchThisSearch: "ไม่มีสินค้าที่ตรงกับการค้นหา",

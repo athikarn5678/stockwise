@@ -1139,8 +1139,9 @@ export const en = {
   uiForecastAndReorder: "Forecast and reorder",
   uiOneBranchAndProductForecastDatesAndTrainingWindow:
     "One Branch and Product. Forecast dates and training window are fixed by the organization reporting timezone.",
-  uiFindProduct: "Find Product",
-  uiChooseAProduct2: "Choose a Product",
+  uiSearchProductsPlaceholder: "Search products…",
+  uiShowProductOptions: "Show product options",
+  uiClearProductSearch: "Clear product search",
   uiLoadingProducts: "Loading Products…",
   uiProductsCouldNotBeLoaded: "Products could not be loaded.",
   uiNoProductsMatchThisSearch: "No Products match this search.",

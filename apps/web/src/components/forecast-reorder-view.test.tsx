@@ -19,6 +19,7 @@ import {
 } from "@/analytics-api-client";
 import { listProducts, type CatalogProduct } from "@/catalog-api-client";
 import type { AccessibleOrganization } from "@/branch-api-client";
+import { chooseOption } from "@/test/select-helpers";
 import { ForecastReorderView } from "./forecast-reorder-view";
 
 vi.mock("@/analytics-api-client", async (load) => {
@@ -59,6 +60,12 @@ const product: CatalogProduct = {
   createdAt: "2026-01-01T00:00:00.000Z",
   description: null,
   updatedAt: "2026-01-01T00:00:00.000Z",
+};
+const secondProduct: CatalogProduct = {
+  ...product,
+  id: "30000000-0000-4000-8000-000000000002",
+  sku: "TWO",
+  name: "Two",
 };
 const day = {
   localDate: "2026-09-25",
@@ -113,14 +120,40 @@ function mount(organization: AccessibleOrganization = org) {
     </QueryClientProvider>,
   );
 }
+function productInput(): HTMLInputElement {
+  return screen.getByLabelText("Product", { exact: true }) as HTMLInputElement;
+}
+
+async function openProductCombobox() {
+  if (screen.queryByRole("listbox") === null) {
+    // jsdom has no layout and Base UI only auto-opens on a real input event, so
+    // open the popup through its trigger before typing.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show product options" }),
+    );
+    await screen.findByRole("listbox");
+  }
+}
+
 async function chooseProduct() {
-  await screen.findByRole("option", { name: "ONE — One" });
-  fireEvent.change(screen.getByLabelText("Product", { exact: true }), {
-    target: { value: product.id },
-  });
+  await openProductCombobox();
+  fireEvent.change(productInput(), { target: { value: "one" } });
+  await waitFor(() =>
+    expect(productMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ q: "one" }),
+    ),
+  );
+  const option = await screen.findByRole("option", { name: "ONE — One" });
+  // Base UI arms pointer selection on pointerdown; a bare `click` is ignored.
+  fireEvent.pointerDown(option, { pointerType: "mouse" });
+  fireEvent.click(option);
+  await waitFor(() => expect(productInput().value).toBe("ONE — One"));
+  await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
 }
 
 beforeEach(() => {
+  Element.prototype.scrollIntoView = vi.fn();
   productMock.mockResolvedValue({
     data: { products: [product] },
     meta: { nextCursor: null },
@@ -166,9 +199,7 @@ describe("Forecast and reorder view", () => {
     expect(
       screen.queryByRole("button", { name: /purchase|order/i }),
     ).toBeNull();
-    fireEvent.change(screen.getByLabelText("Planning lead time"), {
-      target: { value: "2" },
-    });
+    await chooseOption(screen.getByLabelText("Planning lead time"), "2 days");
     await waitFor(() =>
       expect(reorderMock).toHaveBeenLastCalledWith(
         expect.objectContaining({ leadTimeDays: 2 }),
@@ -306,9 +337,7 @@ describe("Forecast and reorder view", () => {
     mount();
     await chooseProduct();
     await screen.findByText("0.0000 EA total");
-    fireEvent.change(screen.getByLabelText("Branch"), {
-      target: { value: org.branches[1]!.id },
-    });
+    await chooseOption(screen.getByLabelText("Branch"), "B — Beta");
     expect(
       screen.getByText(
         "Choose a Product to see its forecast and reorder status.",
@@ -316,9 +345,45 @@ describe("Forecast and reorder view", () => {
     ).toBeTruthy();
     expect(screen.queryByText("0.0000 EA total")).toBeNull();
     await chooseProduct();
-    fireEvent.change(screen.getByLabelText("Find Product"), {
-      target: { value: "other" },
-    });
+    await screen.findByText("0.0000 EA total");
+    fireEvent.change(productInput(), { target: { value: "other" } });
     expect(screen.queryByText("0.0000 EA total")).toBeNull();
+    expect(productInput().value).toBe("other");
+  });
+
+  it("searches the server from the combobox and appends the next page", async () => {
+    productMock.mockImplementation(async (_context, options) =>
+      options?.cursor === undefined
+        ? { data: { products: [product] }, meta: { nextCursor: "cursor-1" } }
+        : { data: { products: [secondProduct] }, meta: { nextCursor: null } },
+    );
+    mount();
+    await openProductCombobox();
+    await screen.findByRole("option", { name: "ONE — One" });
+    expect(productMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ q: "" }),
+    );
+
+    fireEvent.change(productInput(), { target: { value: "two" } });
+    await waitFor(() =>
+      expect(productMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ q: "two" }),
+      ),
+    );
+
+    // The new query key has no data until the mocked page resolves.
+    await screen.findByRole("option", { name: "ONE — One" });
+    fireEvent.click(screen.getByRole("button", { name: "Load more Products" }));
+    await waitFor(() =>
+      expect(productMock).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ cursor: "cursor-1" }),
+      ),
+    );
+    await screen.findByRole("option", { name: "TWO — Two" });
+    expect(screen.getByRole("option", { name: "ONE — One" })).toBeTruthy();
+    expect(screen.queryByRole("listbox")).not.toBeNull();
   });
 });

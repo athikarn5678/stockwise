@@ -21,6 +21,7 @@ import {
 } from "@/inventory-api-client";
 
 import { InventoryManagement } from "./inventory-management";
+import { chooseOptionByValue, expectSelectValue } from "@/test/select-helpers";
 import { LanguageProvider } from "@/providers/language-provider";
 import { en } from "@/i18n/en";
 import { th } from "@/i18n/th";
@@ -191,7 +192,7 @@ describe("inventory management UI", () => {
     const status = screen.getByLabelText(en.inventoryProductStatus);
     fireEvent.click(screen.getByRole("button", { name: /Coffee/ }));
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(2));
-    expect(status).toHaveProperty("value", "ACTIVE");
+    expectSelectValue(status, en.inventoryActiveProducts);
     expect(getInventoryItem).toHaveBeenLastCalledWith(
       { organizationId: ORGANIZATION_ID, branchId: BRANCH_ID },
       other.product.id,
@@ -365,9 +366,7 @@ describe("inventory management UI", () => {
     fireEvent.change(screen.getByLabelText("Signed adjustment (EA)"), {
       target: { value: "+1" },
     });
-    fireEvent.change(screen.getByLabelText("Reason"), {
-      target: { value: "OTHER" },
-    });
+    await chooseOptionByValue(screen.getByLabelText("Reason"), "OTHER");
     fireEvent.submit(form);
     expect(createInventoryAdjustment).not.toHaveBeenCalled();
   });

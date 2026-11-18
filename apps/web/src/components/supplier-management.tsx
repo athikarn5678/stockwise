@@ -4,10 +4,7 @@ import { useLanguage } from "@/providers/language-provider";
 import type { TranslationKey } from "@/i18n/en";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+import { OptionSelect } from "@/components/option-select";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -174,23 +171,16 @@ function SupplierContent({
         </Label>
         <Label className="form-field">
           {t("commonStatus")}
-          <NativeSelect
+          <OptionSelect
             className="w-full "
-            onChange={(event) =>
-              setStatus(event.target.value as SupplierStatusFilter)
-            }
+            onValueChange={(value) => setStatus(value as SupplierStatusFilter)}
+            options={[
+              { label: t("commonActive"), value: "active" },
+              { label: t("commonInactive"), value: "inactive" },
+              { label: t("commonAll"), value: "all" },
+            ]}
             value={status}
-          >
-            <NativeSelectOption value="active">
-              {t("commonActive")}
-            </NativeSelectOption>
-            <NativeSelectOption value="inactive">
-              {t("commonInactive")}
-            </NativeSelectOption>
-            <NativeSelectOption value="all">
-              {t("commonAll")}
-            </NativeSelectOption>
-          </NativeSelect>
+          />
         </Label>
         <Button
           variant="outline"

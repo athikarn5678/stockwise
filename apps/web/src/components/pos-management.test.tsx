@@ -26,6 +26,7 @@ import {
 } from "@/sales-api-client";
 
 import { PosManagement } from "./pos-management";
+import { chooseOptionByValue } from "@/test/select-helpers";
 
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const BRANCH_ID = "20000000-0000-4000-8000-000000000001";
@@ -868,9 +869,7 @@ describe("POS PromptPay option", () => {
     enablePromptPay();
     renderPos();
     await addCoffee();
-    fireEvent.change(screen.getByLabelText("Discount type"), {
-      target: { value: "AMOUNT" },
-    });
+    await chooseOptionByValue(screen.getByLabelText("Discount type"), "AMOUNT");
     fireEvent.change(screen.getByLabelText("Discount amount (THB)"), {
       target: { value: "0.10" },
     });

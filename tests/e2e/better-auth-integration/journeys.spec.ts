@@ -16,6 +16,7 @@ import {
   expect,
   type Scenario,
 } from "./fixtures";
+import { selectOption } from "../select-helpers.ts";
 const nativeSessionCookie = "stockwise_native.session_token";
 
 const webOrigin = "http://localhost:3202";
@@ -1274,7 +1275,9 @@ journey(
         (organization: { id: string }) => organization.id,
       ),
     ).toEqual([scope.organization.id]);
-    await input.page.getByLabel("Branch").selectOption(scope.second.id);
+    await selectOption(input.page, input.page.getByLabel("Branch"), {
+      value: scope.second.id,
+    });
     await expect(input.page).toHaveURL(
       new RegExp(`branchId=${scope.second.id}`),
     );
@@ -1295,7 +1298,9 @@ journey(
       await replayContext.close();
     }
     input.stage = "same-context-account-switch";
-    await input.page.getByLabel("Branch").selectOption(scope.first.id);
+    await selectOption(input.page, input.page.getByLabel("Branch"), {
+      value: scope.first.id,
+    });
     await input.page
       .getByRole("button", { name: "Log out", exact: true })
       .click();

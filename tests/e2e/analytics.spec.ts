@@ -9,6 +9,7 @@ import {
   E2E_OWNER_EMAIL,
   E2E_PASSWORD,
 } from "./catalog-fixtures.ts";
+import { chooseComboboxOption, selectOption } from "./select-helpers.ts";
 
 async function signIn(page: import("@playwright/test").Page, email: string) {
   await page.goto("/login");
@@ -41,9 +42,9 @@ test("owner navigates sales, category, and branch analytics at tablet width", as
       response.url().includes("/analytics/sales?") &&
       response.url().includes("scope=branch"),
   );
-  await page.getByLabel("Analytics scope").selectOption(E2E_BRANCH_ID);
+  await selectOption(page, "Analytics scope", { value: E2E_BRANCH_ID });
   await branchRequest;
-  await page.getByLabel("Analytics scope").selectOption("organization");
+  await selectOption(page, "Analytics scope", { value: "organization" });
   await page.getByRole("button", { name: "Categories" }).click();
   await expect(page.getByLabel("Category analytics")).toBeVisible();
   await expect(page.getByText("Loading categories…")).toBeHidden();
@@ -151,13 +152,15 @@ test("owner selects a Branch/Product and lead time for deterministic advisory st
   await expect(
     page.getByRole("region", { name: "Forecast and reorder", exact: true }),
   ).toBeVisible();
-  await page
-    .getByRole("combobox", { name: "Branch", exact: true })
-    .selectOption(E2E_BRANCH_ID);
-  await page
-    .getByRole("combobox", { name: "Product", exact: true })
-    .selectOption(E2E_INVENTORY_PRODUCT_ID);
-  await page.getByLabel("Planning lead time").selectOption("2");
+  await selectOption(
+    page,
+    page.getByRole("combobox", { name: "Branch", exact: true }),
+    { value: E2E_BRANCH_ID },
+  );
+  await chooseComboboxOption(page, "Product", "Inventory test tea", {
+    value: E2E_INVENTORY_PRODUCT_ID,
+  });
+  await selectOption(page, "Planning lead time", { value: "2" });
   await expect(page.getByLabel("Forecast result")).toContainText(
     "forecast-sale-mean-28d-v1",
   );

@@ -8,6 +8,7 @@ import {
   E2E_OWNER_EMAIL,
   E2E_PASSWORD,
 } from "./catalog-fixtures.ts";
+import { selectOption } from "./select-helpers.ts";
 
 const scope = `organizationId=${E2E_ORGANIZATION_ID}&branchId=${E2E_BRANCH_ID}`;
 const onboardingEmail = "form-onboarding-e2e@example.test";
@@ -220,12 +221,12 @@ test("receiving, confirmation and refund forms fit mobile and desktop", async ({
   await signIn(page, workflowEmail);
   await page.goto(`/app/purchase-orders?${workflowScope}`);
   const draft = page.getByRole("form", { name: "Create draft purchase order" });
-  await draft
-    .getByLabel("Supplier")
-    .selectOption({ label: "Form layout supplier" });
-  await draft
-    .getByLabel("Product line 1 product")
-    .selectOption(workflowProductId);
+  await selectOption(page, draft.getByLabel("Supplier"), {
+    label: "Form layout supplier",
+  });
+  await selectOption(page, draft.getByLabel("Product line 1 product"), {
+    value: workflowProductId,
+  });
   await draft.getByLabel("Product line 1 quantity (KG)").fill("1.2500");
   await draft
     .getByLabel("Product line 1 expected unit cost (THB)")
@@ -292,7 +293,9 @@ test("receiving, confirmation and refund forms fit mobile and desktop", async ({
     .getByRole("button", { name: "Cancel", exact: true })
     .click();
   await page.goto(`/app/pos?${workflowScope}`);
-  await page.getByLabel("Sales VAT status").selectOption("NOT_REGISTERED");
+  await selectOption(page, "Sales VAT status", {
+    value: "NOT_REGISTERED",
+  });
   await page.getByRole("button", { name: "Save VAT profile" }).click();
   await page
     .getByRole("button", { name: "Add Form layout coffee", exact: true })

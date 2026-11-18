@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { expect, test, type Page } from "@playwright/test";
 import { z } from "../../../apps/api/node_modules/zod/index.js";
+import { chooseComboboxOption, selectOption } from "../select-helpers.ts";
 
 const stateFile = process.env.DEMO30D_BROWSER_STATE;
 if (!stateFile)
@@ -144,13 +145,18 @@ test("owner sees 30 real daily analytics buckets, sales history, forecast and re
   await page
     .getByRole("button", { name: "Forecast / Reorder", exact: true })
     .click();
-  await page
-    .getByRole("combobox", { name: "Product", exact: true })
-    .selectOption(state.productId);
+  await chooseComboboxOption(
+    page,
+    page.getByRole("combobox", { name: "Product", exact: true }),
+    "Daily Rice",
+    { value: state.productId },
+  );
   await expect(page.getByText(/EA total/)).toBeVisible();
-  await page
-    .getByRole("combobox", { name: "Planning lead time", exact: true })
-    .selectOption("7");
+  await selectOption(
+    page,
+    page.getByRole("combobox", { name: "Planning lead time", exact: true }),
+    { value: "7" },
+  );
   await expect(page.getByText(/Recommend .* EA/)).toBeVisible();
   await page.screenshot({
     path: test.info().outputPath("forecast-reorder.png"),

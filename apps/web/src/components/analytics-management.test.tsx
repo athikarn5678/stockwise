@@ -15,6 +15,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AnalyticsManagement } from "./analytics-management";
+import { chooseOptionByValue, expectSelectValue } from "@/test/select-helpers";
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () =>
@@ -384,9 +385,7 @@ describe("analytics management", () => {
     expect(
       await screen.findByRole("region", { name: "Sales analytics" }),
     ).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Analytics scope"), {
-      target: { value: BRANCH },
-    });
+    await chooseOptionByValue(screen.getByLabelText("Analytics scope"), BRANCH);
     fireEvent.click(screen.getByRole("button", { name: "AI insights" }));
     expect(screen.getByRole("region", { name: "AI insights" })).toBeTruthy();
     expect(
@@ -398,10 +397,7 @@ describe("analytics management", () => {
     expect(
       await screen.findByRole("region", { name: "Sales analytics" }),
     ).toBeTruthy();
-    expect(screen.getByLabelText("Analytics scope")).toHaveProperty(
-      "value",
-      BRANCH,
-    );
+    expectSelectValue(screen.getByLabelText("Analytics scope"), "A — Alpha");
     expect(
       screen
         .getByRole("button", { name: "Sales" })
@@ -467,9 +463,10 @@ describe("analytics management", () => {
     expect(requests.some((url) => url.includes("/analytics/sales?"))).toBe(
       false,
     );
-    fireEvent.change(screen.getByLabelText("Analytics scope"), {
-      target: { value: OTHER_BRANCH },
-    });
+    await chooseOptionByValue(
+      screen.getByLabelText("Analytics scope"),
+      OTHER_BRANCH,
+    );
     await waitFor(() =>
       expect(
         requests.some(
@@ -487,9 +484,7 @@ describe("analytics management", () => {
     expect(
       await screen.findByRole("region", { name: "Sales analytics" }),
     ).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Analytics scope"), {
-      target: { value: BRANCH },
-    });
+    await chooseOptionByValue(screen.getByLabelText("Analytics scope"), BRANCH);
     await waitFor(() =>
       expect(
         requests.some(
@@ -602,9 +597,7 @@ describe("analytics management", () => {
   it("uses explicit period and authorized branch scope inputs", async () => {
     renderPage();
     await screen.findByText("THB -4.00", { selector: "dd" });
-    fireEvent.change(screen.getByLabelText("Analytics scope"), {
-      target: { value: BRANCH },
-    });
+    await chooseOptionByValue(screen.getByLabelText("Analytics scope"), BRANCH);
     await waitFor(() =>
       expect(
         requests.some((url) => url.includes(`scope=branch&branchId=${BRANCH}`)),

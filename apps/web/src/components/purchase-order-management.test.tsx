@@ -31,6 +31,10 @@ import {
 } from "@/receiving-api-client";
 
 import { PurchaseOrderManagement } from "./purchase-order-management";
+import {
+  chooseOptionByValue,
+  readSelectOptionValues,
+} from "@/test/select-helpers";
 
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const BRANCH_ID = "20000000-0000-4000-8000-000000000001";
@@ -416,12 +420,14 @@ describe("purchase order management UI", () => {
       name: "Create draft purchase order",
     });
     await waitFor(() => expect(listSuppliers).toHaveBeenCalled());
-    fireEvent.change(within(form).getByLabelText("Supplier"), {
-      target: { value: SUPPLIER_ID },
-    });
-    fireEvent.change(within(form).getByLabelText("Product line 1 product"), {
-      target: { value: PRODUCT_ID },
-    });
+    await chooseOptionByValue(
+      within(form).getByLabelText("Supplier"),
+      SUPPLIER_ID,
+    );
+    await chooseOptionByValue(
+      within(form).getByLabelText("Product line 1 product"),
+      PRODUCT_ID,
+    );
     await waitFor(() =>
       expect(
         within(form).getByLabelText("Product line 1 quantity (EA)"),
@@ -440,17 +446,14 @@ describe("purchase order management UI", () => {
       },
     );
     fireEvent.click(screen.getByRole("button", { name: "Add product line" }));
-    fireEvent.change(within(form).getByLabelText("Product line 2 product"), {
-      target: { value: "40000000-0000-4000-8000-000000000002" },
-    });
-    const secondProduct = within(form).getByLabelText(
-      "Product line 2 product",
-    ) as HTMLSelectElement;
-    expect(
-      Array.from(secondProduct.options).some(
-        (option) => option.value === PRODUCT_ID,
-      ),
-    ).toBe(false);
+    await chooseOptionByValue(
+      within(form).getByLabelText("Product line 2 product"),
+      "40000000-0000-4000-8000-000000000002",
+    );
+    const secondProduct = within(form).getByLabelText("Product line 2 product");
+    expect(await readSelectOptionValues(secondProduct)).not.toContain(
+      PRODUCT_ID,
+    );
     fireEvent.change(
       within(form).getByLabelText("Product line 2 quantity (KG)"),
       { target: { value: "0.5" } },

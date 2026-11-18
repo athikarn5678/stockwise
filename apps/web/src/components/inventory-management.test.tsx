@@ -50,6 +50,11 @@ vi.mock("@/branch-api-client", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/branch-api-client")>();
   return { ...original, fetchAccessContext: vi.fn() };
 });
+
+const subscriptionGate = vi.hoisted(() => ({ blocked: false }));
+vi.mock("@/providers/subscription-provider", () => ({
+  useSubscriptionWriteGate: () => ({ writeBlocked: subscriptionGate.blocked }),
+}));
 vi.mock("@/inventory-api-client", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("@/inventory-api-client")>();
@@ -156,6 +161,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  subscriptionGate.blocked = false;
   localStorage.clear();
   if (originalScrollIntoView) {
     Object.defineProperty(
@@ -574,6 +580,20 @@ describe("inventory management UI", () => {
         { branchId: branchTwo, organizationId: ORGANIZATION_ID },
         expect.anything(),
       ),
+    );
+  });
+
+  it("disables the stock adjustment submit while the subscription is expired", async () => {
+    subscriptionGate.blocked = true;
+    renderInventory();
+    fireEvent.click(await screen.findByRole("button", { name: /Tea/ }));
+
+    expect(
+      await screen.findByRole("button", { name: "Submit adjustment" }),
+    ).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: /Tea/ })).toHaveProperty(
+      "disabled",
+      false,
     );
   });
 });

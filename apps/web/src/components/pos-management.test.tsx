@@ -46,6 +46,11 @@ vi.mock("@/branch-api-client", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/branch-api-client")>();
   return { ...original, fetchAccessContext: vi.fn() };
 });
+
+const subscriptionGate = vi.hoisted(() => ({ blocked: false }));
+vi.mock("@/providers/subscription-provider", () => ({
+  useSubscriptionWriteGate: () => ({ writeBlocked: subscriptionGate.blocked }),
+}));
 vi.mock("@/sales-api-client", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/sales-api-client")>();
   return {
@@ -197,6 +202,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  subscriptionGate.blocked = false;
   vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
@@ -1011,5 +1017,19 @@ describe("POS PromptPay option", () => {
     expect(
       screen.queryByRole("img", { name: "Selected slip preview" }),
     ).toBeNull();
+  });
+
+  it("disables the checkout action while the subscription is expired", async () => {
+    subscriptionGate.blocked = true;
+    renderPos();
+    await addCoffee();
+
+    expect(
+      screen.getByRole("button", { name: "Complete sale" }),
+    ).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Search" })).toHaveProperty(
+      "disabled",
+      false,
+    );
   });
 });

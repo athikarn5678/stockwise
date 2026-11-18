@@ -38,6 +38,7 @@ import {
 } from "@/membership-api-client";
 import { accountDraftAuthority } from "@/providers/account-draft";
 import { useLanguage } from "@/providers/language-provider";
+import { useSubscriptionWriteGate } from "@/providers/subscription-provider";
 import { currentPrivateSessionSignal } from "@/session-lifecycle";
 
 const ALL_ROLES: MembershipRole[] = [
@@ -416,6 +417,7 @@ function InviteForm({
   onSaved,
 }: EditorProps) {
   const { t } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<MembershipRole>("CASHIER");
@@ -572,7 +574,9 @@ function InviteForm({
           className="mt-4"
           type="submit"
           disabled={
-            mutation.isPending || (branchRole(role) && !branchIds.length)
+            mutation.isPending ||
+            writeBlocked ||
+            (branchRole(role) && !branchIds.length)
           }
         >
           {t(mutation.isPending ? "teamSending" : "teamSend")}
@@ -597,6 +601,7 @@ function InvitationCard({
   onSaved: EditorProps["onSaved"];
 }) {
   const { t, language } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
   const canDelegate =
     canAssignRole(actorRole, invitation.intendedRole) &&
     invitation.invitedEmail.toLowerCase() !== actorEmail.toLowerCase();
@@ -643,7 +648,7 @@ function InvitationCard({
         <div className="mt-4 flex flex-wrap gap-2">
           <Button
             variant="outline"
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || writeBlocked}
             onClick={() => {
               if (
                 window.confirm(
@@ -657,7 +662,7 @@ function InvitationCard({
           </Button>
           <Button
             variant="outline"
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || writeBlocked}
             onClick={() => {
               if (
                 window.confirm(
@@ -690,6 +695,7 @@ function MemberEditor({
   onSaved,
 }: EditorProps & { actorId: string; member: Membership }) {
   const { t } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
   const queryClient = useQueryClient();
   // Ordinary refetch must not silently rebase an unsaved privileged change.
   const [base, setBase] = useState(member);
@@ -808,6 +814,7 @@ function MemberEditor({
                 variant="outline"
                 disabled={
                   (branchRole(role) && !branchIds.length) ||
+                  writeBlocked ||
                   (base.status === "ACTIVE" && !dirty)
                 }
                 onClick={() => {
@@ -834,6 +841,7 @@ function MemberEditor({
               {base.status === "ACTIVE" && (
                 <Button
                   variant="outline"
+                  disabled={writeBlocked}
                   onClick={() => {
                     if (window.confirm(t("teamConfirmDeactivate")))
                       mutation.mutate("deactivate");

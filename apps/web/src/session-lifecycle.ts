@@ -7,6 +7,8 @@ import {
 
 export const SESSION_CHANGE_EVENT = "stockwise:session-change";
 export const SESSION_UNAUTHORIZED_EVENT = "stockwise:session-unauthorized";
+/** Fired when the API answers 402 SUBSCRIPTION_REQUIRED (organization expired). */
+export const SUBSCRIPTION_REQUIRED_EVENT = "stockwise:subscription-required";
 export const SESSION_CHANNEL = "stockwise.session-change";
 export interface SessionChangeHint {
   version: 1;
@@ -113,6 +115,19 @@ export async function privateFetch(path: string, init?: RequestInit) {
     path !== "/api/v1/invitations/accept"
   ) {
     window.dispatchEvent(new Event(SESSION_UNAUTHORIZED_EVENT));
+  }
+  if (typeof window !== "undefined" && response.status === 402) {
+    // The body is read from a clone so the caller still sees an untouched response.
+    void response
+      .clone()
+      .json()
+      .then((body: unknown) => {
+        const code = (body as { error?: { code?: unknown } } | null)?.error
+          ?.code;
+        if (code === "SUBSCRIPTION_REQUIRED")
+          window.dispatchEvent(new Event(SUBSCRIPTION_REQUIRED_EVENT));
+      })
+      .catch(() => undefined);
   }
   return response;
 }

@@ -15,7 +15,16 @@ const OTHER_ORGANIZATION_ID = "10000000-0000-4000-8000-000000000002";
 const ACTOR_ID = "20000000-0000-4000-8000-000000000001";
 const SESSION_ID = "cs_test_session123";
 const PUBLIC_WEB_ORIGIN = "https://app.example.com";
-const SUBSCRIPTION: PublicSubscription = { plan: "STARTER", status: "ACTIVE" };
+const NOW = new Date("2026-11-18T00:00:00.000Z");
+const SUBSCRIPTION: PublicSubscription = {
+  interval: "MONTH",
+  plan: "STARTER",
+  status: "ACTIVE",
+};
+const EXPIRED_SUBSCRIPTION: PublicSubscription = {
+  ...SUBSCRIPTION,
+  status: "EXPIRED",
+};
 
 function session(
   overrides: Partial<StripeCheckoutSession> = {},
@@ -26,6 +35,7 @@ function session(
     currency: "thb",
     customer: "cus_abc123",
     id: SESSION_ID,
+    created: 1_794_960_000,
     livemode: false,
     metadata: { organization_id: ORGANIZATION_ID, plan: "STARTER" },
     mode: "subscription",
@@ -51,12 +61,20 @@ function repository({
     // Parameter names match the repository seam; the fakes ignore them.
     authorize: vi.fn(async () => access),
     find: vi.fn(async () => existing),
+    accessFacts: vi.fn(async () => ({
+      organizationCreatedAt: NOW,
+      subscription: existing,
+    })),
     saveConfirmed: vi.fn(
       async (input: SaveConfirmedInput): Promise<SaveConfirmedResult> =>
         saved.kind === "saved"
           ? {
               kind: "saved",
-              subscription: { plan: input.plan, status: "ACTIVE" },
+              subscription: {
+                interval: input.interval,
+                plan: input.plan,
+                status: "ACTIVE",
+              },
             }
           : saved,
     ),
@@ -87,6 +105,7 @@ function service(input: {
   const stripeClient = input.stripe;
   return {
     billing: createBillingService({
+      now: () => NOW,
       publicWebOrigin: PUBLIC_WEB_ORIGIN,
       repository: repo as unknown as BillingRepository,
       ...(stripeClient === undefined
@@ -104,6 +123,7 @@ describe("billing service", () => {
     await expect(
       billing.checkout({
         actorUserId: ACTOR_ID,
+        interval: "MONTH",
         organizationId: ORGANIZATION_ID,
         plan: "GROWTH",
       }),
@@ -121,6 +141,7 @@ describe("billing service", () => {
     expect(repo.saveConfirmed).not.toHaveBeenCalled();
 
     await expect(billing.read(ACTOR_ID, ORGANIZATION_ID)).resolves.toEqual({
+      access: null,
       canManage: false,
       enabled: false,
       kind: "ok",
@@ -133,6 +154,7 @@ describe("billing service", () => {
     await expect(
       owner.billing.read(ACTOR_ID, ORGANIZATION_ID),
     ).resolves.toEqual({
+      access: { state: "ACTIVE", trialDaysLeft: null, trialEndsAt: null },
       canManage: true,
       enabled: true,
       kind: "ok",
@@ -147,6 +169,7 @@ describe("billing service", () => {
     await expect(
       member.billing.read(ACTOR_ID, ORGANIZATION_ID),
     ).resolves.toEqual({
+      access: { state: "ACTIVE", trialDaysLeft: null, trialEndsAt: null },
       canManage: false,
       enabled: true,
       kind: "ok",
@@ -160,6 +183,7 @@ describe("billing service", () => {
       await expect(
         nonOwner.billing.checkout({
           actorUserId: ACTOR_ID,
+          interval: "MONTH",
           organizationId: ORGANIZATION_ID,
           plan: "STARTER",
         }),
@@ -186,6 +210,7 @@ describe("billing service", () => {
     await expect(
       billing.checkout({
         actorUserId: ACTOR_ID,
+        interval: "MONTH",
         organizationId: ORGANIZATION_ID,
         plan: "GROWTH",
       }),
@@ -195,6 +220,7 @@ describe("billing service", () => {
     });
     expect(stripeClient?.createCheckoutSession).toHaveBeenCalledWith({
       cancelUrl: `${PUBLIC_WEB_ORIGIN}/app/billing?organizationId=${ORGANIZATION_ID}&canceled=1`,
+      interval: "MONTH",
       organizationId: ORGANIZATION_ID,
       plan: "GROWTH",
       successUrl: `${PUBLIC_WEB_ORIGIN}/app/billing?organizationId=${ORGANIZATION_ID}&session_id={CHECKOUT_SESSION_ID}`,
@@ -209,6 +235,7 @@ describe("billing service", () => {
     await expect(
       billing.checkout({
         actorUserId: ACTOR_ID,
+        interval: "MONTH",
         organizationId: ORGANIZATION_ID,
         plan: "STARTER",
       }),
@@ -221,6 +248,7 @@ describe("billing service", () => {
     await expect(
       failed.billing.checkout({
         actorUserId: ACTOR_ID,
+        interval: "MONTH",
         organizationId: ORGANIZATION_ID,
         plan: "STARTER",
       }),
@@ -232,6 +260,7 @@ describe("billing service", () => {
     await expect(
       withoutUrl.billing.checkout({
         actorUserId: ACTOR_ID,
+        interval: "MONTH",
         organizationId: ORGANIZATION_ID,
         plan: "STARTER",
       }),
@@ -343,12 +372,14 @@ describe("billing service", () => {
       }),
     ).resolves.toEqual({
       kind: "ok",
-      subscription: { plan: "GROWTH", status: "ACTIVE" },
+      subscription: { interval: "MONTH", plan: "GROWTH", status: "ACTIVE" },
     });
     expect(repo.saveConfirmed).toHaveBeenCalledWith({
       customerId: "cus_abc123",
+      interval: "MONTH",
       organizationId: ORGANIZATION_ID,
       plan: "GROWTH",
+      sessionCreatedAt: new Date(1_794_960_000 * 1000),
       sessionId: SESSION_ID,
       subscriptionId: "sub_abc123",
     });
@@ -366,5 +397,77 @@ describe("billing service", () => {
         sessionId: SESSION_ID,
       }),
     ).resolves.toEqual({ kind: "conflict" });
+  });
+
+  it("reports a trial for a young organization with no subscription", async () => {
+    const trial = service({ existing: null, stripe: stripe() });
+    await expect(
+      trial.billing.read(ACTOR_ID, ORGANIZATION_ID),
+    ).resolves.toMatchObject({
+      access: { state: "TRIAL", trialDaysLeft: 14 },
+      subscription: null,
+    });
+  });
+
+  it("allows checkout from EXPIRED and renews through the repository", async () => {
+    const { billing, repo, stripeClient } = service({
+      existing: EXPIRED_SUBSCRIPTION,
+      stripe: stripe(),
+    });
+    await expect(
+      billing.checkout({
+        actorUserId: ACTOR_ID,
+        interval: "YEAR",
+        organizationId: ORGANIZATION_ID,
+        plan: "BUSINESS",
+      }),
+    ).resolves.toMatchObject({ kind: "ok" });
+    expect(stripeClient?.createCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ interval: "YEAR", plan: "BUSINESS" }),
+    );
+    await expect(
+      billing.read(ACTOR_ID, ORGANIZATION_ID),
+    ).resolves.toMatchObject({ access: { state: "EXPIRED" } });
+    expect(repo.saveConfirmed).not.toHaveBeenCalled();
+  });
+
+  it("confirms a yearly session only at the server-owned yearly price", async () => {
+    const yearly = (amount: number) =>
+      service({
+        stripe: stripe({
+          retrieved: {
+            ok: true,
+            value: session({
+              amount_total: amount,
+              metadata: {
+                interval: "YEAR",
+                organization_id: ORGANIZATION_ID,
+                plan: "GROWTH",
+              },
+            }),
+          },
+        }),
+      });
+    const ok = yearly(499_000);
+    await expect(
+      ok.billing.confirm({
+        actorUserId: ACTOR_ID,
+        organizationId: ORGANIZATION_ID,
+        sessionId: SESSION_ID,
+      }),
+    ).resolves.toEqual({
+      kind: "ok",
+      subscription: { interval: "YEAR", plan: "GROWTH", status: "ACTIVE" },
+    });
+    // The monthly amount does not buy a yearly plan.
+    const wrong = yearly(49_900);
+    await expect(
+      wrong.billing.confirm({
+        actorUserId: ACTOR_ID,
+        organizationId: ORGANIZATION_ID,
+        sessionId: SESSION_ID,
+      }),
+    ).resolves.toEqual({ kind: "forbidden" });
+    expect(wrong.repo.saveConfirmed).not.toHaveBeenCalled();
   });
 });

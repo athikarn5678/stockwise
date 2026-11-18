@@ -1827,15 +1827,17 @@ AI read responses:
 - Treat content as untrusted display text: escape it and never render provider-supplied active HTML.
 - Do not expose raw prompts, secrets, provider errors, or prohibited data.
 
-### Billing (ADR-047, test mode)
+### Billing (ADR-047, ADR-050, test mode)
 
 | Endpoint | Auth | Request | Success | Errors |
 | --- | --- | --- | --- | --- |
-| `GET /organizations/{organizationId}/billing` | Any active verified member | none | `{data: {enabled, canManage, subscription: {plan, status} \| null}}`; `enabled:false` and no subscription when `STRIPE_SECRET_KEY` is absent | `400`, `401`, `403` |
-| `POST /organizations/{organizationId}/billing/checkout` | OWNER (`billing.manage`) | `{plan: "STARTER" \| "GROWTH" \| "BUSINESS"}` | `{data: {url}}` (Stripe-hosted Checkout URL) | `400`, `403`, `404` disabled, `409 SUBSCRIPTION_EXISTS`, `502 BILLING_PROVIDER_FAILED` |
-| `POST /organizations/{organizationId}/billing/confirm` | OWNER (`billing.manage`) | `{sessionId: "cs_test_…"}` | `{data: {subscription: {plan, status}}}` (idempotent for the same session) | `400`, `403` (including another Organization's session), `404` disabled, `409 CHECKOUT_NOT_COMPLETE` / `SUBSCRIPTION_EXISTS`, `502` |
+| `GET /organizations/{organizationId}/billing` | Any active verified member | none | `{data: {enabled, canManage, access: {state: "ACTIVE" \| "TRIAL" \| "EXPIRED", trialDaysLeft: number \| null, trialEndsAt: ISO string \| null} \| null, subscription: {plan, interval: "MONTH" \| "YEAR", status: "ACTIVE" \| "PAST_DUE" \| "CANCELED" \| "EXPIRED"} \| null}}`; `enabled:false`, `access:null` and no subscription when `STRIPE_SECRET_KEY` is absent | `400`, `401`, `403` |
+| `POST /organizations/{organizationId}/billing/checkout` | OWNER (`billing.manage`) | `{plan: "STARTER" \| "GROWTH" \| "BUSINESS", interval?: "MONTH" \| "YEAR"}` (default `MONTH`) | `{data: {url}}` (Stripe-hosted Checkout URL); allowed from TRIAL and EXPIRED | `400`, `403`, `404` disabled, `409 SUBSCRIPTION_EXISTS` (only while the subscription keeps access), `502 BILLING_PROVIDER_FAILED` |
+| `POST /organizations/{organizationId}/billing/confirm` | OWNER (`billing.manage`) | `{sessionId: "cs_test_…"}` | `{data: {subscription: {plan, interval, status}}}`; renews an EXPIRED/CANCELED subscription in place (only from a session created after the row last changed; an older session answers `409 SUBSCRIPTION_EXISTS`) and is ACTIVE immediately; idempotent for the same session | `400`, `403` (including another Organization's session), `404` disabled, `409 CHECKOUT_NOT_COMPLETE` / `SUBSCRIPTION_EXISTS`, `502` |
 
-Strict bodies; responses carry `Cache-Control: no-store` on success. Prices are server-owned. No webhook, limit enforcement, Customer Portal or plan change in this slice. Implemented M6-S1.
+Prices are server-owned (THB per month / year: Starter 199 / 1,990, Growth 499 / 4,990, Business 999 / 9,990; confirm requires the exact amount for plan and interval). Strict bodies; responses carry `Cache-Control: no-store` on success.
+
+**Subscription guard (ADR-050).** When the caller's Organization is `EXPIRED` and billing is enabled, every `POST|PUT|PATCH|DELETE /organizations/{organizationId}/…` request answers `402 SUBSCRIPTION_REQUIRED` (canonical error envelope) before the route runs, so nothing is written. Exempt: `POST …/billing/checkout`, `POST …/billing/confirm`, `POST …/ai-analysis/runs` and `POST …/ai-analysis/runs/{runId}/retry`. Reads, authentication, own profile, first-organization onboarding and invitation acceptance are never blocked. Anonymous callers still get `401`; non-members get the route's normal `403`/`404`. No webhook, plan limits, Customer Portal or grace period yet.
 
 ## 14. S3/object endpoints
 

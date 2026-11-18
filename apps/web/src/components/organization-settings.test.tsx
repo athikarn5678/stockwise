@@ -56,6 +56,14 @@ vi.mock("@/organization-api-client", () => ({
   updateOrganizationSettings: vi.fn(),
 }));
 
+const subscriptionGate = vi.hoisted(() => ({ blocked: false }));
+vi.mock("@/providers/subscription-provider", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/providers/subscription-provider")
+  >()),
+  useSubscriptionWriteGate: () => ({ writeBlocked: subscriptionGate.blocked }),
+}));
+
 const ORG_ID = "30000000-0000-4000-8000-000000000001";
 const updatedAt = "2026-10-25T10:20:30.123Z";
 const organization = { id: ORG_ID, name: "North Store", updatedAt };
@@ -123,6 +131,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  subscriptionGate.blocked = false;
   vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
@@ -422,6 +431,23 @@ describe("organization settings", () => {
         name: "Next Store",
         expectedUpdatedAt: "2026-10-25T10:20:31.123Z",
       }),
+    );
+  });
+
+  it("disables the organization name save while the subscription is expired", async () => {
+    subscriptionGate.blocked = true;
+    vi.mocked(fetchOrganizationSettings).mockResolvedValue(organization);
+    renderSettings();
+    const input = await screen.findByLabelText("Organization name");
+    fireEvent.change(input, { target: { value: "Expired Store" } });
+
+    expect(screen.getByRole("button", { name: "Save changes" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveProperty(
+      "disabled",
+      false,
     );
   });
 });

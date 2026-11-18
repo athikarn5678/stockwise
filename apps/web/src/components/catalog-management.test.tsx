@@ -43,6 +43,11 @@ vi.mock("next/navigation", () => ({
     }),
 }));
 
+const subscriptionGate = vi.hoisted(() => ({ blocked: false }));
+vi.mock("@/providers/subscription-provider", () => ({
+  useSubscriptionWriteGate: () => ({ writeBlocked: subscriptionGate.blocked }),
+}));
+
 vi.mock("@/branch-api-client", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/branch-api-client")>();
   return { ...original, fetchAccessContext: vi.fn() };
@@ -375,6 +380,26 @@ describe("catalog management UI", () => {
         { branchId: BRANCH_ID, organizationId: ORGANIZATION_ID },
         expect.objectContaining({ name: "Pantry" }),
       ),
+    );
+  });
+});
+
+describe("catalog write gate", () => {
+  afterEach(() => {
+    subscriptionGate.blocked = false;
+  });
+
+  it("disables the create product action while the subscription is expired", async () => {
+    subscriptionGate.blocked = true;
+    renderCatalog();
+    await screen.findByText("Tea");
+
+    expect(
+      screen.getByRole("button", { name: "Create product" }),
+    ).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Search" })).toHaveProperty(
+      "disabled",
+      false,
     );
   });
 });

@@ -16,13 +16,18 @@ const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const TOKEN = "A".repeat(43);
 const TEST_COOKIE_NAME = "stockwise_test_session";
 const logger: ApiLogger = { error() {}, info() {} };
-const SUBSCRIPTION = { plan: "STARTER", status: "ACTIVE" } as const;
+const SUBSCRIPTION = {
+  interval: "MONTH",
+  plan: "STARTER",
+  status: "ACTIVE",
+} as const;
 
 type Service = ReturnType<typeof fakeService>;
 
 function fakeService() {
   return {
     read: vi.fn(async (): Promise<BillingReadResult> => ({
+      access: null,
       canManage: true,
       enabled: true,
       kind: "ok",
@@ -108,6 +113,7 @@ describe("billing router", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(await response.json()).toEqual({
       data: {
+        access: null,
         canManage: true,
         enabled: true,
         subscription: SUBSCRIPTION,
@@ -131,6 +137,7 @@ describe("billing router", () => {
     });
     expect(service.checkout).toHaveBeenCalledWith({
       actorUserId: "trusted-user-id",
+      interval: "MONTH",
       organizationId: ORGANIZATION_ID,
       plan: "GROWTH",
     });

@@ -38,6 +38,7 @@ import {
   listInventory,
   listInventoryHistory,
 } from "@/inventory-api-client";
+import { useSubscriptionWriteGate } from "@/providers/subscription-provider";
 
 type InventoryRole = AccessibleOrganization["role"];
 type InventoryStatus = "ACTIVE" | "INACTIVE" | "ALL";
@@ -519,6 +520,7 @@ function AdjustmentForm({
   scopeKey: readonly unknown[];
 }) {
   const { t } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
 
   const queryClient = useQueryClient();
   const [validation, setValidation] = useState<TranslationKey | null>(null);
@@ -638,7 +640,7 @@ function AdjustmentForm({
       ) : null}
       <Button
         aria-busy={mutation.isPending}
-        disabled={mutation.isPending}
+        disabled={mutation.isPending || writeBlocked}
         type="submit"
       >
         {mutation.isPending

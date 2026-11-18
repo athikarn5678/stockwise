@@ -1,6 +1,13 @@
 import { Prisma, type PrismaClient } from "../../generated/prisma/client.ts";
 import { Temporal } from "@js-temporal/polyfill";
 
+import {
+  buildAiAnalyzeProductFacts,
+  EMPTY_PRODUCT_FACTS,
+  type AiAnalyzeProductFacts,
+} from "./ai-analyze-product-facts.ts";
+import type { AnalyticsProductFactRow } from "../analytics/analytics-product-facts-repository.ts";
+import type { AnalyticsProductFactsService } from "../analytics/analytics-product-facts-service.ts";
 import { validateIanaTimeZone } from "../analytics/analytics-period.ts";
 import type { createAnalyticsCategoryService } from "../analytics/analytics-category-service.ts";
 import type { createAnalyticsSalesService } from "../analytics/analytics-sales-service.ts";
@@ -55,6 +62,8 @@ export type AiAnalyzeSnapshot = Readonly<{
     salesAfterDiscountAmount: string;
   }>[];
   period: AiAnalyzeSnapshotPeriod;
+  /** Product-level names and aggregates for the scope (ADR-050). */
+  products: AiAnalyzeProductFacts;
   totals: Readonly<{
     averageOrderValue: string | null;
     netSalesAmount: string;
@@ -121,6 +130,7 @@ export function buildAiAnalyzeSnapshot(input: {
     salesAfterDiscountAmount: string;
   }>[];
   period: AiAnalyzeSnapshotPeriod;
+  productRows?: readonly AnalyticsProductFactRow[];
 }): AiAnalyzeSnapshot {
   const totalSales = sum(input.days.map((day) => day.netSalesAmount));
   const totalRefunds = sum(input.days.map((day) => day.refundAmount));
@@ -204,6 +214,13 @@ export function buildAiAnalyzeSnapshot(input: {
     cost,
     days: input.days,
     period: input.period,
+    products:
+      input.productRows === undefined
+        ? EMPTY_PRODUCT_FACTS
+        : buildAiAnalyzeProductFacts({
+            days: input.period.days,
+            rows: input.productRows,
+          }),
     totals: {
       averageOrderValue:
         saleCount === 0
@@ -228,6 +245,7 @@ export function createAiAnalyzeSnapshotBuilder(input: {
   >;
   now?: () => number;
   organizationReader: OrganizationReader;
+  productFactsService: Pick<AnalyticsProductFactsService, "read">;
   salesService: Pick<ReturnType<typeof createAnalyticsSalesService>, "read">;
 }) {
   return async function readSnapshot(
@@ -298,9 +316,24 @@ export function createAiAnalyzeSnapshotBuilder(input: {
     // Top/bottom ranking over a partial category list would be wrong.
     if (cursor !== undefined) return { kind: "unavailable" };
 
+    const products = await input.productFactsService.read({
+      actorUserId: request.actorUserId,
+      from: period.from,
+      organizationId: request.organizationId,
+      scope,
+      to: period.to,
+    });
+    if (products.kind !== "success")
+      return products.kind === "forbidden"
+        ? { kind: "forbidden" }
+        : { kind: "unavailable" };
+    // Ranking a cut-off product list would name the wrong top/slowest products.
+    if (products.facts.truncated) return { kind: "unavailable" };
+
     return {
       kind: "ok",
       snapshot: buildAiAnalyzeSnapshot({
+        productRows: products.facts.rows,
         categorySeries: categorySeries.map((series) => ({
           buckets: series.buckets.map((bucket) => ({
             netSalesAmount: bucket.netSalesAmount,

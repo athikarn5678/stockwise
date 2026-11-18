@@ -1201,7 +1201,6 @@ export const th: Dictionary = {
   uiForecastDemand: "ความต้องการที่พยากรณ์",
   uiOnHand: "คงเหลือ",
   uiNeedBeforeUnitRounding: "จำนวนที่ต้องการก่อนปัดตามหน่วย",
-  uiHowToInterpretTheseEstimates: "วิธีอ่านค่าประมาณเหล่านี้",
   uiTheSelectedPeriodIsNotComplete: "ช่วงเวลาที่เลือกยังไม่ครบ",
   uiFewerThan28CompleteDaysOfInventoryHistory:
     "มีประวัติสินค้าคงคลังไม่ครบ 28 วัน",

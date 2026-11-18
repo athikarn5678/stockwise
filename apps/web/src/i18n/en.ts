@@ -1227,7 +1227,6 @@ export const en = {
   uiForecastDemand: "Forecast demand",
   uiOnHand: "On hand",
   uiNeedBeforeUnitRounding: "Need before unit rounding",
-  uiHowToInterpretTheseEstimates: "How to interpret these estimates",
   uiTheSelectedPeriodIsNotComplete: "The selected period is not complete",
   uiFewerThan28CompleteDaysOfInventoryHistory:
     "Fewer than 28 complete days of inventory history",

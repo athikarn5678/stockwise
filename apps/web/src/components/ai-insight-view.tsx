@@ -50,9 +50,12 @@ function errorMessage(error: unknown, t: (key: TranslationKey) => string) {
 }
 
 export function AiInsightView({
+  onOpenAnalysis,
   organization,
   selectedBranchId,
 }: {
+  /** Opens the AI analysis tab in place when rendered inside Analytics. */
+  onOpenAnalysis?: () => void;
   organization: AccessibleOrganization;
   selectedBranchId: string | null;
 }) {
@@ -120,12 +123,27 @@ export function AiInsightView({
         </p>
         <p className="mt-2 text-sm text-muted-foreground">
           {t("aiInsightAnalysisHintBefore")}{" "}
-          <Link
-            className="underline"
-            href={`/app/ai-analysis?organizationId=${organization.id}&branchId=${selectedBranchId ?? ""}`}
-          >
-            {t("aiAnalysis")}
-          </Link>
+          {onOpenAnalysis ? (
+            // Inside Analytics the tab switches in place; no navigation.
+            <button
+              className="underline"
+              onClick={onOpenAnalysis}
+              type="button"
+            >
+              {t("aiAnalysis")}
+            </button>
+          ) : (
+            <Link
+              className="underline"
+              href={`/app/analytics?${new URLSearchParams({
+                view: "ai-analysis",
+                organizationId: organization.id,
+                branchId: selectedBranchId ?? "",
+              })}`}
+            >
+              {t("aiAnalysis")}
+            </Link>
+          )}
           {t("aiInsightAnalysisHintAfter")}
         </p>
         <div className="mt-4 grid max-w-4xl gap-4 sm:grid-cols-2">

@@ -27,7 +27,6 @@ import {
   Package,
   Receipt,
   ShoppingCart,
-  Sparkles,
   Store,
   Users,
   Truck,
@@ -406,14 +405,6 @@ function WorkspaceShell({ children }: AppShellProps) {
         visible: organization.role !== "CASHIER" && (canManage || !!branch),
       },
       {
-        label: t("aiAnalysis"),
-        path: "/app/ai-analysis",
-        visible:
-          canManage ||
-          (organization.role === "BRANCH_MANAGER" &&
-            organization.branches.length > 0),
-      },
-      {
         label: t("sales"),
         path: "/app/sales",
         visible: !!branch && organization.role !== "INVENTORY_STAFF",
@@ -557,7 +548,6 @@ const destinationIcons: Record<string, LucideIcon> = {
   "/app/inventory": Boxes,
   "/app/pos": ShoppingCart,
   "/app/analytics": BarChart3,
-  "/app/ai-analysis": Sparkles,
   "/app/sales": Receipt,
   "/app/suppliers": Truck,
   "/app/purchase-orders": ClipboardList,

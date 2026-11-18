@@ -626,8 +626,6 @@ export const th: Dictionary = {
   aiAnalysisHistoryBothLanguages: "ไทยและอังกฤษ",
   aiAnalysisHistoryOneLanguage: "เฉพาะ{language}",
   aiAnalysisHistoryLoadMore: "โหลดเพิ่มเติม",
-  aiAnalysisNotPermitted:
-    "การวิเคราะห์ด้วย AI ใช้ได้กับเจ้าของ ผู้ดูแลระบบ และผู้จัดการสาขาที่ได้รับมอบหมายสาขา",
   aiAnalysisLoadingPage: "กำลังโหลดการวิเคราะห์ด้วย AI…",
   aiAnalysisLoadError: "ไม่สามารถโหลดการวิเคราะห์ด้วย AI ได้",
   aiInsightAnalysisHintBefore: "ต้องการบทวิเคราะห์วันล่าสุดตามคำขอ? เปิด ",

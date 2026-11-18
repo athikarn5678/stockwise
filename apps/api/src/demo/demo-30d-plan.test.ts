@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { Prisma } from "../generated/prisma/client.ts";
 import {
   buildDemo30dPlan,
-  DEMO_90D_SHAPE,
+  demoWindowShape,
   type Demo30dPlan,
 } from "./demo-30d-plan.ts";
 
@@ -41,6 +41,8 @@ const legacyInput = {
   },
 };
 
+const WINDOW_SHAPE = demoWindowShape("2026-11-01");
+
 const shapedInput = {
   referenceDate: "2026-11-01",
   seed: 30,
@@ -64,7 +66,7 @@ const shapedInput = {
 };
 
 function buildShapedPlan(): Demo30dPlan {
-  return buildDemo30dPlan({ ...shapedInput, shape: DEMO_90D_SHAPE });
+  return buildDemo30dPlan({ ...shapedInput, shape: WINDOW_SHAPE });
 }
 
 describe("buildDemo30dPlan", () => {
@@ -106,24 +108,24 @@ describe("buildDemo30dPlan", () => {
     expect("adjustments" in plan).toBe(false);
   });
 
-  it("builds a deterministic ninety-day plan with adjustments", () => {
+  it("builds a deterministic windowed plan with adjustments", () => {
     const plan = buildShapedPlan();
 
-    expect(plan.shape).toEqual(DEMO_90D_SHAPE);
+    expect(plan.shape).toEqual(WINDOW_SHAPE);
     expect(plan.version).toBe("demo90d-v1");
-    expect(plan.prefix).toBe(`DEMO90D-${plan.signature.slice(0, 24)}`);
+    expect(plan.prefix).toBe(`SM-${plan.signature.slice(0, 12)}`);
     expect(plan.branches).toHaveLength(3);
     expect(plan.products).toHaveLength(12);
     expect(
       Temporal.PlainDate.from(plan.to)
         .since(Temporal.PlainDate.from(plan.from))
         .days.valueOf(),
-    ).toBe(90);
+    ).toBe(WINDOW_SHAPE.days);
 
-    expect(plan.orders).toHaveLength(18);
+    expect(plan.orders).toHaveLength(21);
     for (const branch of plan.branches) {
       const orders = plan.orders.filter((o) => o.branchId === branch.id);
-      expect(orders).toHaveLength(6);
+      expect(orders).toHaveLength(7);
       for (const order of orders) expect(order.items).toHaveLength(12);
     }
 
@@ -156,7 +158,7 @@ describe("buildDemo30dPlan", () => {
 
     expect(buildShapedPlan()).toEqual(plan);
     expect(
-      buildDemo30dPlan({ ...shapedInput, seed: 31, shape: DEMO_90D_SHAPE })
+      buildDemo30dPlan({ ...shapedInput, seed: 31, shape: WINDOW_SHAPE })
         .signature,
     ).not.toBe(plan.signature);
   });
@@ -208,19 +210,19 @@ describe("buildDemo30dPlan", () => {
     expect(() =>
       buildDemo30dPlan({
         ...shapedInput,
-        shape: { ...DEMO_90D_SHAPE, days: 40 },
+        shape: { ...WINDOW_SHAPE, days: 130 },
       }),
     ).toThrow();
     expect(() =>
       buildDemo30dPlan({
         ...shapedInput,
-        shape: { ...DEMO_90D_SHAPE, branchLimit: 4 },
+        shape: { ...WINDOW_SHAPE, branchLimit: 4 },
       }),
     ).toThrow();
     expect(() =>
       buildDemo30dPlan({
         ...shapedInput,
-        shape: { ...DEMO_90D_SHAPE, productLimit: 2 },
+        shape: { ...WINDOW_SHAPE, productLimit: 2 },
       }),
     ).toThrow();
   });
@@ -228,9 +230,47 @@ describe("buildDemo30dPlan", () => {
   it("keeps the adjustments key empty when the shape disables them", () => {
     const plan = buildDemo30dPlan({
       ...shapedInput,
-      shape: { ...DEMO_90D_SHAPE, adjustments: false },
+      shape: { ...WINDOW_SHAPE, adjustments: false },
     });
     expect(plan.adjustments).toEqual([]);
     expect(plan.shape?.adjustments).toBe(false);
   });
+
+  it.each([
+    ["2026-11-18", "2026-08-01", 109],
+    ["2026-12-01", "2026-09-01", 91],
+    ["2026-11-30", "2026-08-01", 121],
+    ["2027-01-01", "2026-10-01", 92],
+    ["2027-03-01", "2026-12-01", 90],
+    ["2028-03-01", "2027-12-01", 91],
+  ] as const)(
+    "starts the window on the 1st three months back for a %s run",
+    (referenceDate, firstDay, days) => {
+      const shape = demoWindowShape(referenceDate);
+      expect(shape.days).toBe(days);
+      const plan = buildDemo30dPlan({
+        ...shapedInput,
+        referenceDate,
+        shape,
+      });
+      expect(plan.from).toBe(firstDay);
+      expect(plan.to).toBe(referenceDate);
+      const lastDay = Temporal.PlainDate.from(referenceDate)
+        .subtract({ days: 1 })
+        .toString();
+      const saleDays = plan.sales.map((sale) =>
+        sale.at.toLocaleDateString("en-CA", {
+          timeZone: plan.reportingTimezone,
+        }),
+      );
+      // History covers the first day and yesterday; today has no seeded transaction.
+      expect(saleDays).toContain(firstDay);
+      expect(saleDays).toContain(lastDay);
+      expect(saleDays).not.toContain(referenceDate);
+      expect(Math.min(...saleDays.map((day) => Date.parse(day)))).toBe(
+        Date.parse(firstDay),
+      );
+      expect(plan.orders).toHaveLength(3 * Math.ceil(days / 15));
+    },
+  );
 });

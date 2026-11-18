@@ -22,7 +22,7 @@ import { calculateCheckoutAmounts } from "../modules/sales/checkout-values.ts";
 import { createPrismaRefundRepository } from "../modules/sales/refund-repository.ts";
 import {
   buildDemo30dPlan,
-  DEMO_30D_ORGANIZATION,
+  DEMO_ORGANIZATION_NAMES,
   type Demo30dPlan,
   type Demo30dShape,
 } from "./demo-30d-plan.ts";
@@ -56,7 +56,8 @@ export async function prepareDemo30d(
     },
   });
   if (
-    organization?.name !== DEMO_30D_ORGANIZATION ||
+    organization === null ||
+    !DEMO_ORGANIZATION_NAMES.includes(organization.name) ||
     organization.status !== "ACTIVE" ||
     organization.memberships.length !== 1 ||
     !organization.suppliers[0]
@@ -359,7 +360,10 @@ export async function runDemo30d(
             branchId: sale.branchId,
             idempotencyKey: `${sale.key}-refund`,
             saleId: completed.sale.id,
-            reason: "Synthetic demo return",
+            reason:
+              plan.shape === undefined
+                ? "Synthetic demo return"
+                : "Customer return",
             transferReference:
               sale.method === "TRANSFER" ? `${sale.key}-return` : null,
             items: [

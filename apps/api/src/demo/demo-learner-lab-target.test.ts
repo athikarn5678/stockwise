@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { PrismaClient } from "../generated/prisma/client.ts";
-import { DEMO_30D_ORGANIZATION } from "./demo-30d-plan.ts";
+import {
+  DEMO_30D_ORGANIZATION,
+  DEMO_PRESENTATION_ORGANIZATION,
+} from "./demo-30d-plan.ts";
 import {
   verifyDemoSeedTarget,
   verifyLearnerLabSeedTarget,
@@ -81,6 +84,20 @@ describe("Learner Lab seed target proof (no Docker receipt)", () => {
       sales: 957n,
       organizations: [
         { id: DEMO_ORGANIZATION_ID, name: DEMO_30D_ORGANIZATION },
+      ],
+    };
+    await expect(
+      verifyLearnerLabSeedTarget(fakePrisma(database)),
+    ).resolves.toBe(URL_OK);
+  });
+
+  it("accepts the presentation organization name with the deterministic id", async () => {
+    learnerLabEnvironment({});
+    const database = {
+      ...emptyDatabase(),
+      users: 5n,
+      organizations: [
+        { id: DEMO_ORGANIZATION_ID, name: DEMO_PRESENTATION_ORGANIZATION },
       ],
     };
     await expect(

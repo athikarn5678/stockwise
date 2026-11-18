@@ -11,7 +11,7 @@ import {
 } from "./demo-90d-bootstrap.ts";
 import {
   buildDemo30dPlan,
-  DEMO_90D_SHAPE,
+  demoWindowShape,
   type Demo30dPlanData,
 } from "./demo-30d-plan.ts";
 import { readDemoProvenance } from "./demo-30d-provenance.ts";
@@ -19,7 +19,7 @@ import { runDemo30d } from "./demo-30d-runner.ts";
 import { loadDemoDatabaseEnvironment } from "./demo-environment.ts";
 import { verifyDemoSeedTarget } from "./demo-local-database.ts";
 
-/** Bootstrap instant is well before the plan window, which starts 90 days back. */
+/** Bootstrap instant is well before the plan window (up to 122 days back). */
 const BOOTSTRAP_DAYS_BEFORE_WINDOW_START = 14;
 
 function localToday(timeZone: string): string {
@@ -33,7 +33,8 @@ function localToday(timeZone: string): string {
 
 function bootstrapInstant(referenceDate: string): Date {
   const date = Temporal.PlainDate.from(referenceDate).subtract({
-    days: DEMO_90D_SHAPE.days + BOOTSTRAP_DAYS_BEFORE_WINDOW_START,
+    days:
+      demoWindowShape(referenceDate).days + BOOTSTRAP_DAYS_BEFORE_WINDOW_START,
   });
   return new Date(`${date.toString()}T00:00:00.000Z`);
 }
@@ -47,7 +48,7 @@ function previewPlan(referenceDate: string, seed: number): Demo30dPlanData {
   return buildDemo30dPlan({
     referenceDate,
     seed,
-    shape: DEMO_90D_SHAPE,
+    shape: demoWindowShape(referenceDate),
     reportingTimezone: catalog.organization.timezone,
     organizationId: catalog.organization.id,
     branches: catalog.branches.map(({ id, code }) => ({ id, code })),
@@ -132,7 +133,7 @@ async function main() {
       organizationId: bootstrap.organizationId,
       referenceDate,
       seed: options.seed,
-      shape: DEMO_90D_SHAPE,
+      shape: demoWindowShape(referenceDate),
       apply: true,
     });
     process.stdout.write(

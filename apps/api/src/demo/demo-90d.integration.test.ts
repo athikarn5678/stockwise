@@ -30,7 +30,7 @@ import {
   DEMO_INSIGHT_HEADINGS,
 } from "../modules/ai-insights/demo-insight.ts";
 import { bootstrapDemo90d, demo90dCatalog } from "./demo-90d-bootstrap.ts";
-import { DEMO_90D_SHAPE } from "./demo-30d-plan.ts";
+import { demoWindowShape } from "./demo-30d-plan.ts";
 import {
   assertDemoHistory,
   readDemoProvenance,
@@ -89,7 +89,7 @@ const seedOptions = () => ({
   organizationId,
   referenceDate: REFERENCE_DATE,
   seed: SEED,
-  shape: DEMO_90D_SHAPE,
+  shape: demoWindowShape(REFERENCE_DATE),
 });
 
 function seededProvenance(): DemoProvenance {

@@ -7,7 +7,10 @@ import { Client } from "pg";
 import { z } from "zod";
 
 import type { PrismaClient } from "../generated/prisma/client.ts";
-import { DEMO_30D_ORGANIZATION } from "./demo-30d-plan.ts";
+import {
+  DEMO_30D_ORGANIZATION,
+  DEMO_ORGANIZATION_NAMES,
+} from "./demo-30d-plan.ts";
 import { demoId } from "./demo-values.ts";
 
 const exec = promisify(execFile);
@@ -324,7 +327,7 @@ export async function verifyLearnerLabSeedTarget(prisma: PrismaClient) {
         organizations.length !== 1 ||
         organizations[0]!.id !==
           demoId("organization", DEMO_30D_ORGANIZATION) ||
-        organizations[0]!.name !== DEMO_30D_ORGANIZATION
+        !DEMO_ORGANIZATION_NAMES.includes(organizations[0]!.name)
       )
         throw new Error("foreign organization");
     }

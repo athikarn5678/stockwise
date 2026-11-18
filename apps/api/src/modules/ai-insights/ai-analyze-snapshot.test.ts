@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { AnalyticsProductFactRow } from "../analytics/analytics-product-facts-repository.ts";
 import {
   buildAiAnalyzeSnapshot,
   createAiAnalyzeSnapshotBuilder,
@@ -46,6 +47,23 @@ function day(
 }
 
 describe("AI analyze snapshot", () => {
+  const productRows: readonly AnalyticsProductFactRow[] = [
+    {
+      name: "Cola",
+      netQuantity: "4",
+      netSalesAmount: "40.00",
+      onHandQuantity: "10",
+      status: "ACTIVE",
+    },
+    {
+      name: "Water",
+      netQuantity: "1",
+      netSalesAmount: "2.00",
+      onHandQuantity: null,
+      status: "ACTIVE",
+    },
+  ];
+
   it("computes exact totals, ranking, and extremes deterministically", () => {
     const snapshot = buildAiAnalyzeSnapshot({
       categorySeries: [
@@ -102,6 +120,38 @@ describe("AI analyze snapshot", () => {
     expect(snapshot.cost).toEqual({ costNote: "unavailable" });
   });
 
+  it("embeds product facts only when product rows are supplied", () => {
+    const sales = [day("2026-11-10", "100.00")];
+    const withProducts = buildAiAnalyzeSnapshot({
+      categorySeries: [],
+      days: sales,
+      period,
+      productRows,
+    });
+    expect(withProducts.products.topByQuantity[0]).toEqual({
+      name: "Cola",
+      netSalesAmount: "40.00",
+      quantity: "4",
+    });
+    expect(withProducts.products.soldProductCount).toBe(2);
+    // Water is sold but never stocked, so it is not a no-sales candidate.
+    expect(withProducts.products.noSales).toEqual({ count: 0, names: [] });
+
+    expect(
+      buildAiAnalyzeSnapshot({ categorySeries: [], days: sales, period })
+        .products,
+    ).toEqual({
+      lowStock: { count: 0, coverDaysThreshold: 7, items: [] },
+      noSales: { count: 0, names: [] },
+      outOfStock: { count: 0, items: [] },
+      slowestByNetSales: [],
+      slowestByQuantity: [],
+      soldProductCount: 0,
+      topByNetSales: [],
+      topByQuantity: [],
+    });
+  });
+
   it("supports a null average and complete cost data without floats", () => {
     const snapshot = buildAiAnalyzeSnapshot({
       categorySeries: [],
@@ -142,7 +192,31 @@ describe("AI analyze snapshot", () => {
 });
 
 describe("AI analyze snapshot builder", () => {
-  function builder(pages: readonly (string | null)[]) {
+  function builder(
+    pages: readonly (string | null)[],
+    productFacts: Readonly<{
+      kind: "success";
+      facts: {
+        rows: readonly AnalyticsProductFactRow[];
+        truncated: boolean;
+      };
+    }> = {
+      facts: {
+        rows: [
+          {
+            name: "Cola",
+            netQuantity: "4",
+            netSalesAmount: "40.00",
+            onHandQuantity: "8",
+            status: "ACTIVE",
+          },
+        ],
+        truncated: false,
+      },
+      kind: "success",
+    },
+    productFactsOutcome?: Readonly<{ kind: "forbidden" | "unavailable" }>,
+  ) {
     const read = vi.fn(async (request: { cursor?: string }) => {
       const index = request.cursor === undefined ? 0 : Number(request.cursor);
       return {
@@ -188,6 +262,9 @@ describe("AI analyze snapshot builder", () => {
             findUnique: async () => ({ reportingTimezone: "Asia/Bangkok" }),
           },
         } as never,
+        productFactsService: {
+          read: vi.fn(async () => productFactsOutcome ?? productFacts),
+        } as never,
         salesService: sales as never,
       }),
     };
@@ -204,11 +281,41 @@ describe("AI analyze snapshot builder", () => {
     const outcome = await run(request);
     expect(read).toHaveBeenCalledTimes(3);
     expect(outcome.kind).toBe("ok");
-    if (outcome.kind === "ok")
+    if (outcome.kind === "ok") {
       expect(outcome.snapshot.categories.top[0]).toEqual({
         name: "Category 2",
         netSalesAmount: "3.00",
       });
+      expect(outcome.snapshot.products.topByQuantity[0]?.name).toBe("Cola");
+    }
+  });
+
+  it("is unavailable instead of ranking a truncated product list", async () => {
+    const { run } = builder([null], {
+      facts: {
+        rows: [
+          {
+            name: "Cola",
+            netQuantity: "4",
+            netSalesAmount: "40.00",
+            onHandQuantity: null,
+            status: "ACTIVE",
+          },
+        ],
+        truncated: true,
+      },
+      kind: "success",
+    });
+    expect(await run(request)).toEqual({ kind: "unavailable" });
+  });
+
+  it("maps a refused product read to its own outcome", async () => {
+    expect(
+      await builder([null], undefined, { kind: "forbidden" }).run(request),
+    ).toEqual({ kind: "forbidden" });
+    expect(
+      await builder([null], undefined, { kind: "unavailable" }).run(request),
+    ).toEqual({ kind: "unavailable" });
   });
 
   it("is unavailable instead of ranking a truncated category list", async () => {

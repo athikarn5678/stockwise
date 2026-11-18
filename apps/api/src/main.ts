@@ -32,6 +32,8 @@ import {
   createProductionDemoInsightReader,
 } from "./modules/ai-insights/demo-production-insight.ts";
 import { createPrismaAiInsightReader } from "./modules/ai-insights/ai-insight-store.ts";
+import { createPrismaAnalyticsProductFactsRepository } from "./modules/analytics/analytics-product-facts-repository.ts";
+import { createAnalyticsProductFactsService } from "./modules/analytics/analytics-product-facts-service.ts";
 import { createPrismaAnalyticsSalesRepository } from "./modules/analytics/analytics-sales-repository.ts";
 import { createAnalyticsSalesService } from "./modules/analytics/analytics-sales-service.ts";
 import { createPrismaAnalyticsScopeRepository } from "./modules/analytics/analytics-scope-repository.ts";
@@ -297,6 +299,10 @@ async function main(): Promise<void> {
     buildSnapshot: createAiAnalyzeSnapshotBuilder({
       categoryService: analyticsCategoryService,
       organizationReader: prisma,
+      productFactsService: createAnalyticsProductFactsService({
+        contextEngine: analyticsContextEngine,
+        repository: createPrismaAnalyticsProductFactsRepository(prisma),
+      }),
       salesService: analyticsSalesService,
     }),
     store: aiAnalysisStore,

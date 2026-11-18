@@ -210,17 +210,33 @@ function productLines(
 ): readonly string[] {
   const { products } = snapshot;
   const th = language === "th";
-  const sold = (item: { name: string; netSalesAmount: string; quantity: string }) =>
+  const sold = (item: {
+    name: string;
+    netSalesAmount: string;
+    quantity: string;
+  }) =>
     th
       ? `- ${item.name}: ${item.quantity} หน่วย ยอดขาย ${item.netSalesAmount}`
       : `- ${item.name}: ${item.quantity} units, net sales ${item.netSalesAmount}`;
   return [
     ...(products.topByNetSales.length === 0
       ? [th ? "ไม่มีข้อมูลสินค้าขายดี" : "No product sales in this period"]
-      : [th ? "สินค้าขายดี (ตามยอดขาย):" : "Top products by net sales:", ...products.topByNetSales.map(sold)]),
+      : [
+          th ? "สินค้าขายดี (ตามยอดขาย):" : "Top products by net sales:",
+          ...products.topByNetSales.map(sold),
+        ]),
+    ...(products.topByQuantity.length === 0
+      ? []
+      : [
+          th ? "สินค้าขายดี (ตามจำนวน):" : "Top products by quantity:",
+          ...products.topByQuantity.map(sold),
+        ]),
     ...(products.slowestByQuantity.length === 0
       ? []
-      : [th ? "สินค้าขายช้า (ตามจำนวน):" : "Slowest products by quantity:", ...products.slowestByQuantity.map(sold)]),
+      : [
+          th ? "สินค้าขายช้า (ตามจำนวน):" : "Slowest products by quantity:",
+          ...products.slowestByQuantity.map(sold),
+        ]),
     ...(products.noSales.count === 0
       ? []
       : [

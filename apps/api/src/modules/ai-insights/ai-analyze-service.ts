@@ -28,6 +28,7 @@ const LANGUAGES = ["th", "en"] as const;
 export type AiAnalyzeServiceResult =
   | Readonly<{ kind: "ok"; run: AiAnalysisRunView }>
   | Readonly<{ kind: "not_found" }>
+  | Readonly<{ kind: "insufficient_data" }>
   | Readonly<{ kind: "rate_limited"; retryAfterSeconds: number }>
   | Readonly<{ category: AiProviderFailureCategory; kind: "provider_failed" }>
   | Readonly<{ kind: "rejected" }>;
@@ -140,6 +141,7 @@ export function createAiAnalyzeService(input: {
     organizationId: string;
     scope: AiAnalyzeScope;
   }): Promise<AiAnalyzeServiceResult> {
+    const previousRun = lastRunByActor.get(request.actorUserId);
     const retryAfterSeconds = consumeAllowance(request.actorUserId);
     if (retryAfterSeconds !== null)
       return { kind: "rate_limited", retryAfterSeconds };
@@ -153,6 +155,13 @@ export function createAiAnalyzeService(input: {
     // The router already authorized; a snapshot refusal is a race, not a 403.
     if (snapshotOutcome.kind !== "ok") return { kind: "not_found" };
     const snapshot = snapshotOutcome.snapshot;
+    // No sales in the period: nothing to analyze, so spend no provider call and
+    // give the allowance back.
+    if (snapshot.totals.saleCount === 0) {
+      if (previousRun === undefined) lastRunByActor.delete(request.actorUserId);
+      else lastRunByActor.set(request.actorUserId, previousRun);
+      return { kind: "insufficient_data" };
+    }
     const provider = input.provider;
     if (provider === undefined) return { kind: "ok", run: mockRun(snapshot) };
 

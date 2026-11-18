@@ -39,15 +39,21 @@ export type AiAnalyzeProductFacts = Readonly<{
   topByQuantity: readonly ProductSale[];
 }>;
 
+const frozenEmpty = <T>(): readonly T[] => Object.freeze([] as T[]);
+
 export const EMPTY_PRODUCT_FACTS: AiAnalyzeProductFacts = Object.freeze({
-  lowStock: { count: 0, coverDaysThreshold: LOW_STOCK_COVER_DAYS, items: [] },
-  noSales: { count: 0, names: [] },
-  outOfStock: { count: 0, items: [] },
-  slowestByNetSales: [],
-  slowestByQuantity: [],
+  lowStock: Object.freeze({
+    count: 0,
+    coverDaysThreshold: LOW_STOCK_COVER_DAYS,
+    items: frozenEmpty<ProductStock>(),
+  }),
+  noSales: Object.freeze({ count: 0, names: frozenEmpty<string>() }),
+  outOfStock: Object.freeze({ count: 0, items: frozenEmpty<ProductStock>() }),
+  slowestByNetSales: frozenEmpty<ProductSale>(),
+  slowestByQuantity: frozenEmpty<ProductSale>(),
   soldProductCount: 0,
-  topByNetSales: [],
-  topByQuantity: [],
+  topByNetSales: frozenEmpty<ProductSale>(),
+  topByQuantity: frozenEmpty<ProductSale>(),
 });
 
 type Measured = Readonly<{
@@ -60,7 +66,11 @@ type Measured = Readonly<{
 
 function quantityText(value: Decimal): string {
   // Up to four decimals, no trailing zeros ("12", "0.5"), matching stored scale.
-  return value.toDecimalPlaces(4).toFixed().replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+  return value
+    .toDecimalPlaces(4)
+    .toFixed()
+    .replace(/(\.\d*?)0+$/, "$1")
+    .replace(/\.$/, "");
 }
 
 function byName(left: Measured, right: Measured): number {
@@ -134,36 +144,43 @@ export function buildAiAnalyzeProductFacts(input: {
   );
   const stockOf = (product: Measured): ProductStock => {
     const onHand = product.onHand ?? new ExactDecimal(0);
-    const dailyPace = product.quantity.div(days);
     return Object.freeze({
       daysOfCover:
-        dailyPace.greaterThan(0) && onHand.greaterThan(0)
-          ? onHand.div(dailyPace).toFixed(2)
+        product.quantity.greaterThan(0) && onHand.greaterThan(0)
+          ? onHand.mul(days).div(product.quantity).toFixed(2)
           : null,
       name: product.name,
       onHandQuantity: quantityText(onHand),
       quantitySoldInPeriod: quantityText(
-        product.quantity.greaterThan(0) ? product.quantity : new ExactDecimal(0),
+        product.quantity.greaterThan(0)
+          ? product.quantity
+          : new ExactDecimal(0),
       ),
     });
   };
   const outOfStock = stocked
-    .filter((product) => !(product.onHand ?? new ExactDecimal(0)).greaterThan(0))
+    .filter(
+      (product) => !(product.onHand ?? new ExactDecimal(0)).greaterThan(0),
+    )
     .sort((left, right) => {
       const compared = right.quantity.comparedTo(left.quantity);
       return compared !== 0 ? compared : byName(left, right);
     });
   const threshold = new ExactDecimal(LOW_STOCK_COVER_DAYS);
+  // Cover = onHand * days / quantity, evaluated with one division only so the
+  // 7-day boundary is exact (compare onHand * days <= 7 * quantity).
+  const cover = (product: Measured): Decimal =>
+    (product.onHand ?? new ExactDecimal(0)).mul(days).div(product.quantity);
   const lowStock = stocked
     .filter((product) => {
       const onHand = product.onHand;
       if (onHand === null || !onHand.greaterThan(0)) return false;
-      const dailyPace = product.quantity.div(days);
-      return dailyPace.greaterThan(0) && onHand.div(dailyPace).lessThanOrEqualTo(threshold);
+      if (!product.quantity.greaterThan(0)) return false;
+      return onHand
+        .mul(days)
+        .lessThanOrEqualTo(threshold.mul(product.quantity));
     })
     .sort((left, right) => {
-      const cover = (product: Measured) =>
-        (product.onHand ?? new ExactDecimal(0)).div(product.quantity.div(days));
       const compared = cover(left).comparedTo(cover(right));
       return compared !== 0 ? compared : byName(left, right);
     });
@@ -182,8 +199,13 @@ export function buildAiAnalyzeProductFacts(input: {
       count: outOfStock.length,
       items: outOfStock.slice(0, NAME_LIST_SIZE).map(stockOf),
     },
-    slowestByNetSales: slowest((product) => product.net, topByNetSales).map(sale),
-    slowestByQuantity: slowest((product) => product.quantity, topByQuantity).map(sale),
+    slowestByNetSales: slowest((product) => product.net, topByNetSales).map(
+      sale,
+    ),
+    slowestByQuantity: slowest(
+      (product) => product.quantity,
+      topByQuantity,
+    ).map(sale),
     soldProductCount: sold.length,
     topByNetSales: topByNetSales.map(sale),
     topByQuantity: topByQuantity.map(sale),

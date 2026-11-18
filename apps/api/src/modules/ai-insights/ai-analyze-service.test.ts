@@ -2,12 +2,59 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { AiAnalysisRun } from "../../generated/prisma/client.ts";
 import type { AiProvider, AiProviderResult } from "./ai-provider.ts";
+import type { AiAnalyzeProductFacts } from "./ai-analyze-product-facts.ts";
 import type { AiAnalyzeSnapshot } from "./ai-analyze-snapshot.ts";
 import { createAiAnalyzeService } from "./ai-analyze-service.ts";
 
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const BRANCH_ID = "20000000-0000-4000-8000-000000000001";
 const RUN_ID = "70000000-0000-4000-8000-000000000001";
+
+const productFacts: AiAnalyzeProductFacts = {
+  lowStock: {
+    count: 2,
+    coverDaysThreshold: 7,
+    items: [
+      {
+        daysOfCover: "1.50",
+        name: "Cola 330ml",
+        onHandQuantity: "3",
+        quantitySoldInPeriod: "14",
+      },
+      {
+        daysOfCover: "6.00",
+        name: "Iced Tea",
+        onHandQuantity: "12",
+        quantitySoldInPeriod: "14",
+      },
+    ],
+  },
+  noSales: { count: 1, names: ["Ginger Ale"] },
+  outOfStock: {
+    count: 1,
+    items: [
+      {
+        daysOfCover: null,
+        name: "Soda Water",
+        onHandQuantity: "0",
+        quantitySoldInPeriod: "2",
+      },
+    ],
+  },
+  slowestByNetSales: [
+    { name: "Iced Tea", netSalesAmount: "70.00", quantity: "14" },
+  ],
+  slowestByQuantity: [
+    { name: "Iced Tea", netSalesAmount: "70.00", quantity: "14" },
+  ],
+  soldProductCount: 2,
+  topByNetSales: [
+    { name: "Cola 330ml", netSalesAmount: "210.00", quantity: "14" },
+  ],
+  topByQuantity: [
+    { name: "Cola 330ml", netSalesAmount: "210.00", quantity: "14" },
+  ],
+};
 
 const snapshot: AiAnalyzeSnapshot = {
   bestDay: { date: "2026-11-12", netSalesAmount: "1200.00" },
@@ -41,6 +88,7 @@ const snapshot: AiAnalyzeSnapshot = {
     timezone: "Asia/Bangkok",
     to: "2026-11-16",
   },
+  products: productFacts,
   totals: {
     averageOrderValue: "200.00",
     netSalesAmount: "1400.00",
@@ -51,13 +99,40 @@ const snapshot: AiAnalyzeSnapshot = {
   worstDay: { date: "2026-11-11", netSalesAmount: "200.00" },
 };
 
+/** A period with no completed sales: nothing to analyze and no provider value. */
+const noSalesSnapshot: AiAnalyzeSnapshot = {
+  ...snapshot,
+  bestDay: null,
+  categories: { bottom: [], top: [] },
+  days: [],
+  products: {
+    ...productFacts,
+    lowStock: { count: 0, coverDaysThreshold: 7, items: [] },
+    noSales: { count: 0, names: [] },
+    outOfStock: { count: 0, items: [] },
+    slowestByNetSales: [],
+    slowestByQuantity: [],
+    soldProductCount: 0,
+    topByNetSales: [],
+    topByQuantity: [],
+  },
+  totals: {
+    averageOrderValue: null,
+    netSalesAmount: "0.00",
+    refundAmount: "0.00",
+    refundCount: 0,
+    saleCount: 0,
+  },
+  worstDay: null,
+};
+
 const englishText = [
   "## Overview",
   "Net sales 1400.00 from 7 sales.",
   "## Sales",
   "Refunds 50.00.",
   "## Products",
-  "Category-level only: Food 900.00.",
+  "Top product Cola 330ml: 14 units, 210.00 net sales.",
   "## Notes & risks",
   "Cost is unavailable.",
   "## Recommended actions",
@@ -70,7 +145,7 @@ const thaiText = [
   "## ยอดขาย",
   "ยอดคืนเงิน 50.00",
   "## สินค้าขายดีและขายช้า",
-  "ข้อมูลระดับหมวดหมู่: Food 900.00",
+  "สินค้าขายดี Cola 330ml: 14 หน่วย ยอดขาย 210.00",
   "## ข้อสังเกต",
   "ต้นทุน unavailable",
   "## สิ่งที่ควรทำ",
@@ -204,11 +279,12 @@ function fakeStore(initial: AiAnalysisRun[] = []) {
 
 function service(options: {
   provider?: AiProvider;
+  snapshot?: AiAnalyzeSnapshot;
   store: ReturnType<typeof fakeStore>["store"];
 }) {
   const buildSnapshot = vi.fn(async () => ({
     kind: "ok" as const,
-    snapshot,
+    snapshot: options.snapshot ?? snapshot,
   }));
   let clock = 1_000_000;
   const created = createAiAnalyzeService({
@@ -350,6 +426,69 @@ describe("AI analysis service", () => {
     expect(generate).toHaveBeenCalledTimes(2);
     advance(30_000);
     expect((await analysis.analyze(analyzeRequest)).kind).toBe("ok");
+  });
+
+  it("answers insufficient_data without a provider call and gives the allowance back", async () => {
+    const { generate, provider } = fakeProvider({
+      en: success(englishText),
+      th: success(thaiText),
+    });
+    const { store, created } = fakeStore();
+    const { analyzeService: analysis, buildSnapshot } = service({
+      provider,
+      snapshot: noSalesSnapshot,
+      store,
+    });
+
+    await expect(analysis.analyze(analyzeRequest)).resolves.toEqual({
+      kind: "insufficient_data",
+    });
+    expect(generate).not.toHaveBeenCalled();
+    expect(created).toHaveLength(0);
+
+    // The wasteful attempt did not spend the allowance: asking again is not 429.
+    await expect(analysis.analyze(analyzeRequest)).resolves.toEqual({
+      kind: "insufficient_data",
+    });
+
+    // A real period immediately after is allowed, and that run does spend it.
+    buildSnapshot.mockResolvedValue({ kind: "ok" as const, snapshot });
+    expect((await analysis.analyze(analyzeRequest)).kind).toBe("ok");
+    expect(generate).toHaveBeenCalledTimes(2);
+    await expect(analysis.analyze(analyzeRequest)).resolves.toEqual({
+      kind: "rate_limited",
+      retryAfterSeconds: 60,
+    });
+    expect(created).toHaveLength(1);
+  });
+
+  it("keeps an expired previous timestamp instead of clearing it twice", async () => {
+    const { generate, provider } = fakeProvider({
+      en: success(englishText),
+      th: success(thaiText),
+    });
+    const { store } = fakeStore();
+    const {
+      analyzeService: analysis,
+      advance,
+      buildSnapshot,
+    } = service({
+      provider,
+      store,
+    });
+
+    expect((await analysis.analyze(analyzeRequest)).kind).toBe("ok");
+    advance(60_000);
+    buildSnapshot.mockResolvedValueOnce({
+      kind: "ok" as const,
+      snapshot: noSalesSnapshot,
+    });
+    await expect(analysis.analyze(analyzeRequest)).resolves.toEqual({
+      kind: "insufficient_data",
+    });
+    // The stale entry was restored (harmless) and still allows a real run.
+    expect((await analysis.analyze(analyzeRequest)).kind).toBe("ok");
+    expect(generate).toHaveBeenCalledTimes(4);
   });
 
   it("retries only the missing language and counts one allowance", async () => {

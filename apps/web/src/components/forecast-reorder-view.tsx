@@ -174,23 +174,25 @@ export function ForecastReorderView({
           {t("uiOneBranchAndProductForecastDatesAndTrainingWindow")}
         </p>
       </div>
-      <div className="grid gap-4 rounded-lg border bg-card p-4 sm:grid-cols-3">
-        <Label className="form-field">
-          {t("branch")}
-          <OptionSelect
-            className="w-full "
-            onValueChange={(value) => {
-              setBranchId(value);
-              setProductId("");
-            }}
-            options={organization.branches.map((branch) => ({
-              label: `${branch.code} — ${branch.name}`,
-              value: branch.id,
-            }))}
-            value={activeBranch?.id ?? ""}
-          />
-        </Label>
-        <div className="space-y-2">
+      <div className="grid grid-cols-1 items-start gap-4 rounded-lg border bg-card p-4 sm:grid-cols-3">
+        <div className="min-w-0">
+          <Label className="form-field">
+            {t("branch")}
+            <OptionSelect
+              className="w-full "
+              onValueChange={(value) => {
+                setBranchId(value);
+                setProductId("");
+              }}
+              options={organization.branches.map((branch) => ({
+                label: `${branch.code} — ${branch.name}`,
+                value: branch.id,
+              }))}
+              value={activeBranch?.id ?? ""}
+            />
+          </Label>
+        </div>
+        <div className="min-w-0 space-y-2">
           <Label className="form-field" htmlFor={productInputId}>
             {t("marketingProduct")}
             <Combobox<ProductOption>
@@ -277,7 +279,7 @@ export function ForecastReorderView({
             </p>
           ) : null}
         </div>
-        <div className="space-y-2">
+        <div className="min-w-0">
           <Label className="form-field">
             {t("uiPlanningLeadTime")}
             <OptionSelect
@@ -293,12 +295,11 @@ export function ForecastReorderView({
               value={leadTimeDays === null ? "" : String(leadTimeDays)}
             />
           </Label>
-          <div className="space-y-1 text-xs text-muted-foreground">
-            <p>{t("uiPlanningLeadTimeExplanation")}</p>
-            <p>{t("uiWhyRecommendedQuantityCanBeZero")}</p>
-          </div>
         </div>
       </div>
+      <p className="text-sm text-muted-foreground">
+        {t("uiForecastReorderHint")}
+      </p>
       {!activeBranch ? (
         <p className="form-message" role="alert">
           {t("uiNoAccessibleActiveBranchIsAvailable")}
@@ -455,14 +456,6 @@ export function ForecastReorderView({
           </section>
         </>
       )}
-      <section
-        className="space-y-2 rounded-lg border bg-muted/40 p-4 text-sm"
-        aria-label={t("uiForecastAndReorderLimitations")}
-      >
-        <h3 className="font-semibold">{t("uiHowToInterpretTheseEstimates")}</h3>
-        <p>{t("uiForecastUsesASimpleMeanOfObservedCompletedSale")}</p>
-        <p>{t("uiReorderUsesYourSelectedLeadTimeOfAtMost")}</p>
-      </section>
     </section>
   );
 }

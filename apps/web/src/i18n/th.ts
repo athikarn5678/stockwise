@@ -1171,14 +1171,12 @@ export const th: Dictionary = {
   uiNoProductsMatchThisSearch: "ไม่มีสินค้าที่ตรงกับการค้นหา",
   uiChooseABranchToSearchProducts: "เลือกสาขาเพื่อค้นหาสินค้า",
   uiLoadMoreProducts: "โหลดสินค้าเพิ่มเติม",
+  uiForecastReorderHint:
+    "พยากรณ์จากค่าเฉลี่ยยอดขาย 28 วันล่าสุด ส่วนปริมาณสั่งซื้อครอบคลุมตามระยะเวลาที่เลือก และเป็นเพียงคำแนะนำ",
   uiPlanningLeadTime: "ระยะเวลารอสินค้า",
   uiChoose7Or30Days: "เลือก 7 หรือ 30 วัน",
   uiLeadTime7Days: "7 วัน",
   uiLeadTime30Days: "30 วัน",
-  uiPlanningLeadTimeExplanation:
-    "ระยะเวลารอสินค้าคือจำนวนวันระหว่างการสั่งซื้อจนได้รับสินค้า คำแนะนำจะครอบคลุมยอดขายที่คาดว่าจะเกิดขึ้นในช่วงจำนวนวันนั้น",
-  uiWhyRecommendedQuantityCanBeZero:
-    "จำนวนที่แนะนำอาจเป็น 0 ได้ เมื่อสต็อกคงเหลือเพียงพอกับความต้องการที่พยากรณ์ไว้ตลอดระยะเวลารอสินค้าที่เลือก จึงยังไม่ต้องสั่งซื้อเพิ่ม",
   uiNoAccessibleActiveBranchIsAvailable:
     "ไม่มีสาขาที่ใช้งานอยู่ซึ่งคุณมีสิทธิ์เข้าถึง",
   uiChooseAProductToSeeItsForecastAndReorder:
@@ -1203,12 +1201,7 @@ export const th: Dictionary = {
   uiForecastDemand: "ความต้องการที่พยากรณ์",
   uiOnHand: "คงเหลือ",
   uiNeedBeforeUnitRounding: "จำนวนที่ต้องการก่อนปัดตามหน่วย",
-  uiForecastAndReorderLimitations: "ข้อจำกัดของการพยากรณ์และคำแนะนำการสั่งซื้อ",
   uiHowToInterpretTheseEstimates: "วิธีอ่านค่าประมาณเหล่านี้",
-  uiForecastUsesASimpleMeanOfObservedCompletedSale:
-    "การพยากรณ์ใช้ค่าเฉลี่ยอย่างง่ายของจำนวนขายที่เสร็จสมบูรณ์ใน 28 วันท้องถิ่นที่ครบวัน วันที่ไม่มีการขายนับเป็นศูนย์ ไม่ปรับตามฤดูกาลหรือความต้องการที่สูญเสีย การขาดสต็อกอาจทำให้ความต้องการที่สังเกตต่ำลง และไม่นับวันปัจจุบันที่ยังไม่ครบวัน",
-  uiReorderUsesYourSelectedLeadTimeOfAtMost:
-    "คำแนะนำใช้ระยะเวลารอสินค้าที่เลือก 7 หรือ 30 วัน สต็อกสำรองเป็นศูนย์และไม่นับใบสั่งซื้อที่รอรับ ไม่คำนึงถึงผู้จัดจำหน่าย จำนวนสั่งซื้อขั้นต่ำ หรือขนาดบรรจุ เป็นเพียงคำแนะนำและไม่สร้างคำสั่งซื้ออัตโนมัติ",
   uiTheSelectedPeriodIsNotComplete: "ช่วงเวลาที่เลือกยังไม่ครบ",
   uiFewerThan28CompleteDaysOfInventoryHistory:
     "มีประวัติสินค้าคงคลังไม่ครบ 28 วัน",

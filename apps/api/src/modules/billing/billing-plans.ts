@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * Server-owned price list (ADR-047, ADR-049). Amounts are integer satang (THB
+ * Server-owned price list (ADR-047, ADR-050). Amounts are integer satang (THB
  * minor units) so no floating-point money exists. The web pricing page shows
  * the same THB figures; the browser never supplies an amount.
  */

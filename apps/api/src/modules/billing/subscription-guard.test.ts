@@ -118,7 +118,7 @@ describe("subscription guard route table", () => {
   it("finds the real mutating routes (the scan itself is not empty)", () => {
     expect(routes.length).toBeGreaterThan(30);
     expect(routes.map((route) => route.path)).toContain(
-      "/organizations/:organizationId/ai-insights/analyze",
+      "/organizations/:organizationId/ai-analysis/runs",
     );
     expect(routes.map((route) => route.path)).toContain(
       "/organizations/:organizationId/branches/:branchId/sales",
@@ -145,7 +145,7 @@ describe("subscription guard route table", () => {
     expect(mounts).toEqual([]);
   });
 
-  it("exempts exactly the billing checkout/confirm and AI analyze routes under the prefix", () => {
+  it("exempts exactly the billing checkout/confirm and AI analysis routes under the prefix", () => {
     const exempt = new Set(
       SUBSCRIPTION_GUARD_EXEMPT_ROUTES.map(
         (route) =>
@@ -156,7 +156,8 @@ describe("subscription guard route table", () => {
       new Set([
         `POST ${ORGANIZATION_PREFIX}billing/checkout`,
         `POST ${ORGANIZATION_PREFIX}billing/confirm`,
-        `POST ${ORGANIZATION_PREFIX}ai-insights/analyze`,
+        `POST ${ORGANIZATION_PREFIX}ai-analysis/runs`,
+        `POST ${ORGANIZATION_PREFIX}ai-analysis/runs/:runId/retry`,
       ]),
     );
     const registered = new Set(

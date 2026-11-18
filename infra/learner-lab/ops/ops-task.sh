@@ -143,7 +143,7 @@ case "$action" in
     node dist/demo-production/demo-production-main.js
     ;;
   expire-subscription)
-    # ADR-049: sets ONLY the renewal-rehearsal organization to EXPIRED so the
+    # ADR-050: sets ONLY the renewal-rehearsal organization to EXPIRED so the
     # owner can pay again through Stripe Checkout. Idempotent, takes no input.
     as_migrator
     step "expire-subscription on ${STOCKWISE_DB_NAME}"

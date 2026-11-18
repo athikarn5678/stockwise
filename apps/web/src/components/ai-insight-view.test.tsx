@@ -39,9 +39,6 @@ let requests: { url: string; method: string }[];
 let pending = false;
 let pendingBranches = false;
 let listStatus = 200;
-let analyzeStatus = 200;
-let analyzePending = false;
-let analyzeBodies: string[] = [];
 
 function report(input: {
   id: string;
@@ -144,26 +141,6 @@ function listKey(scope: string, branchId: string, cadence: string) {
   return `${scope}:${branchId}:${cadence}`;
 }
 
-const analyzeResult = {
-  language: "en" as const,
-  mock: true,
-  period: {
-    days: 7,
-    from: "2026-11-09",
-    scope: "organization" as const,
-    timezone: "Asia/Bangkok",
-    to: "2026-11-16",
-  },
-  sections: [
-    { body: "Sample overview text.", heading: "Overview" },
-    { body: "Net sales 1400.00 from 7 sales.", heading: "Sales" },
-    { body: "Category-level data only.", heading: "Products" },
-    { body: "Cost is unavailable.", heading: "Notes & risks" },
-    { body: "Review the slowest categories.", heading: "Recommended actions" },
-  ],
-  text: "## Overview\nSample overview text.",
-};
-
 function organization(
   role: AccessibleOrganization["role"] = "OWNER",
 ): AccessibleOrganization {
@@ -221,24 +198,11 @@ beforeEach(() => {
   pending = false;
   pendingBranches = false;
   listStatus = 200;
-  analyzeStatus = 200;
-  analyzePending = false;
-  analyzeBodies = [];
   vi.stubGlobal(
     "fetch",
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       requests.push({ url, method: init?.method ?? "GET" });
-      if (url.includes("/ai-insights/analyze?")) {
-        analyzeBodies.push(String(init?.body));
-        if (analyzePending) return new Promise(() => {});
-        return json(
-          analyzeStatus === 200
-            ? { data: analyzeResult }
-            : { error: { code: "RATE_LIMITED" } },
-          analyzeStatus,
-        );
-      }
       if (url.includes("/ai-insights/demo?"))
         return demoStatus === 200
           ? json({ data: demoResult }, demoResult ? 200 : 404)
@@ -692,66 +656,19 @@ describe("Demo Insight card", () => {
   });
 });
 
-describe("on-demand analysis", () => {
-  it("posts an on-demand analysis for the selected organization scope", async () => {
+describe("stored AI insight section", () => {
+  it("links to the AI analysis page instead of running an analysis inline", async () => {
     renderView();
     await screen.findByRole("heading", { name: "Successful AI summary" });
     expect(
       screen.getByText(/AI generated summaries of persisted data/),
     ).toBeTruthy();
     expect(screen.getByRole("link", { name: "analytics views" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
-    expect(await screen.findByText("Sample overview text.")).toBeTruthy();
-    const analyzeRequest = requests.find(({ url }) =>
-      url.includes("/ai-insights/analyze?"),
+    expect(screen.queryByRole("button", { name: "Analyze" })).toBeNull();
+    const link = screen.getByRole("link", { name: "AI analysis" });
+    expect(link.getAttribute("href")).toBe(
+      `/app/ai-analysis?organizationId=${ORG}&branchId=${A}`,
     );
-    expect(analyzeRequest?.method).toBe("POST");
-    expect(analyzeRequest?.url).toContain("scope=organization");
-    expect(JSON.parse(analyzeBodies[0] ?? "{}")).toEqual({
-      days: 7,
-      language: "en",
-    });
-    expect(screen.getByText("Sample (Mock)")).toBeTruthy();
-    for (const heading of [
-      "Overview",
-      "Sales",
-      "Products",
-      "Notes & risks",
-      "Recommended actions",
-    ])
-      expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
-    expect(screen.getByText(/Period: 2026-11-09/)).toBeTruthy();
-  });
-
-  it("sends the branch scope from the selector", async () => {
-    renderView("BRANCH_MANAGER");
-    await screen.findByRole("heading", { name: "Successful AI summary" });
-    fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
-    await screen.findByText("Sample overview text.");
-    const analyzeRequest = requests.find(({ url }) =>
-      url.includes("/ai-insights/analyze?"),
-    );
-    expect(analyzeRequest?.url).toContain(`scope=branch&branchId=${A}`);
-  });
-
-  it("disables the analyze button and announces progress", async () => {
-    analyzePending = true;
-    renderView();
-    await screen.findByRole("heading", { name: "Successful AI summary" });
-    const button = screen.getByRole("button", { name: "Analyze" });
-    fireEvent.click(button);
-    expect(await screen.findByText("Analyzing…")).toBeTruthy();
-    expect(button.getAttribute("disabled")).not.toBeNull();
-  });
-
-  it("shows the per-minute rate limit message", async () => {
-    analyzeStatus = 429;
-    renderView();
-    await screen.findByRole("heading", { name: "Successful AI summary" });
-    fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
-    expect(await screen.findByRole("alert")).toHaveProperty(
-      "textContent",
-      "Please wait a moment and try again (one request per minute).",
-    );
+    expect(requests.every(({ method }) => method === "GET")).toBe(true);
   });
 });

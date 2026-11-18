@@ -157,7 +157,7 @@ export function createPrismaBillingRepository(prisma: PrismaClient) {
      * One subscription per Organization. Re-confirming the same Checkout
      * session is idempotent. A different session never overwrites a live
      * subscription (no silent plan swap), but it renews an EXPIRED/CANCELED
-     * one in place and sets it ACTIVE immediately (ADR-049).
+     * one in place and sets it ACTIVE immediately (ADR-050).
      */
     async saveConfirmed(
       input: SaveConfirmedInput,

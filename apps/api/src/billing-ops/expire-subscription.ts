@@ -1,7 +1,7 @@
 import type { BillingRepository } from "../modules/billing/billing-repository.ts";
 
 /**
- * The one organization the renewal rehearsal may expire (ADR-049, owner
+ * The one organization the renewal rehearsal may expire (ADR-050, owner
  * decision 2026-11-18). Hard-coded on purpose: the command takes no input, so
  * it cannot be pointed at another tenant.
  */

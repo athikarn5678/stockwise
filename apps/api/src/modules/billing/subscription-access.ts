@@ -1,6 +1,6 @@
 import type { BillingInterval, BillingPlan } from "./billing-plans.ts";
 
-/** New organizations get a 14-day Business trial (docs/PLAN.md M6, ADR-049). */
+/** New organizations get a 14-day Business trial (docs/PLAN.md M6, ADR-050). */
 export const TRIAL_DAYS = 14;
 const DAY_MILLISECONDS = 86_400_000;
 
@@ -27,7 +27,7 @@ export function subscriptionKeepsAccess(
 }
 
 /**
- * Pure access decision (ADR-049). A stored row wins over the trial: ACTIVE and
+ * Pure access decision (ADR-050). A stored row wins over the trial: ACTIVE and
  * PAST_DUE (no grace policy yet; never written) keep access, CANCELED and
  * EXPIRED require renewal. With no row the organization is in TRIAL for its
  * first 14 days and EXPIRED afterwards.

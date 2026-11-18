@@ -3453,10 +3453,16 @@ Before apply the operator takes and verifies a database export. `retire` (bound 
 - **Status:** Accepted by the owner on 2026-11-17. Full record: `docs/decisions/0047-stripe-subscription-billing-v1.md`.
 - **Type:** Billing, permission and schema addition. Test-mode hosted Checkout, OWNER-only `billing.manage`, `organization_subscriptions` table; no webhook, limits or portal yet.
 
-## ADR-049 — Subscription access states, central 402 guard and renewal
+## ADR-049 — AI analysis page: persisted, bilingual runs
 
 - **Date:** 2026-11-18
-- **Status:** Proposed (owner-specified in the 2026-11-18 sprint brief; acceptance to be recorded by the planner). Full record: `docs/decisions/0049-subscription-access-and-renewal.md`.
+- **Status:** Proposed. Full record: `docs/decisions/0049-ai-analysis-page-persisted-bilingual.md`.
+- **Type:** AI and schema amendment. Amends `ADR-046`: `/app/ai-analysis` page, Thai and English generated together, persisted in `ai_analysis_runs`, history and per-language retry; the on-demand endpoint moves to `/ai-analysis/runs`.
+
+## ADR-050 — Subscription access states, central 402 guard and renewal
+
+- **Date:** 2026-11-18
+- **Status:** Proposed (owner-specified in the 2026-11-18 sprint brief; acceptance to be recorded by the planner). Full record: `docs/decisions/0050-subscription-access-and-renewal.md`.
 - **Type:** Billing, permission and schema amendment. Amends `ADR-047` (checkout from EXPIRED, in-place renewal, yearly interval). Adds the TRIAL/ACTIVE/EXPIRED states, one central `402 SUBSCRIPTION_REQUIRED` guard for mutating organization-scoped routes, an additive migration (`EXPIRED` status, `interval`, nullable Stripe ids for Stripe-less EXPIRED rows) and the operator `expire-subscription` rehearsal command.
 
 ## 2. Explicitly superseded planning directions

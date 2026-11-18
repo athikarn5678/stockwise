@@ -5,6 +5,7 @@ import {
   AiAnalyzeOutputError,
   buildMockAiAnalyzeOutput,
   parseAiAnalyzeOutput,
+  splitStoredAiAnalyzeSections,
 } from "./ai-analyze-output.ts";
 
 const snapshot: AiAnalyzeSnapshot = {
@@ -174,6 +175,22 @@ describe("AI analyze output validation", () => {
         ]),
       }),
     ).not.toThrow();
+  });
+
+  it("splits stored text leniently without re-validating numbers", () => {
+    const text = buildMockAiAnalyzeOutput({ language: "en", snapshot });
+    const sections = splitStoredAiAnalyzeSections(text, "en");
+    expect(sections).toHaveLength(5);
+    expect(sections[0]?.heading).toBe("Overview");
+    expect(sections[0]?.body).toContain("MOCK");
+
+    // Unrelated numbers and drifted headings stay displayable.
+    expect(splitStoredAiAnalyzeSections("## Overview\nStep 99.", "en")).toEqual(
+      [{ body: "## Overview\nStep 99.", heading: "Overview" }],
+    );
+    expect(
+      splitStoredAiAnalyzeSections("Preamble\n## Overview\ntext", "en"),
+    ).toEqual([{ body: "Preamble\n## Overview\ntext", heading: "Overview" }]);
   });
 
   it("builds deterministic mock text that satisfies the same contract", () => {

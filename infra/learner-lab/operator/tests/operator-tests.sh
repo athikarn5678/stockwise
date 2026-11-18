@@ -568,7 +568,7 @@ expect DEMO_VERIFY_OVERRIDE demo_override_case verify 'STOCKWISE_DEMO_MODE' --de
 expect DEMO_DRYRUN_OVERRIDE demo_override_case dry 'STOCKWISE_DEMO_SPEC_B64' --demo-mode dry-run --demo-spec-file "$demo_spec_arg"
 expect DEMO_APPLY_OVERRIDE demo_override_case apply 'STOCKWISE_DEMO_CONFIRM_DIGEST' --demo-mode apply --demo-spec-file "$demo_spec_arg" --demo-confirm-digest 0123456789abcdef
 
-# ---- ADR-049: expire-subscription takes no options and runs in the ops task ----
+# ---- ADR-050: expire-subscription takes no options and runs in the ops task ----
 new_case expire-subscription-options
 operator_run run run-ops-task.sh expire-subscription --demo-mode verify && rc=0 || rc=$?
 expect EXPIRE_SUBSCRIPTION_TAKES_NO_OPTIONS bash -c "[[ $rc != 0 ]] && ! grep -q '^ecs run-task' '${case_dir}/aws.log'"

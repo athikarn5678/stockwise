@@ -1800,7 +1800,10 @@ Analytics error/null semantics:
 | `GET /organizations/{organizationId}/ai-insights` | Authenticated, three permissions below | `scope`, `cadence`, optional `branchId`, `limit`, `cursor` | `{data: Insight[], meta: {nextCursor}}` | `400` invalid selector/cursor, `403` forbidden | Implemented P7-M3-T02 |
 | `GET /organizations/{organizationId}/ai-insights/latest` | Authenticated, three permissions below | `scope`, `cadence`, optional `branchId` | `{data: {latest, lastSuccess, stale}}` | Explicit nulls when no report exists; `403` forbidden | Implemented P7-M3-T02 |
 | `GET /organizations/{organizationId}/ai-insights/{insightId}` | Authenticated, three permissions below | UUID path ID; no query | `{data: Insight}` | `404` missing or inaccessible; provenance mismatch fails closed | Implemented P7-M3-T02 |
-| `POST /organizations/{organizationId}/ai-insights/analyze` | Authenticated, same three permissions below | Query `scope` + optional `branchId`; JSON body `{language: "en"\|"th", days?: 7\|14\|30}` | `{data: {mock, language, period, text, sections}}` | `400` invalid query/body, `403` forbidden, `404` snapshot unavailable, `429` + `Retry-After`, `502 AI_PROVIDER_FAILED`/`AI_RESPONSE_REJECTED`; `Cache-Control: no-store`; never persisted | Implemented M5-T1 (`ADR-046`) |
+| `POST /organizations/{organizationId}/ai-analysis/runs` | Authenticated, same three permissions below | Query `scope` + optional `branchId`; JSON body `{days?: 7\|14\|30}`, no language | `{data: Run}` | `400` invalid query/body, `403` forbidden, `404` snapshot unavailable, `429` + `Retry-After`, `502 AI_PROVIDER_FAILED`/`AI_RESPONSE_REJECTED`; `Cache-Control: no-store` | Implemented M5-S2 (`ADR-049`) |
+| `GET /organizations/{organizationId}/ai-analysis/runs` | Authenticated, same three permissions below | `scope`, optional `branchId`, `limit` (1–50, default 10), `cursor` | `{data: Run[], meta: {nextCursor}}` | `400` invalid selector/`INVALID_CURSOR`, `403` forbidden | Implemented M5-S2 |
+| `GET /organizations/{organizationId}/ai-analysis/runs/{runId}` | Authenticated against the run's own scope | UUID path ID; no query | `{data: Run}` | `404` missing or inaccessible (same body) | Implemented M5-S2 |
+| `POST /organizations/{organizationId}/ai-analysis/runs/{runId}/retry` | Authenticated, same three permissions below | Query `scope` + optional `branchId`; JSON body `{language: "th"\|"en"}` | `{data: Run}` | `400` invalid query/body, `403` forbidden, `404` missing/wrong scope, `429` + `Retry-After`, `502` as above; `Cache-Control: no-store` | Implemented M5-S2 |
 
 All paths above are under `/api/v1`. `scope` is exactly `organization` or `branch`; Branch scope requires a UUID `branchId`, while Organization scope rejects it. `cadence` is exactly `DAILY`, `WEEKLY`, `MONTHLY`, or `YEARLY`. List `limit` is 1–100 (default 20); `cursor` is the UUID `nextCursor` from the preceding page. Unknown parameters are rejected. List order is descending `(periodEndExclusive, periodStartInclusive, id)`, separately for each scope and cadence. A cursor from another scope or cadence is invalid. A detail ID is scoped to the authenticated Organization before lookup.
 
@@ -1812,7 +1815,9 @@ Every read requires `AI_BUSINESS_SUMMARY_VIEW` **and** `BUSINESS_ANALYTICS_VIEW`
 
 There is deliberately **no persisted-report generation endpoint**. Reports are daily/weekly/monthly/yearly scheduled work. Any operational replay mechanism is internal/admin-only, auditable, and subject to `ADR-033` bounds.
 
-`ADR-046` adds exactly one non-persisted exception: `POST .../ai-insights/analyze` runs on demand for the last 7, 14, or 30 completed Organization-timezone days, returns `{mock, language, period, text, sections}`, writes nothing, and is limited to one request per user per process per 60 seconds. Scope is taken from the query only; the body carries language and an optional day count. The five-section contract (exactly five `##` headings in fixed order) and the rule that every numeric token must appear in the deterministic snapshot are enforced server-side; a violation returns `502 AI_RESPONSE_REJECTED` and no text. Without `OPENCODE_GO_API_KEY`, deterministic sample text is returned with `mock: true`.
+`ADR-049` keeps on-demand analysis in a separate persisted resource. One click analyses the last 7, 14, or 30 completed Organization-timezone days for the query scope, generates Thai **and** English concurrently from one snapshot, validates each language independently, and stores them in `ai_analysis_runs`. Exactly one row is written when at least one language passes; a failed language stays NULL and is returned in `missing`. Both failing write nothing and return `502 AI_PROVIDER_FAILED` (any provider failure) or `502 AI_RESPONSE_REJECTED`. Any action is limited to one provider-spending request per user per process per 60 seconds; retrying a language that is already stored is a plain read. Scope is taken from the query only. Without `OPENCODE_GO_API_KEY` deterministic sample text is returned for both languages with `mock: true` and nothing is stored.
+
+`Run` is `{id, createdAt, days, period: {from, to, timezone, scope}, model, mock, languages: {th, en}, missing}`; each language is either `null` or five `{heading, body}` sections split from the stored Markdown. Actor ids, tenant ids, and prompts are never returned. History is newest first by `(createdAt, id)`; `cursor` is the UUID of the last row of the previous page and must belong to the same Organization and scope.
 
 AI read responses:
 
@@ -1822,7 +1827,7 @@ AI read responses:
 - Treat content as untrusted display text: escape it and never render provider-supplied active HTML.
 - Do not expose raw prompts, secrets, provider errors, or prohibited data.
 
-### Billing (ADR-047, ADR-049, test mode)
+### Billing (ADR-047, ADR-050, test mode)
 
 | Endpoint | Auth | Request | Success | Errors |
 | --- | --- | --- | --- | --- |
@@ -1832,7 +1837,7 @@ AI read responses:
 
 Prices are server-owned (THB per month / year: Starter 199 / 1,990, Growth 499 / 4,990, Business 999 / 9,990; confirm requires the exact amount for plan and interval). Strict bodies; responses carry `Cache-Control: no-store` on success.
 
-**Subscription guard (ADR-049).** When the caller's Organization is `EXPIRED` and billing is enabled, every `POST|PUT|PATCH|DELETE /organizations/{organizationId}/…` request answers `402 SUBSCRIPTION_REQUIRED` (canonical error envelope) before the route runs, so nothing is written. Exempt: `POST …/billing/checkout`, `POST …/billing/confirm` and `POST …/ai-insights/analyze`. Reads, authentication, own profile, first-organization onboarding and invitation acceptance are never blocked. Anonymous callers still get `401`; non-members get the route's normal `403`/`404`. No webhook, plan limits, Customer Portal or grace period yet.
+**Subscription guard (ADR-050).** When the caller's Organization is `EXPIRED` and billing is enabled, every `POST|PUT|PATCH|DELETE /organizations/{organizationId}/…` request answers `402 SUBSCRIPTION_REQUIRED` (canonical error envelope) before the route runs, so nothing is written. Exempt: `POST …/billing/checkout`, `POST …/billing/confirm`, `POST …/ai-analysis/runs` and `POST …/ai-analysis/runs/{runId}/retry`. Reads, authentication, own profile, first-organization onboarding and invitation acceptance are never blocked. Anonymous callers still get `401`; non-members get the route's normal `403`/`404`. No webhook, plan limits, Customer Portal or grace period yet.
 
 ## 14. S3/object endpoints
 

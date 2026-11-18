@@ -21,6 +21,8 @@ import { createPrismaBillingRepository } from "./modules/billing/billing-reposit
 import { createBillingService } from "./modules/billing/billing-service.ts";
 import { createSubscriptionGuard } from "./modules/billing/subscription-guard.ts";
 import { createStripeClient } from "./modules/billing/stripe-client.ts";
+import { createAiAnalysisRouter } from "./modules/ai-insights/ai-analysis-router.ts";
+import { createPrismaAiAnalysisStore } from "./modules/ai-insights/ai-analysis-store.ts";
 import { createAiInsightRouter } from "./modules/ai-insights/ai-insight-router.ts";
 import { createAiAnalyzeService } from "./modules/ai-insights/ai-analyze-service.ts";
 import { createAiAnalyzeSnapshotBuilder } from "./modules/ai-insights/ai-analyze-snapshot.ts";
@@ -201,7 +203,7 @@ async function main(): Promise<void> {
       publicWebOrigin: environment.STOCKWISE_PUBLIC_WEB_ORIGIN,
     }),
   );
-  // ADR-049: one guard before every organization-scoped router. It is mounted
+  // ADR-050: one guard before every organization-scoped router. It is mounted
   // only while billing is enabled (a test-mode Stripe key): without a way to
   // pay, an expired trial would lock an organization out for good.
   const billingRepository = createPrismaBillingRepository(prisma);
@@ -298,6 +300,8 @@ async function main(): Promise<void> {
       salesService: analyticsSalesService,
     }),
   );
+  const aiAnalysisStore = createPrismaAiAnalysisStore(prisma);
+  const aiInsightReader = createPrismaAiInsightReader(prisma);
   const aiAnalyzeService = createAiAnalyzeService({
     ...(environment.OPENCODE_GO_API_KEY === undefined
       ? {}
@@ -312,6 +316,7 @@ async function main(): Promise<void> {
       organizationReader: prisma,
       salesService: analyticsSalesService,
     }),
+    store: aiAnalysisStore,
   });
   // Billing is hidden (no stripe client) unless a test-mode key is configured.
   apiRouter.use(
@@ -332,9 +337,8 @@ async function main(): Promise<void> {
   );
   apiRouter.use(
     createAiInsightRouter({
-      analyzeService: aiAnalyzeService,
       authenticationMiddleware,
-      reader: createPrismaAiInsightReader(prisma),
+      reader: aiInsightReader,
       demoReader: composeDemoInsightReaders(
         createDemoInsightReader({
           prisma,
@@ -344,6 +348,15 @@ async function main(): Promise<void> {
         }),
         createProductionDemoInsightReader({ prisma }),
       ),
+    }),
+  );
+
+  apiRouter.use(
+    createAiAnalysisRouter({
+      authenticationMiddleware,
+      reader: aiInsightReader,
+      service: aiAnalyzeService,
+      store: aiAnalysisStore,
     }),
   );
 

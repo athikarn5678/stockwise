@@ -3,7 +3,7 @@ status: proposed (owner-specified in the 2026-11-18 sprint brief, task M6-S2; ac
 date: 2026-11-18
 ---
 
-# ADR-049 — Subscription access states, the central 402 guard and renewal
+# ADR-050 — Subscription access states, the central 402 guard and renewal
 
 Plan: `docs/PLAN.md` M6 (sprint tasks M6-S2/M6-S3). Builds on `ADR-047` (hosted Checkout, test mode, no webhook); amends only the pieces named below.
 
@@ -18,7 +18,7 @@ Plan: `docs/PLAN.md` M6 (sprint tasks M6-S2/M6-S3). Builds on `ADR-047` (hosted 
    - `TRIAL`: no subscription row and the organization is under 14 days old (`organizations.created_at + 14 days`, exact 24 h days; `trialDaysLeft` rounds up).
    - `EXPIRED`: a stored row with status `EXPIRED` or `CANCELED`, or no row once the trial is over.
    A stored row always wins over the trial clock, so an explicit `EXPIRED` row ends access even inside the trial.
-2. **One central guard** (`subscription-guard.ts`, mounted once in `main.ts` before every organization-scoped router). For `POST|PUT|PATCH|DELETE /organizations/:organizationId/...` of an EXPIRED organization it answers **`402 SUBSCRIPTION_REQUIRED` before any route handler runs**, so nothing is written. Reads are never blocked. Default-deny: every mutating route under that prefix is guarded unless listed in `SUBSCRIPTION_GUARD_EXEMPT_ROUTES`, which holds exactly `POST billing/checkout`, `POST billing/confirm` and `POST ai-insights/analyze`.
+2. **One central guard** (`subscription-guard.ts`, mounted once in `main.ts` before every organization-scoped router). For `POST|PUT|PATCH|DELETE /organizations/:organizationId/...` of an EXPIRED organization it answers **`402 SUBSCRIPTION_REQUIRED` before any route handler runs**, so nothing is written. Reads are never blocked. Default-deny: every mutating route under that prefix is guarded unless listed in `SUBSCRIPTION_GUARD_EXEMPT_ROUTES`, which holds exactly `POST billing/checkout`, `POST billing/confirm`, `POST ai-analysis/runs` and `POST ai-analysis/runs/:runId/retry` (the on-demand AI analysis that replaced `ai-insights/analyze`, `ADR-049`).
    - Mutating routes outside the prefix (auth, own profile, first-organization onboarding, invitation acceptance) are not touched. `subscription-guard.test.ts` scans every API source file for mutating route registrations and fails when one is neither under the guarded prefix nor explicitly classified, so a new route cannot bypass the guard unnoticed.
    - The guard authenticates first (anonymous callers get the normal `401`) and is silent for callers who are not ACTIVE members of an ACTIVE organization, so subscription state never leaks across tenants; the route then gives its own `403`/`404`.
    - The guard is mounted only while billing is enabled (`STRIPE_SECRET_KEY` present). Without a way to pay, an expired trial would lock an organization out for good; with billing disabled nothing is enforced and `GET …/billing` returns `access: null`.

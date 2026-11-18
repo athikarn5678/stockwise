@@ -11,8 +11,10 @@ const organizationIdSchema = z.string().uuid();
 
 /**
  * The only organization-scoped mutating routes that stay open while the
- * subscription is EXPIRED (ADR-049): paying, and the on-demand AI analysis.
- * Matched on method and the path after `/organizations/:organizationId`.
+ * subscription is EXPIRED (ADR-050): paying, and the on-demand AI analysis
+ * (`ai-analysis/runs`, which replaced `ai-insights/analyze`, and its per-language
+ * retry). Matched on method and the path after `/organizations/:organizationId`;
+ * a `:name` segment matches any single non-empty segment.
  * Everything else under that prefix is blocked: a new route is guarded by
  * default, and `subscription-guard.test.ts` scans every router source so a
  * route outside the prefix must be classified explicitly.
@@ -23,12 +25,26 @@ export const SUBSCRIPTION_GUARD_EXEMPT_ROUTES: readonly Readonly<{
 }>[] = [
   { method: "POST", path: "/billing/checkout" },
   { method: "POST", path: "/billing/confirm" },
-  { method: "POST", path: "/ai-insights/analyze" },
+  { method: "POST", path: "/ai-analysis/runs" },
+  { method: "POST", path: "/ai-analysis/runs/:runId/retry" },
 ];
+
+function matchesTemplate(template: string, path: string): boolean {
+  const expected = template.split("/");
+  const actual = path.split("/");
+  return (
+    expected.length === actual.length &&
+    expected.every(
+      (segment, index) =>
+        (segment.startsWith(":") && actual[index] !== "") ||
+        segment === actual[index],
+    )
+  );
+}
 
 function isExempt(method: string, path: string): boolean {
   return SUBSCRIPTION_GUARD_EXEMPT_ROUTES.some(
-    (route) => route.method === method && route.path === path,
+    (route) => route.method === method && matchesTemplate(route.path, path),
   );
 }
 
@@ -44,7 +60,7 @@ function subscriptionRequired(response: Response): void {
 }
 
 /**
- * One central guard (ADR-049): when the caller's organization is EXPIRED, every
+ * One central guard (ADR-050): when the caller's organization is EXPIRED, every
  * mutating `/organizations/:organizationId/...` request answers
  * 402 SUBSCRIPTION_REQUIRED before its route handler (and so any write) runs.
  * Reads are never touched. It authenticates first so an anonymous caller learns

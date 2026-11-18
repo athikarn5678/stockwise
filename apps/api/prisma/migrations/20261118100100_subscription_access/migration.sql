@@ -1,4 +1,4 @@
--- M6-S2 / ADR-049: billing interval and Stripe-less EXPIRED rows.
+-- M6-S2 / ADR-050: billing interval and Stripe-less EXPIRED rows.
 -- Existing rows are all monthly (ADR-047), hence DEFAULT 'MONTH'. The three
 -- Stripe reference columns become nullable only so an operator-created EXPIRED
 -- row (no Stripe objects) can exist; the CHECK keeps every other status bound

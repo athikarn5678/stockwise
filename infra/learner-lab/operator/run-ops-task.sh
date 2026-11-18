@@ -14,7 +14,7 @@
 #                                verify = read-only census, dry-run = read-only preflight that prints the
 #                                spec digest, apply = writes and requires that digest as confirmation
 #   run-ops-task.sh expire-subscription
-#                                ADR-049: sets ONLY the renewal-rehearsal organization to EXPIRED (idempotent,
+#                                ADR-050: sets ONLY the renewal-rehearsal organization to EXPIRED (idempotent,
 #                                no arguments) so the owner can rehearse the Stripe renewal again
 #   run-ops-task.sh provision-demo --demo-mode verify|dry-run|apply|retire [--demo-spec-file <json>] [--demo-confirm-digest <16 hex>]
 #                                ADR-043: one new isolated synthetic demo organization; dry-run prints the digest

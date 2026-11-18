@@ -852,6 +852,11 @@ export const en = {
   uiRegistered: "Registered",
   uiVATRate: "VAT rate (%)",
   uiSavingVAT: "Saving VAT…",
+  uiVatNotConfiguredYet:
+    "Not configured yet. Choose a status and save it before selling.",
+  uiVatSavedNotRegistered: "Saved: Not registered",
+  uiVatSavedRegistered: "Saved: Registered, VAT {rate}%",
+  uiVatSaved: "VAT profile saved.",
   uiSaveVATProfile: "Save VAT profile",
   uiSaleCompleted: "Sale completed",
   uiNewSale: "New sale",

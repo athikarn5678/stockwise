@@ -283,9 +283,10 @@ for (const method of ["CASH", "TRANSFER"] as const) {
     await page
       .getByRole("button", { name: "Add Current catalog name" })
       .click();
-    if (method === "CASH")
-      await page.getByLabel("Amount tendered (THB)").fill("100.00");
-    else await page.getByRole("radio", { name: "Transfer" }).check();
+    // POS offers Cash and PromptPay only; the stub answers with a historic
+    // TRANSFER sale to prove its snapshot receipt still renders.
+    await page.getByLabel("Amount tendered (THB)").fill("100.00");
+    await expect(page.getByRole("radio", { name: "Transfer" })).toHaveCount(0);
     await page.getByRole("button", { name: "Complete sale" }).click();
     const receipt = page.getByLabel("Printable receipt");
     await expect(receipt).toContainText("Receipt item 001");

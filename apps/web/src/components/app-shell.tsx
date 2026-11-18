@@ -512,7 +512,8 @@ function WorkspaceShell({ children }: AppShellProps) {
               className="flex items-center gap-1"
             >
               <PreferenceControls />
-              {signedOut && (
+              {/* /login is the sign-in page itself: no second Sign in button. */}
+              {signedOut && pathname !== "/login" && (
                 <Button
                   variant="ghost"
                   nativeButton={false}

@@ -119,12 +119,9 @@ function PlanAction({
         <ArrowRight aria-hidden="true" />
       </Button>
     );
-  if (pricing.currentPlan === plan)
-    return (
-      <Badge className={`${className} w-fit`} variant="secondary">
-        {t("pricingCurrentPlanBadge")}
-      </Badge>
-    );
+  // The active plan is shown by the panel above and its highlighted card: no
+  // button-like control that would read as a disabled Subscribe.
+  if (pricing.currentPlan === plan) return null;
   return (
     <Button
       className={className}
@@ -219,20 +216,40 @@ export function PricingContent({
           </button>
         </div>
       </div>
+      {pricing.currentPlan !== null && pricing.subscription !== null ? (
+        <div
+          className="mx-auto mb-6 flex max-w-xl items-center gap-4 rounded-xl border-2 border-primary bg-primary/5 p-5 text-left"
+          data-testid="active-plan-panel"
+          role="status"
+        >
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <Check aria-hidden="true" className="size-5" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-lg font-semibold">
+              {t("pricingActivePanelTitle")}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {t("pricingActivePanelBody")
+                .replace("{plan}", planLabel(pricing.currentPlan, t))
+                .replace(
+                  "{period}",
+                  t(
+                    pricing.subscription.interval === "YEAR"
+                      ? "pricingYearly"
+                      : "pricingMonthly",
+                  ),
+                )}
+            </p>
+          </div>
+        </div>
+      ) : null}
       <div className="mx-auto mb-6 max-w-3xl space-y-3 text-center">
         {pricing.canceled ? (
           <p role="status">{t("billingCanceledNote")}</p>
         ) : null}
         {pricing.confirming ? (
           <p aria-live="polite">{t("billingConfirming")}</p>
-        ) : null}
-        {pricing.confirmed ? (
-          <p className="rounded-lg border bg-card p-4" role="status">
-            {t("billingConfirmed").replace(
-              "{plan}",
-              planLabel(pricing.confirmed.plan, t),
-            )}
-          </p>
         ) : null}
         {pricing.error ? <p role="alert">{t(pricing.error)}</p> : null}
         {pricing.mode === "non-owner" ? (
@@ -252,20 +269,6 @@ export function PricingContent({
             {t("pricingExpiredNotice")}
           </p>
         ) : null}
-        {pricing.currentPlan !== null && pricing.subscription !== null ? (
-          <p className="font-medium" role="status">
-            {t("billingCurrentPlan")
-              .replace("{plan}", planLabel(pricing.currentPlan, t))
-              .replace(
-                "{status}",
-                t(
-                  pricing.subscription.interval === "YEAR"
-                    ? "pricingYearly"
-                    : "pricingMonthly",
-                ),
-              )}
-          </p>
-        ) : null}
       </div>
       <section
         aria-label={t("pricingPlansLabel")}
@@ -276,11 +279,23 @@ export function PricingContent({
             key={plan.name}
             aria-labelledby={`plan-${plan.name.toLowerCase()}`}
           >
-            <Card className="h-full">
+            <Card
+              className={`h-full ${
+                pricing.currentPlan === PLAN_KEYS[plan.name]
+                  ? "ring-2 ring-primary"
+                  : ""
+              }`}
+            >
               <CardHeader>
-                <Badge variant="secondary" className="w-fit">
-                  {t("pricingProposed")}
-                </Badge>
+                {pricing.currentPlan === PLAN_KEYS[plan.name] ? (
+                  <Badge className="w-fit">
+                    {t("pricingCurrentPlanBadge")}
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="w-fit">
+                    {t("pricingProposed")}
+                  </Badge>
+                )}
                 <h2
                   id={`plan-${plan.name.toLowerCase()}`}
                   className="mt-2 text-xl font-semibold"

@@ -97,7 +97,6 @@ export const en = {
   billingPerMonth: "per month",
   billingSubscribe: "Subscribe",
   billingSubscribing: "Opening secure checkout…",
-  billingCurrentPlan: "Current plan: {plan} ({status})",
   billingPlanStarter: "Starter",
   billingPlanGrowth: "Growth",
   billingPlanBusiness: "Business",
@@ -107,7 +106,6 @@ export const en = {
   billingStatusExpired: "Expired",
   billingCanceledNote: "Checkout was canceled. Nothing was charged.",
   billingConfirming: "Confirming your subscription…",
-  billingConfirmed: "Subscription active: {plan}",
   billingErrCheckout: "Checkout could not be started. Please try again.",
   billingErrUntrustedRedirect:
     "The checkout address was not recognized, so the payment page was not opened.",
@@ -129,6 +127,8 @@ export const en = {
   subscriptionDismiss: "Dismiss",
   pricingSignInToSubscribe: "Sign in to subscribe",
   pricingSetUpStore: "Set up your store",
+  pricingActivePanelTitle: "Subscription active",
+  pricingActivePanelBody: "{plan} plan · {period}",
   pricingCurrentPlanBadge: "Current plan",
   pricingNonOwnerNotice:
     "Only the store owner can subscribe or renew. Ask your store owner to renew the plan.",

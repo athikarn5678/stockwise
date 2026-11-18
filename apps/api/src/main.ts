@@ -19,6 +19,7 @@ import { createAnalyticsRouter } from "./modules/analytics/analytics-router.ts";
 import { createBillingRouter } from "./modules/billing/billing-router.ts";
 import { createPrismaBillingRepository } from "./modules/billing/billing-repository.ts";
 import { createBillingService } from "./modules/billing/billing-service.ts";
+import { createSubscriptionGuard } from "./modules/billing/subscription-guard.ts";
 import { createStripeClient } from "./modules/billing/stripe-client.ts";
 import { createAiInsightRouter } from "./modules/ai-insights/ai-insight-router.ts";
 import { createAiAnalyzeService } from "./modules/ai-insights/ai-analyze-service.ts";
@@ -200,6 +201,17 @@ async function main(): Promise<void> {
       publicWebOrigin: environment.STOCKWISE_PUBLIC_WEB_ORIGIN,
     }),
   );
+  // ADR-049: one guard before every organization-scoped router. It is mounted
+  // only while billing is enabled (a test-mode Stripe key): without a way to
+  // pay, an expired trial would lock an organization out for good.
+  const billingRepository = createPrismaBillingRepository(prisma);
+  if (environment.STRIPE_SECRET_KEY !== undefined)
+    apiRouter.use(
+      createSubscriptionGuard({
+        authenticationMiddleware,
+        repository: billingRepository,
+      }),
+    );
   apiRouter.use(
     createBranchRouter({
       authenticationMiddleware,
@@ -302,7 +314,7 @@ async function main(): Promise<void> {
       authenticationMiddleware,
       service: createBillingService({
         publicWebOrigin: environment.STOCKWISE_PUBLIC_WEB_ORIGIN,
-        repository: createPrismaBillingRepository(prisma),
+        repository: billingRepository,
         ...(environment.STRIPE_SECRET_KEY === undefined
           ? {}
           : {

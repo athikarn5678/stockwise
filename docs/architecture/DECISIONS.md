@@ -3453,6 +3453,12 @@ Before apply the operator takes and verifies a database export. `retire` (bound 
 - **Status:** Accepted by the owner on 2026-11-17. Full record: `docs/decisions/0047-stripe-subscription-billing-v1.md`.
 - **Type:** Billing, permission and schema addition. Test-mode hosted Checkout, OWNER-only `billing.manage`, `organization_subscriptions` table; no webhook, limits or portal yet.
 
+## ADR-049 — Subscription access states, central 402 guard and renewal
+
+- **Date:** 2026-11-18
+- **Status:** Proposed (owner-specified in the 2026-11-18 sprint brief; acceptance to be recorded by the planner). Full record: `docs/decisions/0049-subscription-access-and-renewal.md`.
+- **Type:** Billing, permission and schema amendment. Amends `ADR-047` (checkout from EXPIRED, in-place renewal, yearly interval). Adds the TRIAL/ACTIVE/EXPIRED states, one central `402 SUBSCRIPTION_REQUIRED` guard for mutating organization-scoped routes, an additive migration (`EXPIRED` status, `interval`, nullable Stripe ids for Stripe-less EXPIRED rows) and the operator `expire-subscription` rehearsal command.
+
 ## 2. Explicitly superseded planning directions
 
 The current ADRs supersede these earlier, unimplemented ideas:

@@ -9,7 +9,6 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
-  useState,
 } from "react";
 
 import { BranchApiError, fetchAccessContext } from "@/branch-api-client";
@@ -59,12 +58,7 @@ import { Separator } from "@/components/ui/separator";
 import { PreferenceControls } from "@/components/preference-controls";
 import { useLanguage } from "@/providers/language-provider";
 import { isGuestRoute, routeAccessPolicy } from "@/route-access-policy";
-import {
-  BILLING_CHANGED_EVENT,
-  getBilling,
-  type BillingSubscription,
-  type BillingState,
-} from "@/billing-api-client";
+import { type BillingSubscription } from "@/billing-api-client";
 import type { VerificationLinkWindow } from "@/verification-link-entry";
 import type { CredentialLinkWindow } from "@/credential-link-entry";
 import {
@@ -78,6 +72,11 @@ import {
   resumeInvitationContinuation,
 } from "@/invitation-continuation-api-client";
 import { useSessionLifecycle } from "@/providers/session-lifecycle-provider";
+import {
+  SubscriptionProvider,
+  useSubscription,
+} from "@/providers/subscription-provider";
+import { SubscriptionBanner } from "@/components/subscription-banner";
 import { discardPrivateSession } from "@/session-lifecycle";
 import type {
   AccessContext,
@@ -471,26 +470,29 @@ function WorkspaceShell({ children }: AppShellProps) {
       </div>
     );
   return (
-    <SidebarProvider>
-      {skip}
-      <WorkspaceNavigation
-        context={context}
-        organization={organization}
-        branch={branch}
-        homeUrl={homeUrl}
-        destinations={destinations.filter(({ visible }) => visible)}
-        pathname={pathname}
-      />
-      <SidebarInset className="min-w-0">
-        <WorkspaceHeader
-          title={
-            destinations.find((d) => d.path === pathname)?.label ??
-            t("workspace")
-          }
+    <SubscriptionProvider organizationId={organization?.id}>
+      <SidebarProvider>
+        {skip}
+        <WorkspaceNavigation
+          context={context}
+          organization={organization}
+          branch={branch}
+          homeUrl={homeUrl}
+          destinations={destinations.filter(({ visible }) => visible)}
+          pathname={pathname}
         />
-        {content}
-      </SidebarInset>
-    </SidebarProvider>
+        <SidebarInset className="min-w-0">
+          <WorkspaceHeader
+            title={
+              destinations.find((d) => d.path === pathname)?.label ??
+              t("workspace")
+            }
+          />
+          <SubscriptionBanner />
+          {content}
+        </SidebarInset>
+      </SidebarProvider>
+    </SubscriptionProvider>
   );
 }
 
@@ -525,36 +527,6 @@ function WorkspaceHeader({ title }: { title: string }) {
   );
 }
 
-/**
- * Silent billing summary for the plan badge and Billing link. Deliberately not a
- * TanStack query: any failure (403, disabled, network) simply yields no badge.
- */
-function useBillingSummary(organizationId: string | undefined) {
-  const [state, setState] = useState<{
-    organizationId: string;
-    summary: BillingState;
-  } | null>(null);
-  // Bumped by the billing page after a confirmed subscription.
-  const [refresh, setRefresh] = useState(0);
-  useEffect(() => {
-    const onChange = () => setRefresh((value) => value + 1);
-    window.addEventListener(BILLING_CHANGED_EVENT, onChange);
-    return () => window.removeEventListener(BILLING_CHANGED_EVENT, onChange);
-  }, []);
-  useEffect(() => {
-    if (organizationId === undefined) return;
-    const controller = new AbortController();
-    getBilling(organizationId, controller.signal).then(
-      (summary) => setState({ organizationId, summary }),
-      () => undefined,
-    );
-    return () => controller.abort();
-  }, [organizationId, refresh]);
-  return state !== null && state.organizationId === organizationId
-    ? state.summary
-    : null;
-}
-
 function WorkspaceNavigation({
   context,
   organization,
@@ -574,7 +546,7 @@ function WorkspaceNavigation({
   const { setOpenMobile } = useSidebar();
   // Billing state lives in leaf components (below): a billing change must not
   // re-render the access-context owner or touch the private query cache.
-  const billing = useBillingSummary(organization?.id);
+  const { billing } = useSubscription();
   const subscription: BillingSubscription | null =
     billing?.subscription ?? null;
   const navigationItems =

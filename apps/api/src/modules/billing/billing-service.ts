@@ -1,17 +1,26 @@
 import {
-  BILLING_PLANS,
+  billingIntervalSchema,
   billingPlanSchema,
+  planAmountSatang,
+  type BillingInterval,
   type BillingPlan,
 } from "./billing-plans.ts";
 import type {
   BillingRepository,
   PublicSubscription,
 } from "./billing-repository.ts";
+import {
+  resolveSubscriptionAccess,
+  subscriptionKeepsAccess,
+  type SubscriptionAccess,
+} from "./subscription-access.ts";
 import type { StripeClient } from "./stripe-client.ts";
 
 export type BillingReadResult =
   | Readonly<{ kind: "forbidden" }>
   | Readonly<{
+      /** Null while billing is disabled: nothing is enforced then. */
+      access: SubscriptionAccess | null;
       canManage: boolean;
       enabled: boolean;
       kind: "ok";
@@ -48,8 +57,10 @@ export function createBillingService(input: {
   stripe?: StripeClient;
   publicWebOrigin: string;
   repository: BillingRepository;
+  now?: () => Date;
 }) {
   const { publicWebOrigin, repository, stripe } = input;
+  const now = input.now ?? (() => new Date());
 
   return {
     async read(
@@ -58,18 +69,33 @@ export function createBillingService(input: {
     ): Promise<BillingReadResult> {
       const access = await repository.authorize(actorUserId, organizationId);
       if (access === null) return { kind: "forbidden" };
+      // A hidden feature exposes nothing, not even an existing plan.
+      if (stripe === undefined)
+        return {
+          access: null,
+          canManage: false,
+          enabled: false,
+          kind: "ok",
+          subscription: null,
+        };
+      const facts = await repository.accessFacts(organizationId);
+      if (facts === null) return { kind: "forbidden" };
       return {
-        canManage: stripe !== undefined && access === "owner",
-        enabled: stripe !== undefined,
+        access: resolveSubscriptionAccess({
+          now: now(),
+          organizationCreatedAt: facts.organizationCreatedAt,
+          subscription: facts.subscription,
+        }),
+        canManage: access === "owner",
+        enabled: true,
         kind: "ok",
-        // A hidden feature exposes nothing, not even an existing plan.
-        subscription:
-          stripe === undefined ? null : await repository.find(organizationId),
+        subscription: facts.subscription,
       };
     },
 
     async checkout(request: {
       actorUserId: string;
+      interval: BillingInterval;
       organizationId: string;
       plan: BillingPlan;
     }): Promise<CheckoutResult> {
@@ -79,14 +105,17 @@ export function createBillingService(input: {
         request.organizationId,
       );
       if (access !== "owner") return { kind: "forbidden" };
-      // No second stored row / plan swap; concurrent unconfirmed Checkouts can
+      // No plan swap while a subscription keeps access; an EXPIRED (or trial)
+      // organization may always check out. Concurrent unconfirmed Checkouts can
       // still double-charge in test mode (ADR-047, deferred to the webhook slice).
-      if ((await repository.find(request.organizationId)) !== null)
+      const stored = await repository.find(request.organizationId);
+      if (stored !== null && subscriptionKeepsAccess(stored.status))
         return { kind: "conflict" };
       const base = `${publicWebOrigin}/app/billing?organizationId=${request.organizationId}`;
       const session = await stripe.createCheckoutSession({
         // Stripe requires the literal {CHECKOUT_SESSION_ID} placeholder.
         cancelUrl: `${base}&canceled=1`,
+        interval: request.interval,
         organizationId: request.organizationId,
         plan: request.plan,
         successUrl: `${base}&session_id={CHECKOUT_SESSION_ID}`,
@@ -121,11 +150,16 @@ export function createBillingService(input: {
         return { kind: "forbidden" };
 
       const plan = billingPlanSchema.safeParse(session.metadata?.plan);
+      // Sessions created before yearly billing carry no interval: monthly.
+      const interval = billingIntervalSchema.safeParse(
+        session.metadata?.interval ?? "MONTH",
+      );
       if (
         session.mode !== "subscription" ||
         !plan.success ||
+        !interval.success ||
         session.currency !== "thb" ||
-        session.amount_total !== BILLING_PLANS[plan.data].amountSatang
+        session.amount_total !== planAmountSatang(plan.data, interval.data)
       )
         return { kind: "forbidden" };
 
@@ -141,6 +175,7 @@ export function createBillingService(input: {
 
       const saved = await repository.saveConfirmed({
         customerId: session.customer,
+        interval: interval.data,
         organizationId: request.organizationId,
         plan: plan.data,
         sessionId: session.id,

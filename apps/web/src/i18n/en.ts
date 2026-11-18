@@ -101,6 +101,7 @@ export const en = {
   billingStatusActive: "Active",
   billingStatusPastDue: "Past due",
   billingStatusCanceled: "Canceled",
+  billingStatusExpired: "Expired",
   billingCanceledNote: "Checkout was canceled. Nothing was charged.",
   billingConfirming: "Confirming your subscription…",
   billingConfirmed: "Subscription active: {plan}",
@@ -114,6 +115,15 @@ export const en = {
     "The payment is not complete yet. Finish checkout and try again.",
   billingErrProvider:
     "The payment provider is unavailable right now. Please try again later.",
+  subscriptionReadOnlyBanner:
+    "Your subscription has expired. The workspace is read-only until the store owner renews.",
+  subscriptionTrialBanner: "Free trial: {days} left.",
+  subscriptionTrialDay: "{days} day",
+  subscriptionTrialDays: "{days} days",
+  subscriptionViewPlans: "View plans",
+  subscriptionRequired:
+    "This action needs an active subscription. The store owner can renew on the pricing page.",
+  subscriptionActionDisabled: "Unavailable while the subscription is expired.",
   billingErrConfirm:
     "The subscription could not be confirmed. Please try again.",
   organizationSettingsUnsavedConfirm:

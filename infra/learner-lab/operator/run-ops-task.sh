@@ -13,6 +13,9 @@
 #                                one-time ADR-041 OWNER reconciliation (apps/api/src/owner-reconciliation):
 #                                verify = read-only census, dry-run = read-only preflight that prints the
 #                                spec digest, apply = writes and requires that digest as confirmation
+#   run-ops-task.sh expire-subscription
+#                                ADR-049: sets ONLY the renewal-rehearsal organization to EXPIRED (idempotent,
+#                                no arguments) so the owner can rehearse the Stripe renewal again
 #   run-ops-task.sh provision-demo --demo-mode verify|dry-run|apply|retire [--demo-spec-file <json>] [--demo-confirm-digest <16 hex>]
 #                                ADR-043: one new isolated synthetic demo organization; dry-run prints the digest
 #                                that apply and retire require
@@ -37,8 +40,8 @@ demo_digest=""
 case "$action" in
   bootstrap-roles) role="bootstrap" ;;
   export) role="export" ;;
-  prepare | migrate | grants | status | seed | uat-provision | reconcile-owners | provision-demo) role="ops" ;;
-  *) die "usage: run-ops-task.sh bootstrap-roles|prepare|migrate|grants|status|seed|uat-provision|reconcile-owners|provision-demo|export [--export-id <id>] [--uat-phase <p> --uat-spec-file <f>] [--reconcile-mode <m> --reconcile-spec-file <f> --reconcile-confirm-digest <d>] [--demo-mode <m> --demo-spec-file <f> --demo-confirm-digest <d>]" ;;
+  prepare | migrate | grants | status | seed | uat-provision | reconcile-owners | provision-demo | expire-subscription) role="ops" ;;
+  *) die "usage: run-ops-task.sh bootstrap-roles|prepare|migrate|grants|status|seed|uat-provision|reconcile-owners|provision-demo|expire-subscription|export [--export-id <id>] [--uat-phase <p> --uat-spec-file <f>] [--reconcile-mode <m> --reconcile-spec-file <f> --reconcile-confirm-digest <d>] [--demo-mode <m> --demo-spec-file <f> --demo-confirm-digest <d>]" ;;
 esac
 shift
 while [[ $# -gt 0 ]]; do

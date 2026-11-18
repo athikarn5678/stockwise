@@ -6,7 +6,8 @@
 # STOCKWISE_OPS_ROLE; an action outside that role is refused:
 #   bootstrap  bootstrap-roles                       (RDS master credentials)
 #   ops        prepare | migrate | grants | status | seed |
-#              uat-provision | reconcile-owners | provision-demo
+#              uat-provision | reconcile-owners | provision-demo |
+#              expire-subscription
 #   export     export                                (LabRole task role, S3)
 # Credentials travel only in environment variables, never in arguments or
 # output. Machine-readable result lines start with STOCKWISE_.
@@ -40,7 +41,7 @@ require STOCKWISE_OPS_ROLE STOCKWISE_DB_HOST STOCKWISE_DB_PORT STOCKWISE_DB_NAME
 
 case "${STOCKWISE_OPS_ROLE}:${action}" in
   bootstrap:bootstrap-roles | export:export) ;;
-  ops:prepare | ops:migrate | ops:grants | ops:status | ops:seed | ops:uat-provision | ops:reconcile-owners | ops:provision-demo) ;;
+  ops:prepare | ops:migrate | ops:grants | ops:status | ops:seed | ops:uat-provision | ops:reconcile-owners | ops:provision-demo | ops:expire-subscription) ;;
   *) die "action '${action}' is not permitted for the '${STOCKWISE_OPS_ROLE}' task definition" ;;
 esac
 
@@ -140,6 +141,13 @@ case "$action" in
     fi
     step "provision-demo ${STOCKWISE_DEMO_MODE} on ${STOCKWISE_DB_NAME}"
     node dist/demo-production/demo-production-main.js
+    ;;
+  expire-subscription)
+    # ADR-049: sets ONLY the renewal-rehearsal organization to EXPIRED so the
+    # owner can pay again through Stripe Checkout. Idempotent, takes no input.
+    as_migrator
+    step "expire-subscription on ${STOCKWISE_DB_NAME}"
+    node dist/billing-ops/expire-subscription-main.js
     ;;
   export)
     as_migrator

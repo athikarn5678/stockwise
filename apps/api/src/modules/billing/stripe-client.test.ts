@@ -45,9 +45,13 @@ function client(fetchImplementation: typeof fetch) {
   return createStripeClient({ fetchImplementation, secretKey: SECRET_KEY });
 }
 
-function checkoutInput(plan: keyof typeof BILLING_PLANS = "STARTER") {
+function checkoutInput(
+  plan: keyof typeof BILLING_PLANS = "STARTER",
+  interval: "MONTH" | "YEAR" = "MONTH",
+) {
   return {
     cancelUrl: `https://app.example.com/app/billing?organizationId=${ORGANIZATION_ID}&canceled=1`,
+    interval,
     organizationId: ORGANIZATION_ID,
     plan,
     successUrl: `https://app.example.com/app/billing?organizationId=${ORGANIZATION_ID}&session_id={CHECKOUT_SESSION_ID}`,
@@ -110,9 +114,34 @@ describe("Stripe test-mode client", () => {
       expect(body.get("client_reference_id")).toBe(ORGANIZATION_ID);
       expect(body.get("metadata[organization_id]")).toBe(ORGANIZATION_ID);
       expect(body.get("metadata[plan]")).toBe(plan);
+      expect(body.get("metadata[interval]")).toBe("MONTH");
       // Stripe decodes the form value; the literal placeholder must survive.
       expect(body.get("success_url")).toContain("{CHECKOUT_SESSION_ID}");
       expect(body.get("cancel_url")).toContain("canceled=1");
+    },
+  );
+
+  it.each([
+    ["STARTER", 199_000],
+    ["GROWTH", 499_000],
+    ["BUSINESS", 999_000],
+  ] as const)(
+    "creates a yearly THB subscription Checkout Session for %s",
+    async (plan, amountSatang) => {
+      const fetchImplementation = fetchMock(jsonResponse(session()));
+      await client(fetchImplementation).createCheckoutSession(
+        checkoutInput(plan, "YEAR"),
+      );
+      const body = new URLSearchParams(
+        String(fetchImplementation.mock.calls[0]![1]?.body),
+      );
+      expect(body.get("line_items[0][price_data][unit_amount]")).toBe(
+        String(amountSatang),
+      );
+      expect(body.get("line_items[0][price_data][recurring][interval]")).toBe(
+        "year",
+      );
+      expect(body.get("metadata[interval]")).toBe("YEAR");
     },
   );
 

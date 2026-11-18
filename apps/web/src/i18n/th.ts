@@ -102,6 +102,7 @@ export const th: Dictionary = {
   billingStatusActive: "ใช้งานอยู่",
   billingStatusPastDue: "ค้างชำระ",
   billingStatusCanceled: "ยกเลิกแล้ว",
+  billingStatusExpired: "หมดอายุ",
   billingCanceledNote: "ยกเลิกการชำระเงินแล้ว ไม่มีการเรียกเก็บเงิน",
   billingConfirming: "กำลังยืนยันการสมัครสมาชิก…",
   billingConfirmed: "การสมัครสมาชิกใช้งานได้แล้ว: {plan}",
@@ -114,6 +115,15 @@ export const th: Dictionary = {
     "การชำระเงินยังไม่เสร็จสมบูรณ์ กรุณาชำระเงินให้เสร็จแล้วลองอีกครั้ง",
   billingErrProvider:
     "ผู้ให้บริการชำระเงินไม่พร้อมใช้งานในขณะนี้ กรุณาลองใหม่ภายหลัง",
+  subscriptionReadOnlyBanner:
+    "การสมัครสมาชิกหมดอายุแล้ว ระบบอยู่ในโหมดอ่านอย่างเดียวจนกว่าเจ้าของร้านจะต่ออายุ",
+  subscriptionTrialBanner: "ทดลองใช้ฟรี: เหลือ {days}",
+  subscriptionTrialDay: "{days} วัน",
+  subscriptionTrialDays: "{days} วัน",
+  subscriptionViewPlans: "ดูแพ็กเกจ",
+  subscriptionRequired:
+    "การดำเนินการนี้ต้องมีการสมัครสมาชิกที่ใช้งานอยู่ เจ้าของร้านสามารถต่ออายุได้ที่หน้าราคา",
+  subscriptionActionDisabled: "ใช้งานไม่ได้ขณะที่การสมัครสมาชิกหมดอายุ",
   billingErrConfirm: "ไม่สามารถยืนยันการสมัครสมาชิกได้ กรุณาลองอีกครั้ง",
   organizationSettingsUnsavedConfirm:
     "คุณมีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก ต้องการออกจากหน้านี้หรือไม่?",

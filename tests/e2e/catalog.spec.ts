@@ -8,6 +8,7 @@ import {
   E2E_OWNER_EMAIL,
   E2E_PASSWORD,
 } from "./catalog-fixtures.ts";
+import { selectOption } from "./select-helpers.ts";
 
 const catalogPath = `/app/catalog?organizationId=${E2E_ORGANIZATION_ID}&branchId=${E2E_BRANCH_ID}`;
 
@@ -36,10 +37,9 @@ test("owner manages the catalog through the same-origin application path", async
   await page.getByLabel("SKU").first().fill("TEA-E2E-01");
   await page.getByLabel("Base price").first().fill("12.3400");
   await page.getByLabel("Barcode (optional)").first().fill("0012345678905");
-  await page
-    .getByLabel("Category (optional)")
-    .first()
-    .selectOption({ label: "Drinks" });
+  await selectOption(page, page.getByLabel("Category (optional)").first(), {
+    label: "Drinks",
+  });
   await page.getByRole("button", { name: "Create product" }).click();
   await expect(page.getByRole("heading", { name: "Green tea" })).toBeVisible();
   await expect(page.getByText("TEA-E2E-01 · 12.34 · EA")).toBeVisible();

@@ -10,6 +10,7 @@ import {
   E2E_PASSWORD,
   E2E_PURCHASE_PRODUCT_ID,
 } from "./catalog-fixtures.ts";
+import { selectOption } from "./select-helpers.ts";
 
 const purchaseOrderPath = `/app/purchase-orders?organizationId=${E2E_ORGANIZATION_ID}&branchId=${E2E_BRANCH_ID}`;
 const inventoryPath = `/app/inventory?organizationId=${E2E_ORGANIZATION_ID}&branchId=${E2E_BRANCH_ID}`;
@@ -24,20 +25,20 @@ async function signIn(page: import("@playwright/test").Page, email: string) {
 
 async function createDraft(page: import("@playwright/test").Page) {
   const form = page.getByRole("form", { name: "Create draft purchase order" });
-  await form
-    .getByLabel("Supplier")
-    .selectOption({ label: "Purchase order E2E supplier" });
-  await form
-    .getByLabel("Product line 1 product")
-    .selectOption(E2E_INVENTORY_PRODUCT_ID);
+  await selectOption(page, form.getByLabel("Supplier"), {
+    label: "Purchase order E2E supplier",
+  });
+  await selectOption(page, form.getByLabel("Product line 1 product"), {
+    value: E2E_INVENTORY_PRODUCT_ID,
+  });
   await form.getByLabel("Product line 1 quantity (EA)").fill("2");
   await form
     .getByLabel("Product line 1 expected unit cost (THB)")
     .fill("12.5000");
   await form.getByRole("button", { name: "Add product line" }).click();
-  await form
-    .getByLabel("Product line 2 product")
-    .selectOption(E2E_PURCHASE_PRODUCT_ID);
+  await selectOption(page, form.getByLabel("Product line 2 product"), {
+    value: E2E_PURCHASE_PRODUCT_ID,
+  });
   await form.getByLabel("Product line 2 quantity (KG)").fill("0.5");
   await form.getByLabel("Product line 2 expected unit cost (THB)").fill("8");
   await form

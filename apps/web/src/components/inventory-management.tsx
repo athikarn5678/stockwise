@@ -2,10 +2,7 @@
 import type { TranslationKey } from "@/i18n/en";
 import { useLanguage } from "@/providers/language-provider";
 import { Label } from "@/components/ui/label";
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+import { OptionSelect } from "@/components/option-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -277,23 +274,16 @@ function InventoryContent({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <Label className="form-field">
           {t("inventoryProductStatus")}
-          <NativeSelect
+          <OptionSelect
             className="w-full "
-            onChange={(event) =>
-              setStatus(event.target.value as InventoryStatus)
-            }
+            onValueChange={(value) => setStatus(value as InventoryStatus)}
+            options={[
+              { label: t("inventoryActiveProducts"), value: "ACTIVE" },
+              { label: t("inventoryInactiveProducts"), value: "INACTIVE" },
+              { label: t("inventoryAllProducts"), value: "ALL" },
+            ]}
             value={status}
-          >
-            <NativeSelectOption value="ACTIVE">
-              {t("inventoryActiveProducts")}
-            </NativeSelectOption>
-            <NativeSelectOption value="INACTIVE">
-              {t("inventoryInactiveProducts")}
-            </NativeSelectOption>
-            <NativeSelectOption value="ALL">
-              {t("inventoryAllProducts")}
-            </NativeSelectOption>
-          </NativeSelect>
+          />
         </Label>
         <Button
           variant="outline"
@@ -534,6 +524,8 @@ function AdjustmentForm({
 
   const queryClient = useQueryClient();
   const [validation, setValidation] = useState<TranslationKey | null>(null);
+  const [reason, setReason] =
+    useState<InventoryAdjustmentReason>("STOCK_COUNT");
   const keyRef = useRef<string | null>(null);
   const deltaId = useId();
   const reasonId = useId();
@@ -587,6 +579,7 @@ function AdjustmentForm({
           .then(() => {
             keyRef.current = null;
             form.reset();
+            setReason("STOCK_COUNT");
           })
           .catch((error: unknown) => setValidation(errorMessage(error)));
       }}
@@ -613,18 +606,22 @@ function AdjustmentForm({
         </Label>
         <Label className="form-field" htmlFor={reasonId}>
           {t("uiReason2")}
-          <NativeSelect
+          <OptionSelect
             className="w-full form-control--compact"
-            defaultValue="STOCK_COUNT"
             id={reasonId}
             name="reason"
-          >
-            {ADJUSTMENT_REASONS.map((reason) => (
-              <NativeSelectOption key={reason} value={reason}>
-                {t(REASON_LABELS[reason] ?? "inventoryReasonOther")}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+            onValueChange={(value) => {
+              // A select does not fire a native form change event, so the
+              // retry key must be invalidated here as well.
+              keyRef.current = null;
+              setReason(value as InventoryAdjustmentReason);
+            }}
+            options={ADJUSTMENT_REASONS.map((option) => ({
+              label: t(REASON_LABELS[option] ?? "inventoryReasonOther"),
+              value: option,
+            }))}
+            value={reason}
+          />
         </Label>
       </div>
       <Label className="form-field" htmlFor={noteId}>

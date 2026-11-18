@@ -312,7 +312,7 @@ same-origin mutation protection apply. Updating a profile neither changes
 credentials/verification, revokes or rotates sessions, nor mutates memberships,
 organization/branch data or first-onboarding provenance.
 
-The `/app/profile` form is available to every authenticated account, including
+The profile card on `/app/settings` (formerly `/app/profile`, which now redirects) is available to every authenticated account, including
 accounts without memberships. It refreshes shared actor display data after
 save without logging out. Dirty drafts retain their original base version
 during ordinary query refresh; conflicts offer explicit reload. Save/Cancel,

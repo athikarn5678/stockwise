@@ -76,11 +76,9 @@ export function createAccountDraftStore(): AccountDraftStore {
       context: AccessContext | undefined,
       value: AccountDraft | null,
     ) {
-      if (!context) {
-        entries.clear();
-        return;
-      }
-      if (!value) {
+      // Without a cached context only this scope's entry is dropped: another
+      // form on the same page (Settings) keeps its own draft.
+      if (!context || !value) {
         entries.delete(scope);
         return;
       }

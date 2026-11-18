@@ -382,7 +382,17 @@ it("keeps the profile and the organization draft side by side (Settings page)", 
   store.write("organization:one", current, null);
   expect(store.read("organization:one", current)).toBeNull();
   expect(store.read("profile", current)).toBe(profileDraft);
-  // A different actor drops every entry.
+  // A write without a cached context drops only its own scope.
+  store.write("organization:one", current, organizationDraft);
+  store.write("organization:one", undefined, organizationDraft);
+  expect(store.read("organization:one", current)).toBeNull();
+  expect(store.read("profile", current)).toBe(profileDraft);
+  // A different actor drops every entry (checked with the original actor's
+  // context, so the assertion does not pass merely because the actor differs).
   store.reconcile(context(actorB));
-  expect(store.read("profile", context(actorB))).toBeNull();
+  expect(store.read("profile", current)).toBeNull();
+  // Losing the context clears everything.
+  store.write("profile", current, profileDraft);
+  store.reconcile(null);
+  expect(store.read("profile", current)).toBeNull();
 });

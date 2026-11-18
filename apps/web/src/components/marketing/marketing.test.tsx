@@ -451,7 +451,7 @@ describe("pricing as the only place to subscribe", () => {
     expect(panel.textContent).toContain("Growth plan · Yearly");
     expect(screen.queryByText(/Current plan:/)).toBeNull();
     const growth = screen
-      .getByRole("heading", { name: "Growth", exact: true })
+      .getByRole("heading", { name: "Growth" })
       .closest("article")!;
     expect(within(growth).queryByRole("button")).toBeNull();
     expect(within(growth).getByText("Current plan")).toBeTruthy();

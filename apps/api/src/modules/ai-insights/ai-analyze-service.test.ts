@@ -428,13 +428,17 @@ describe("AI analysis service", () => {
     expect((await analysis.analyze(analyzeRequest)).kind).toBe("ok");
   });
 
-  it("answers insufficient_data without a provider call and gives the allowance back", async () => {
+  it("answers insufficient_data without a provider call and spends only a short cooldown", async () => {
     const { generate, provider } = fakeProvider({
       en: success(englishText),
       th: success(thaiText),
     });
     const { store, created } = fakeStore();
-    const { analyzeService: analysis, buildSnapshot } = service({
+    const {
+      advance,
+      analyzeService: analysis,
+      buildSnapshot,
+    } = service({
       provider,
       snapshot: noSalesSnapshot,
       store,
@@ -446,12 +450,14 @@ describe("AI analysis service", () => {
     expect(generate).not.toHaveBeenCalled();
     expect(created).toHaveLength(0);
 
-    // The wasteful attempt did not spend the allowance: asking again is not 429.
+    // An empty period cannot be polled for free: a 5 s cooldown applies, not 60 s.
     await expect(analysis.analyze(analyzeRequest)).resolves.toEqual({
-      kind: "insufficient_data",
+      kind: "rate_limited",
+      retryAfterSeconds: 5,
     });
+    advance(5_000);
 
-    // A real period immediately after is allowed, and that run does spend it.
+    // A real period after the cooldown is allowed, and that run spends the full minute.
     buildSnapshot.mockResolvedValue({ kind: "ok" as const, snapshot });
     expect((await analysis.analyze(analyzeRequest)).kind).toBe("ok");
     expect(generate).toHaveBeenCalledTimes(2);

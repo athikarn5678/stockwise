@@ -23,10 +23,11 @@ Numbering continues the global sequence (`ADR-001`…`ADR-049`). Plan: `docs/PLA
 3. **Prompt.** The Products, Notes & risks and Recommended actions sections must use these facts and name real products from the data; empty lists are stated as "none apply". Forecast, reorder quantities, suppliers and purchasing facts remain out of scope.
 4. **Data minimization.** Only product names and aggregates are sent; no product ids, SKUs, barcodes, customer, user or credential data, and no cost/COGS per product. The numeric validator of `ADR-046` still requires every number in the output to appear in the snapshot (digits inside product names are part of the snapshot).
 5. **Safety bound.** The product query returns at most 5,000 products; a larger catalog makes the snapshot unavailable rather than ranking a partial list.
-6. **Empty period.** A period with zero sales returns `422 INSUFFICIENT_DATA` with a clear message, calls no provider, stores nothing and does not spend the per-user allowance.
+6. **Empty period.** A period with zero sales returns `422 INSUFFICIENT_DATA` with a clear message, calls no provider, stores nothing and applies only a 5 s cooldown instead of the full 60 s allowance (the snapshot reads still run, so the cooldown stops free polling).
 
 ## Consequences
 
+- Product names with non-ASCII digits (for example Thai or full-width numerals) cannot be copied verbatim: the validator rejects non-ASCII digits, so such a run fails with `502 AI_RESPONSE_REJECTED`. Grouped ASCII digits (`1,000`) are accepted with or without the comma.
 - One additional read query per analysis; no schema change or migration.
 - Product names come from the catalog and reach the prompt as JSON data; the output contract and validator remain the guard against instruction-like names.
 - The seven-day rule is a fixed default; making it configurable is future work.

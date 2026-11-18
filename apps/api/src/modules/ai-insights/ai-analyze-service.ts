@@ -23,6 +23,7 @@ import type {
 } from "./ai-analyze-snapshot.ts";
 
 const RATE_LIMIT_MILLISECONDS = 60_000;
+const EMPTY_PERIOD_COOLDOWN_MILLISECONDS = 5_000;
 const LANGUAGES = ["th", "en"] as const;
 
 export type AiAnalyzeServiceResult =
@@ -158,8 +159,14 @@ export function createAiAnalyzeService(input: {
     // No sales in the period: nothing to analyze, so spend no provider call and
     // give the allowance back.
     if (snapshot.totals.saleCount === 0) {
-      if (previousRun === undefined) lastRunByActor.delete(request.actorUserId);
-      else lastRunByActor.set(request.actorUserId, previousRun);
+      // Keep a short cooldown so an empty period cannot be polled for free.
+      lastRunByActor.set(
+        request.actorUserId,
+        previousRun === undefined
+          ? now() -
+              (RATE_LIMIT_MILLISECONDS - EMPTY_PERIOD_COOLDOWN_MILLISECONDS)
+          : previousRun,
+      );
       return { kind: "insufficient_data" };
     }
     const provider = input.provider;

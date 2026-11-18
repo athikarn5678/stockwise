@@ -39,6 +39,8 @@ function collectNumbers(value: unknown, collected: number[]): void {
   }
   if (typeof value === "string") {
     collected.push(...numbersIn(value));
+    // A name like "Tissue 1,000 sheets" may be copied as "1000" (grouping stripped).
+    collected.push(...numbersIn(value.replace(GROUPED_DIGITS, "")));
     return;
   }
   if (Array.isArray(value)) {

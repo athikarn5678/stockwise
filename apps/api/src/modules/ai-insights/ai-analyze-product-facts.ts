@@ -74,7 +74,8 @@ function quantityText(value: Decimal): string {
 }
 
 function byName(left: Measured, right: Measured): number {
-  return left.name.localeCompare(right.name);
+  // Code-point order: independent of the server's ICU/locale data.
+  return left.name < right.name ? -1 : left.name > right.name ? 1 : 0;
 }
 
 function ranked(

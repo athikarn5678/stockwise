@@ -7,7 +7,7 @@ export const AI_ANALYZE_HEADINGS = {
   th: ["ภาพรวม", "ยอดขาย", "สินค้าขายดีและขายช้า", "ข้อสังเกต", "สิ่งที่ควรทำ"],
 } as const satisfies Record<AiAnalyzeLanguage, readonly string[]>;
 
-export const AI_ANALYZE_PROMPT_VERSION = "ai-analyze-prompt-v1";
+export const AI_ANALYZE_PROMPT_VERSION = "ai-analyze-prompt-v2";
 
 const rules = `Write a short business analysis of the supplied period in the requested language, in Markdown, using exactly these five level-two headings in this order, each on its own line, each with non-empty prose under it:
 `;

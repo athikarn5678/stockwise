@@ -210,6 +210,35 @@ describe("AI analyze output validation", () => {
     ).not.toThrow();
   });
 
+  it("accepts a product name with grouped digits copied without the comma", () => {
+    const withName: AiAnalyzeSnapshot = {
+      ...snapshot,
+      products: {
+        ...snapshot.products,
+        topByQuantity: [
+          {
+            name: "Tissue 1,000 sheets",
+            netSalesAmount: "200.00",
+            quantity: "2",
+          },
+        ],
+      },
+    };
+    expect(() =>
+      parseAiAnalyzeOutput({
+        language: "en",
+        snapshot: withName,
+        text: english([
+          "Net sales 1400.00.",
+          "Tissue 1000 sheets sold 2.",
+          "Food.",
+          "None.",
+          "Act.",
+        ]),
+      }),
+    ).not.toThrow();
+  });
+
   it("tolerates comma grouping and rounding of snapshot values", () => {
     expect(() =>
       parseAiAnalyzeOutput({

@@ -1060,6 +1060,13 @@ describe("analytics HTTP API with PostgreSQL", () => {
       "8",
       "31",
       "abc",
+      "07",
+      "%207",
+      "7.0",
+      "%2B7",
+      "7e0",
+      "",
+      "7&leadTimeDays=30",
     ]) {
       const invalid = await get(
         fixture.organization.id,

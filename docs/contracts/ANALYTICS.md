@@ -765,15 +765,15 @@ and accepted incoming zero):
 
 | Daily forecast | Lead days | On-hand | Unit/state | Raw need | Result |
 | --- | ---: | ---: | --- | ---: | --- |
-| `1.5000` | 2 | `4.0000` | `EA` | `0.0000` | `0` |
-| `1.5000` | 2 | `3.0000` | `EA` | `0.0000` | `0` |
-| `1.5000` | 2 | `2.9999` | `EA` | `0.0001` | `1` |
-| `1.5000` | 2 | `2.9999` | `KG` | `0.0001` | `0.0001` |
-| `0.0000` | 2 | `0.0000` | `EA` | `0.0000` | `0` |
-| unavailable | 2 | `0.0000` | insufficient history | null | `UNAVAILABLE/INSUFFICIENT_DATA` |
-| `1.5000` | missing, 0, or 8 | `0.0000` | `EA` | null | `UNAVAILABLE/LEAD_TIME_REQUIRED` if missing; otherwise `UNAVAILABLE/UNSUPPORTED_LEAD_TIME` |
-| `1.5000` | 2 | negative/divergent | `EA` | null | `UNAVAILABLE/INVENTORY_INTEGRITY_ERROR` |
-| unavailable | 2 | any | inactive Product | null | `UNAVAILABLE/INACTIVE_PRODUCT` |
+| `1.5000` | 7 | `11.0000` | `EA` | `0.0000` | `0` |
+| `1.5000` | 7 | `10.5000` | `EA` | `0.0000` | `0` |
+| `1.5000` | 7 | `10.4999` | `EA` | `0.0001` | `1` |
+| `1.5000` | 7 | `10.4999` | `KG` | `0.0001` | `0.0001` |
+| `0.0000` | 7 | `0.0000` | `EA` | `0.0000` | `0` |
+| unavailable | 7 | `0.0000` | insufficient history | null | `UNAVAILABLE/INSUFFICIENT_DATA` |
+| `1.5000` | missing (the API answers `400` for any present value other than 7 or 30; the value builder keeps `UNSUPPORTED_LEAD_TIME` defensively) | `0.0000` | `EA` | null | `UNAVAILABLE/LEAD_TIME_REQUIRED` if missing |
+| `1.5000` | 7 | negative/divergent | `EA` | null | `UNAVAILABLE/INVENTORY_INTEGRITY_ERROR` |
+| unavailable | 7 | any | inactive Product | null | `UNAVAILABLE/INACTIVE_PRODUCT` |
 
 An inactive Branch is outside authorized scope, not a numeric example. Pending
 PO quantity does not change these results, even when an `ORDERED` PO has an

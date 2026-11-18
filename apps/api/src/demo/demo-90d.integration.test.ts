@@ -50,6 +50,7 @@ const DEMO_PASSWORD = "M4-S1-Integration-Demo-2026!";
 /** The exclusive local boundary of the 90-day window, one day after the seed. */
 const REFERENCE_DATE = "2026-11-17";
 const SEED = 90;
+const ORDER_COUNT = 3 * Math.ceil(demoWindowShape(REFERENCE_DATE).days / 15);
 /** Bootstrap instant is before the window that starts 90 days back. */
 const BOOTSTRAP_CREATED_AT = new Date("2026-08-05T00:00:00.000Z");
 /** The window ends 2026-11-16T17:00Z; analytics must observe it as complete. */
@@ -302,14 +303,12 @@ suite("DEMO-90D one-command seed on disposable PostgreSQL", () => {
       where: { organizationId },
       select: { status: true, receipt: { select: { id: true } } },
     });
-    expect(orders).toHaveLength(
-      3 * Math.ceil(demoWindowShape(REFERENCE_DATE).days / 15),
-    );
+    expect(orders).toHaveLength(ORDER_COUNT);
     expect(orders.every((order) => order.status === "RECEIVED")).toBe(true);
     expect(orders.every((order) => order.receipt !== null)).toBe(true);
     expect(
       await prisma.purchaseReceipt.count({ where: { organizationId } }),
-    ).toBe(18);
+    ).toBe(ORDER_COUNT);
 
     const methods = await prisma.payment.findMany({
       distinct: ["method"],
@@ -321,7 +320,7 @@ suite("DEMO-90D one-command seed on disposable PostgreSQL", () => {
     );
 
     expect(await prisma.saleRefund.count({ where: { organizationId } })).toBe(
-      9,
+      plan.sales.filter((sale) => sale.refund).length,
     );
     expect(
       await prisma.inventoryTransaction.count({

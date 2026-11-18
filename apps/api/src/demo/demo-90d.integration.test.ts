@@ -57,6 +57,7 @@ const BOOTSTRAP_CREATED_AT = new Date("2026-08-05T00:00:00.000Z");
 const ANALYTICS_NOW = new Date("2026-11-17T17:00:00.000Z");
 const PUBLIC_WEB_ORIGIN = "https://web.example.test";
 const NATIVE_COOKIE_PREFIX = "stockwise_native.session_token=";
+const recordedEmail = createRecordingEmailProvider();
 const cursorCodec = createAnalyticsDimensionCursorCodec(Buffer.alloc(32, 11));
 
 const catalog = demo90dCatalog();
@@ -183,7 +184,7 @@ suite("DEMO-90D one-command seed on disposable PostgreSQL", () => {
     runtime = createBetterAuthApplicationRuntime({
       environment: apiEnvironment,
       prisma,
-      emailProvider: createRecordingEmailProvider(),
+      emailProvider: recordedEmail,
       onDeliveryFailure() {},
     });
     const router = Router();
@@ -289,11 +290,11 @@ suite("DEMO-90D one-command seed on disposable PostgreSQL", () => {
       assignedByEmail.set(email, (assignedByEmail.get(email) ?? 0) + 1);
     }
     expect(assignments).toHaveLength(4);
-    expect(assignedByEmail.get("demo-owner@example.invalid")).toBeUndefined();
-    expect(assignedByEmail.get("demo-admin@example.invalid")).toBeUndefined();
-    expect(assignedByEmail.get("demo-manager@example.invalid")).toBe(2);
-    expect(assignedByEmail.get("demo-inventory@example.invalid")).toBe(1);
-    expect(assignedByEmail.get("demo-cashier@example.invalid")).toBe(1);
+    expect(assignedByEmail.get("owner@hcn920.com")).toBeUndefined();
+    expect(assignedByEmail.get("admin@hcn920.com")).toBeUndefined();
+    expect(assignedByEmail.get("manager@hcn920.com")).toBe(2);
+    expect(assignedByEmail.get("inventory@hcn920.com")).toBe(1);
+    expect(assignedByEmail.get("cashier@hcn920.com")).toBe(1);
 
     expect(await prisma.sale.count({ where: { organizationId } })).toBe(
       plan.sales.length,
@@ -401,6 +402,18 @@ suite("DEMO-90D one-command seed on disposable PostgreSQL", () => {
         }),
       ).toBe(1);
     }
+
+    // The store owner can sign in with the visible store address.
+    const ownerLogin = await post("/auth/login", {
+      email: "owner@hcn920.com",
+      password: DEMO_PASSWORD,
+    });
+    expect(ownerLogin.status).toBe(200);
+
+    // Seeding and logging in sent no email and left no verification or reset token.
+    expect(recordedEmail.messages).toHaveLength(0);
+    expect(await prisma.passwordResetToken.count()).toBe(0);
+    expect(await prisma.betterAuthVerification.count()).toBe(0);
 
     const rejected = await post("/auth/login", {
       email: catalog.users[0]!.email,

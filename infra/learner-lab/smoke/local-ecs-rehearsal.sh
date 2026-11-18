@@ -203,7 +203,7 @@ expect() {
 expect TARGET_HEALTH_CHECK_PATH 200 "${base}/api/health"
 expect ANONYMOUS_ACCESS_CONTEXT_401 401 "${base}/api/v1/me/access-context"
 
-printf '{"email":"demo-owner@example.invalid","password":"%s"}' "$demo" >"${home}/login.json"
+printf '{"email":"owner@hcn920.com","password":"%s"}' "$demo" >"${home}/login.json"
 headers="$(curl --silent --max-time 30 --output "$sink" --dump-header - -X POST "${base}/api/v1/auth/login" \
   -H "content-type: application/json" -H "origin: ${public_origin}" --data-binary "@$(win "${home}/login.json")" | tr -d '\r')"
 rm -f "${home}/login.json"
@@ -220,7 +220,7 @@ cookie="$(sed -E 's/^set-cookie: ([^;]*).*/\1/I' <<<"$session")"
 context="$(curl --silent --max-time 15 -H "cookie: ${cookie}" "${base}/api/v1/me/access-context" || true)"
 if grep -q '"role":"OWNER"' <<<"$context"; then record ACCESS_CONTEXT_OWNER PASS; else record ACCESS_CONTEXT_OWNER FAIL; fi
 expect CROSS_ORIGIN_LOGIN_REFUSED 403 -X POST -H "content-type: application/json" \
-  -H "origin: https://cross-origin.invalid" --data '{"email":"demo-owner@example.invalid","password":"x"}' \
+  -H "origin: https://cross-origin.invalid" --data '{"email":"owner@hcn920.com","password":"x"}' \
   "${base}/api/v1/auth/login"
 
 # Loopback API: reachable inside the task namespace, never from the network.

@@ -361,8 +361,8 @@ describe("AI analysis service", () => {
     expect(result.run.languages.en).toHaveLength(5);
     expect(created).toHaveLength(1);
     expect(created[0]?.contentTh).toBeNull();
-    // English once; the failing Thai gets exactly one automatic second attempt.
-    expect(generate).toHaveBeenCalledTimes(3);
+    // A TIMEOUT is never retried automatically (it would double the wait).
+    expect(generate).toHaveBeenCalledTimes(2);
   });
 
   it("retries a failed language once inside the same run and keeps both", async () => {
@@ -551,6 +551,104 @@ describe("AI analysis service", () => {
     // The stale entry was restored (harmless) and still allows a real run.
     expect((await analysis.analyze(analyzeRequest)).kind).toBe("ok");
     expect(generate).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not retry automatically after a timeout, auth failure, or a slow first attempt", async () => {
+    for (const category of ["TIMEOUT", "AUTHENTICATION"] as const) {
+      const { generate, provider } = fakeProvider({
+        en: success(englishText),
+        th: { attempts: [], failureCategory: category, ok: false },
+      });
+      const { store } = fakeStore();
+      const { analyzeService: analysis } = service({ provider, store });
+      const result = await analysis.analyze(analyzeRequest);
+      if (result.kind !== "ok") throw new Error("expected success");
+      expect(result.run.missing).toEqual(["th"]);
+      expect(generate).toHaveBeenCalledTimes(2);
+    }
+
+    // A transient failure that took longer than the deadline is not retried.
+    const { store } = fakeStore();
+    let advanceClock: (milliseconds: number) => void = () => undefined;
+    const generate = vi.fn<AiProvider["generate"]>(async ({ text }) => {
+      if (languageOf(text) === "en") return success(englishText);
+      advanceClock(30_000);
+      return { attempts: [], failureCategory: "INVALID_RESPONSE", ok: false };
+    });
+    const { advance, analyzeService: analysis } = service({
+      provider: { generate },
+      store,
+    });
+    advanceClock = advance;
+    await analysis.analyze(analyzeRequest);
+    expect(generate).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a manual single-language retry once, within one limiter use", async () => {
+    let calls = 0;
+    const generate = vi.fn<AiProvider["generate"]>(async () => {
+      calls += 1;
+      return calls === 1
+        ? { attempts: [], failureCategory: "INVALID_RESPONSE", ok: false }
+        : success(thaiText);
+    });
+    const { store, fillLanguage } = fakeStore([
+      row({ contentEn: englishText, contentTh: null }),
+    ]);
+    const { analyzeService: analysis } = service({
+      provider: { generate },
+      store,
+    });
+    const result = await analysis.retry({
+      ...analyzeRequest,
+      language: "th",
+      runId: RUN_ID,
+    });
+    if (result.kind !== "ok") throw new Error("expected success");
+    expect(result.run.missing).toEqual([]);
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(fillLanguage).toHaveBeenCalledTimes(1);
+    // One manual click is one limiter use: another run right away is limited.
+    await expect(analysis.analyze(analyzeRequest)).resolves.toMatchObject({
+      kind: "rate_limited",
+    });
+  });
+
+  it("keeps the run unchanged when both manual attempts fail or are rejected", async () => {
+    const { store, fillLanguage } = fakeStore([
+      row({ contentEn: englishText, contentTh: null }),
+    ]);
+    const failing = vi.fn<AiProvider["generate"]>(async () => ({
+      attempts: [],
+      failureCategory: "INVALID_RESPONSE",
+      ok: false,
+    }));
+    const first = service({ provider: { generate: failing }, store });
+    await expect(
+      first.analyzeService.retry({
+        ...analyzeRequest,
+        language: "th",
+        runId: RUN_ID,
+      }),
+    ).resolves.toEqual({
+      category: "INVALID_RESPONSE",
+      kind: "provider_failed",
+    });
+    expect(failing).toHaveBeenCalledTimes(2);
+
+    const hallucinated = vi.fn<AiProvider["generate"]>(async () =>
+      success(thaiText.replace("1400.00", "9876.54")),
+    );
+    const second = service({ provider: { generate: hallucinated }, store });
+    await expect(
+      second.analyzeService.retry({
+        ...analyzeRequest,
+        language: "th",
+        runId: RUN_ID,
+      }),
+    ).resolves.toEqual({ kind: "rejected" });
+    expect(hallucinated).toHaveBeenCalledTimes(2);
+    expect(fillLanguage).not.toHaveBeenCalled();
   });
 
   it("retries only the missing language and counts one allowance", async () => {

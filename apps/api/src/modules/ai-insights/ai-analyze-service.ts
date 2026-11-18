@@ -23,6 +23,16 @@ import type {
 } from "./ai-analyze-snapshot.ts";
 
 const RATE_LIMIT_MILLISECONDS = 60_000;
+// The web proxy allows 90 s and the ALB 60 s idle; a second attempt may only
+// start when the first ended early enough to stay well inside both.
+const SECOND_ATTEMPT_DEADLINE_MILLISECONDS = 25_000;
+const RETRYABLE_CATEGORIES: ReadonlySet<AiProviderFailureCategory> = new Set([
+  "INVALID_RESPONSE",
+  "RATE_LIMITED",
+  "PROVIDER_UNAVAILABLE",
+  "PROVIDER_ERROR",
+  "TRANSPORT",
+]);
 const EMPTY_PERIOD_COOLDOWN_MILLISECONDS = 5_000;
 const LANGUAGES = ["th", "en"] as const;
 
@@ -205,6 +215,7 @@ export function createAiAnalyzeService(input: {
     };
     const outcomes = await Promise.all(
       LANGUAGES.map(async (language): Promise<LanguageOutcome> => {
+        const startedAt = now();
         const first = await attempt(language);
         if (first.kind === "ok") return first;
         input.onLanguageFailure?.({
@@ -213,6 +224,15 @@ export function createAiAnalyzeService(input: {
             first.kind === "provider_failed" ? first.category : "REJECTED",
           language,
         });
+        // Retry a rejected draft or a transient provider error, and only while
+        // the first attempt was quick (never after a timeout or auth failure).
+        const transient =
+          first.kind === "rejected" || RETRYABLE_CATEGORIES.has(first.category);
+        if (
+          !transient ||
+          now() - startedAt > SECOND_ATTEMPT_DEADLINE_MILLISECONDS
+        )
+          return first;
         const second = await attempt(language);
         if (second.kind !== "ok")
           input.onLanguageFailure?.({
@@ -289,12 +309,14 @@ export function createAiAnalyzeService(input: {
       language: request.language,
       snapshot,
     });
+    const startedAt = now();
     let generated = await provider.generate({ text: prompt });
-    // One automatic second attempt within the same limiter use.
-    if (
-      !generated.ok ||
-      !parseLanguage(request.language, snapshot, generated.text)
-    )
+    // One automatic second attempt for a transient failure or a rejected draft,
+    // only while the first attempt was quick (same limiter use).
+    const transient = generated.ok
+      ? !parseLanguage(request.language, snapshot, generated.text)
+      : RETRYABLE_CATEGORIES.has(generated.failureCategory);
+    if (transient && now() - startedAt <= SECOND_ATTEMPT_DEADLINE_MILLISECONDS)
       generated = await provider.generate({ text: prompt });
     if (!generated.ok)
       return { kind: "provider_failed", category: generated.failureCategory };

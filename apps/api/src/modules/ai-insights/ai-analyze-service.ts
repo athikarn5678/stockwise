@@ -59,6 +59,12 @@ function scopeBranchId(scope: AiAnalyzeScope): string | null {
 export function createAiAnalyzeService(input: {
   buildSnapshot: SnapshotBuilder;
   now?: () => number;
+  /** Failure category only (never content), for operator diagnostics. */
+  onLanguageFailure?: (event: {
+    attempt: 1 | 2;
+    category: string;
+    language: AiAnalyzeLanguage;
+  }) => void;
   provider?: AiProvider;
   store: Pick<AiAnalysisStore, "create" | "fillLanguage" | "find">;
 }) {
@@ -172,26 +178,50 @@ export function createAiAnalyzeService(input: {
     const provider = input.provider;
     if (provider === undefined) return { kind: "ok", run: mockRun(snapshot) };
 
-    // Both languages are generated together and validated separately.
+    // Both languages are generated together and validated separately. A failed
+    // language gets one more attempt inside the same run (one limiter use): a
+    // transient provider error or a rejected draft is the common cause of a
+    // missing language. The validator is never relaxed.
+    const attempt = async (
+      language: AiAnalyzeLanguage,
+    ): Promise<LanguageOutcome> => {
+      const generated = await provider.generate({
+        text: buildAiAnalyzePrompt({ language, snapshot }),
+      });
+      if (!generated.ok)
+        return {
+          category: generated.failureCategory,
+          kind: "provider_failed",
+          language,
+        };
+      if (!parseLanguage(language, snapshot, generated.text))
+        return { kind: "rejected", language };
+      return {
+        kind: "ok",
+        language,
+        model: modelOf(generated),
+        text: generated.text,
+      };
+    };
     const outcomes = await Promise.all(
       LANGUAGES.map(async (language): Promise<LanguageOutcome> => {
-        const generated = await provider.generate({
-          text: buildAiAnalyzePrompt({ language, snapshot }),
-        });
-        if (!generated.ok)
-          return {
-            category: generated.failureCategory,
-            kind: "provider_failed",
-            language,
-          };
-        if (!parseLanguage(language, snapshot, generated.text))
-          return { kind: "rejected", language };
-        return {
-          kind: "ok",
+        const first = await attempt(language);
+        if (first.kind === "ok") return first;
+        input.onLanguageFailure?.({
+          attempt: 1,
+          category:
+            first.kind === "provider_failed" ? first.category : "REJECTED",
           language,
-          model: modelOf(generated),
-          text: generated.text,
-        };
+        });
+        const second = await attempt(language);
+        if (second.kind !== "ok")
+          input.onLanguageFailure?.({
+            attempt: 2,
+            category:
+              second.kind === "provider_failed" ? second.category : "REJECTED",
+            language,
+          });
+        return second;
       }),
     );
     const th = outcomes.find((outcome) => outcome.language === "th");
@@ -255,9 +285,17 @@ export function createAiAnalyzeService(input: {
     if (snapshotOutcome.kind !== "ok") return { kind: "not_found" };
     const snapshot = snapshotOutcome.snapshot;
 
-    const generated = await provider.generate({
-      text: buildAiAnalyzePrompt({ language: request.language, snapshot }),
+    const prompt = buildAiAnalyzePrompt({
+      language: request.language,
+      snapshot,
     });
+    let generated = await provider.generate({ text: prompt });
+    // One automatic second attempt within the same limiter use.
+    if (
+      !generated.ok ||
+      !parseLanguage(request.language, snapshot, generated.text)
+    )
+      generated = await provider.generate({ text: prompt });
     if (!generated.ok)
       return { kind: "provider_failed", category: generated.failureCategory };
     if (!parseLanguage(request.language, snapshot, generated.text))

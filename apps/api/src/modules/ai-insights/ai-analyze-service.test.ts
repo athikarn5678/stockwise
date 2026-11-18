@@ -278,6 +278,11 @@ function fakeStore(initial: AiAnalysisRun[] = []) {
 }
 
 function service(options: {
+  onLanguageFailure?: (event: {
+    attempt: 1 | 2;
+    category: string;
+    language: "en" | "th";
+  }) => void;
   provider?: AiProvider;
   snapshot?: AiAnalyzeSnapshot;
   store: ReturnType<typeof fakeStore>["store"];
@@ -291,6 +296,9 @@ function service(options: {
     ...(options.provider === undefined ? {} : { provider: options.provider }),
     buildSnapshot,
     now: () => clock,
+    ...(options.onLanguageFailure === undefined
+      ? {}
+      : { onLanguageFailure: options.onLanguageFailure }),
     store: options.store,
   });
   return {
@@ -353,7 +361,55 @@ describe("AI analysis service", () => {
     expect(result.run.languages.en).toHaveLength(5);
     expect(created).toHaveLength(1);
     expect(created[0]?.contentTh).toBeNull();
-    expect(generate).toHaveBeenCalledTimes(2);
+    // English once; the failing Thai gets exactly one automatic second attempt.
+    expect(generate).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries a failed language once inside the same run and keeps both", async () => {
+    let thaiCalls = 0;
+    const generate = vi.fn<AiProvider["generate"]>(async ({ text }) => {
+      if (languageOf(text) === "en") return success(englishText);
+      thaiCalls += 1;
+      return thaiCalls === 1
+        ? { attempts: [], failureCategory: "INVALID_RESPONSE", ok: false }
+        : success(thaiText);
+    });
+    const failures: unknown[] = [];
+    const { store, created } = fakeStore();
+    const { analyzeService: analysis } = service({
+      onLanguageFailure: (event) => failures.push(event),
+      provider: { generate },
+      store,
+    });
+
+    const result = await analysis.analyze(analyzeRequest);
+    if (result.kind !== "ok") throw new Error("expected success");
+    expect(result.run.missing).toEqual([]);
+    expect(created).toHaveLength(1);
+    expect(created[0]?.contentTh).not.toBeNull();
+    expect(generate).toHaveBeenCalledTimes(3);
+    expect(failures).toEqual([
+      { attempt: 1, category: "INVALID_RESPONSE", language: "th" },
+    ]);
+    // One click is still one limiter use despite the second attempt.
+    await expect(analysis.analyze(analyzeRequest)).resolves.toMatchObject({
+      kind: "rate_limited",
+    });
+  });
+
+  it("does not relax the validator on the automatic second attempt", async () => {
+    const { generate, provider } = fakeProvider({
+      en: success(englishText),
+      th: success(thaiText.replace("1400.00", "9876.54")),
+    });
+    const { store, created } = fakeStore();
+    const { analyzeService: analysis } = service({ provider, store });
+
+    const result = await analysis.analyze(analyzeRequest);
+    if (result.kind !== "ok") throw new Error("expected success");
+    expect(result.run.missing).toEqual(["th"]);
+    expect(created[0]?.contentTh).toBeNull();
+    expect(generate).toHaveBeenCalledTimes(3);
   });
 
   it("persists nothing when both languages fail", async () => {

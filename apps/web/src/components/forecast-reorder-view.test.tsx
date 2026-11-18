@@ -216,11 +216,8 @@ describe("Forecast and reorder view", () => {
     await chooseProduct();
     expect(await screen.findByText("0.0000 EA total")).toBeTruthy();
     expect(await screen.findByText("Recommend 0.0000 EA")).toBeTruthy();
-    expect(
-      within(
-        screen.getByLabelText("Forecast and reorder limitations"),
-      ).getByText(/never places an order/),
-    ).toBeTruthy();
+    expect(screen.getByText(/advisory only/)).toBeTruthy();
+    expect(screen.queryByText("How to interpret these estimates")).toBeNull();
     expect(
       screen.queryByRole("button", { name: /purchase|order/i }),
     ).toBeNull();
@@ -244,14 +241,14 @@ describe("Forecast and reorder view", () => {
     ]);
     expect(
       screen.getByText(
-        "Planning lead time is the number of days between placing a purchase order and receiving the goods. The recommendation covers expected sales over that many days.",
+        "Forecast is the average of the last 28 days of sales; reorder covers the chosen lead time and is advisory only.",
       ),
     ).toBeTruthy();
-    expect(
-      screen.getByText(
-        "The recommended order quantity can be 0 when stock on hand already covers the forecast demand for the selected lead time, so nothing needs to be ordered now.",
-      ),
-    ).toBeTruthy();
+    // Branch, Product and lead time share one equal-width row (stacked on mobile).
+    const row = select.closest(".grid");
+    expect(row?.className).toContain("grid-cols-1");
+    expect(row?.className).toContain("sm:grid-cols-3");
+    expect(row?.children).toHaveLength(3);
     await chooseOptionByValue(select, "7");
     await waitFor(() =>
       expect(reorderMock).toHaveBeenLastCalledWith(
@@ -299,12 +296,7 @@ describe("Forecast and reorder view", () => {
     ]);
     expect(
       screen.getByText(
-        "ระยะเวลารอสินค้าคือจำนวนวันระหว่างการสั่งซื้อจนได้รับสินค้า คำแนะนำจะครอบคลุมยอดขายที่คาดว่าจะเกิดขึ้นในช่วงจำนวนวันนั้น",
-      ),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(
-        "จำนวนที่แนะนำอาจเป็น 0 ได้ เมื่อสต็อกคงเหลือเพียงพอกับความต้องการที่พยากรณ์ไว้ตลอดระยะเวลารอสินค้าที่เลือก จึงยังไม่ต้องสั่งซื้อเพิ่ม",
+        "พยากรณ์จากค่าเฉลี่ยยอดขาย 28 วันล่าสุด ส่วนปริมาณสั่งซื้อครอบคลุมตามระยะเวลาที่เลือก และเป็นเพียงคำแนะนำ",
       ),
     ).toBeTruthy();
     await chooseOptionByValue(select, "30");

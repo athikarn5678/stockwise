@@ -1201,14 +1201,12 @@ export const en = {
   uiNoProductsMatchThisSearch: "No Products match this search.",
   uiChooseABranchToSearchProducts: "Choose a Branch to search Products.",
   uiLoadMoreProducts: "Load more Products",
+  uiForecastReorderHint:
+    "Forecast is the average of the last 28 days of sales; reorder covers the chosen lead time and is advisory only.",
   uiPlanningLeadTime: "Planning lead time",
   uiChoose7Or30Days: "Choose 7 or 30 days",
   uiLeadTime7Days: "7 days",
   uiLeadTime30Days: "30 days",
-  uiPlanningLeadTimeExplanation:
-    "Planning lead time is the number of days between placing a purchase order and receiving the goods. The recommendation covers expected sales over that many days.",
-  uiWhyRecommendedQuantityCanBeZero:
-    "The recommended order quantity can be 0 when stock on hand already covers the forecast demand for the selected lead time, so nothing needs to be ordered now.",
   uiNoAccessibleActiveBranchIsAvailable:
     "No accessible active Branch is available.",
   uiChooseAProductToSeeItsForecastAndReorder:
@@ -1233,12 +1231,6 @@ export const en = {
   uiForecastDemand: "Forecast demand",
   uiOnHand: "On hand",
   uiNeedBeforeUnitRounding: "Need before unit rounding",
-  uiForecastAndReorderLimitations: "Forecast and reorder limitations",
-  uiHowToInterpretTheseEstimates: "How to interpret these estimates",
-  uiForecastUsesASimpleMeanOfObservedCompletedSale:
-    "Forecast uses a simple mean of observed completed-sale quantities over 28 complete local days. Zero days remain zero. It has no seasonality or lost-demand correction; stockouts may suppress observed demand. The current partial local day is excluded.",
-  uiReorderUsesYourSelectedLeadTimeOfAtMost:
-    "Reorder uses your selected lead time of 7 or 30 days. Safety stock is zero and pending incoming orders are excluded. It has no Supplier, MOQ, or purchase-pack logic. This is advisory only and never places an order.",
   uiTheSelectedPeriodIsNotComplete: "The selected period is not complete",
   uiFewerThan28CompleteDaysOfInventoryHistory:
     "Fewer than 28 complete days of inventory history",

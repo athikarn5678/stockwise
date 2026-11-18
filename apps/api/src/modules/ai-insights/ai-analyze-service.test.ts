@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { AiAnalysisRun } from "../../generated/prisma/client.ts";
 import type { AiProvider, AiProviderResult } from "./ai-provider.ts";
-import { buildMockAiAnalyzeOutput } from "./ai-analyze-output.ts";
 import type { AiAnalyzeSnapshot } from "./ai-analyze-snapshot.ts";
 import { createAiAnalyzeService } from "./ai-analyze-service.ts";
+
+const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
+const BRANCH_ID = "20000000-0000-4000-8000-000000000001";
+const RUN_ID = "70000000-0000-4000-8000-000000000001";
 
 const snapshot: AiAnalyzeSnapshot = {
   bestDay: { date: "2026-11-12", netSalesAmount: "1200.00" },
@@ -31,11 +35,11 @@ const snapshot: AiAnalyzeSnapshot = {
     },
   ],
   period: {
-    days: 2,
-    from: "2026-11-11",
-    scope: "branch",
+    days: 7,
+    from: "2026-11-09",
+    scope: "organization",
     timezone: "Asia/Bangkok",
-    to: "2026-11-13",
+    to: "2026-11-16",
   },
   totals: {
     averageOrderValue: "200.00",
@@ -47,15 +51,7 @@ const snapshot: AiAnalyzeSnapshot = {
   worstDay: { date: "2026-11-11", netSalesAmount: "200.00" },
 };
 
-const request = {
-  actorUserId: "trusted-user-id",
-  days: 7,
-  language: "en" as const,
-  organizationId: "10000000-0000-4000-8000-000000000001",
-  scope: { kind: "organization" as const },
-};
-
-const validText = [
+const englishText = [
   "## Overview",
   "Net sales 1400.00 from 7 sales.",
   "## Sales",
@@ -68,37 +64,161 @@ const validText = [
   "Review Drinks.",
 ].join("\n");
 
+const thaiText = [
+  "## ภาพรวม",
+  "ยอดขายสุทธิ 1400.00 จาก 7 รายการ",
+  "## ยอดขาย",
+  "ยอดคืนเงิน 50.00",
+  "## สินค้าขายดีและขายช้า",
+  "ข้อมูลระดับหมวดหมู่: Food 900.00",
+  "## ข้อสังเกต",
+  "ต้นทุน unavailable",
+  "## สิ่งที่ควรทำ",
+  "ตรวจสอบ Drinks",
+].join("\n");
+
+const analyzeRequest = {
+  actorUserId: "trusted-user-id",
+  days: 7,
+  organizationId: ORGANIZATION_ID,
+  scope: { kind: "organization" as const },
+};
+
+function row(overrides: Partial<AiAnalysisRun> = {}): AiAnalysisRun {
+  return {
+    id: RUN_ID,
+    organizationId: ORGANIZATION_ID,
+    branchId: null,
+    actorUserId: "trusted-user-id",
+    days: 7,
+    localFrom: new Date("2026-11-09T00:00:00.000Z"),
+    localTo: new Date("2026-11-16T00:00:00.000Z"),
+    reportingTimezone: "Asia/Bangkok",
+    contentTh: null,
+    contentEn: null,
+    model: "deepseek-v4.1-flash",
+    createdAt: new Date("2026-11-16T03:00:00.000Z"),
+    updatedAt: new Date("2026-11-16T03:00:00.000Z"),
+    ...overrides,
+  };
+}
+
+function languageOf(prompt: string) {
+  return prompt.includes("Answer in Thai.") ? "th" : "en";
+}
+
+/** Fake provider keyed by the requested language, so TH and EN differ. */
+function fakeProvider(answers: Partial<Record<"en" | "th", AiProviderResult>>) {
+  const generate = vi.fn<AiProvider["generate"]>(async ({ text }) => {
+    const answer = answers[languageOf(text)];
+    return (
+      answer ?? {
+        attempts: [],
+        failureCategory: "TIMEOUT",
+        ok: false,
+      }
+    );
+  });
+  return { generate, provider: { generate } satisfies AiProvider };
+}
+
 function success(text: string): AiProviderResult {
   return {
     actualModel: "deepseek-v4.1-flash",
     attempts: [],
     ok: true,
-    requestedModel: "deepseek-v4.1-flash",
+    requestedModel: "requested-model",
     text,
   };
 }
 
-function fakeProvider(result: AiProviderResult) {
-  const generate = vi.fn<AiProvider["generate"]>(async () => result);
+type CreateInput = {
+  actorUserId: string;
+  branchId: string | null;
+  contentEn: string | null;
+  contentTh: string | null;
+  days: number;
+  localFrom: string;
+  localTo: string;
+  model: string;
+  organizationId: string;
+  reportingTimezone: string;
+};
+
+function fakeStore(initial: AiAnalysisRun[] = []) {
+  const rows = [...initial];
+  const created: CreateInput[] = [];
+  const create = vi.fn(async (input: CreateInput) => {
+    created.push(input);
+    const stored = row({
+      id: RUN_ID,
+      branchId: input.branchId,
+      contentEn: input.contentEn,
+      contentTh: input.contentTh,
+      days: input.days,
+      model: input.model,
+      localFrom: new Date(`${input.localFrom}T00:00:00.000Z`),
+      localTo: new Date(`${input.localTo}T00:00:00.000Z`),
+      reportingTimezone: input.reportingTimezone,
+    });
+    rows.push(stored);
+    return stored;
+  });
+  const fillLanguage = vi.fn(
+    async (input: {
+      content: string;
+      language: "th" | "en";
+      model: string;
+      organizationId: string;
+      runId: string;
+    }) => {
+      const current = rows.find((candidate) => candidate.id === input.runId);
+      if (current === undefined) return null;
+      const column = input.language === "th" ? "contentTh" : "contentEn";
+      if (current[column] !== null) return null;
+      const updated = {
+        ...current,
+        [column]: input.content,
+        model: input.model,
+      };
+      rows.splice(rows.indexOf(current), 1, updated);
+      return updated;
+    },
+  );
+  const find = vi.fn(async (organizationId: string, runId: string) => {
+    return (
+      rows.find(
+        (candidate) =>
+          candidate.id === runId && candidate.organizationId === organizationId,
+      ) ?? null
+    );
+  });
   return {
-    generate,
-    provider: { generate } satisfies AiProvider,
+    create,
+    fillLanguage,
+    find,
+    created,
+    store: { create, fillLanguage, find },
   };
 }
 
-function service(provider?: AiProvider) {
+function service(options: {
+  provider?: AiProvider;
+  store: ReturnType<typeof fakeStore>["store"];
+}) {
   const buildSnapshot = vi.fn(async () => ({
     kind: "ok" as const,
     snapshot,
   }));
-  let clock = 1_000;
-  const analyzeService = createAiAnalyzeService({
-    ...(provider === undefined ? {} : { provider }),
+  let clock = 1_000_000;
+  const created = createAiAnalyzeService({
+    ...(options.provider === undefined ? {} : { provider: options.provider }),
     buildSnapshot,
     now: () => clock,
+    store: options.store,
   });
   return {
-    analyzeService,
+    analyzeService: created,
     buildSnapshot,
     advance(milliseconds: number) {
       clock += milliseconds;
@@ -106,98 +226,238 @@ function service(provider?: AiProvider) {
   };
 }
 
-describe("AI analyze service", () => {
-  it("returns validated provider sections without persisting anything", async () => {
-    const { generate, provider } = fakeProvider(success(validText));
-    const { analyzeService, buildSnapshot } = service(provider);
-    const result = await analyzeService.analyze(request);
-
-    expect(result).toMatchObject({ kind: "ok", mock: false, language: "en" });
-    if (result.kind !== "ok") throw new Error("expected success");
-    expect(result.sections).toHaveLength(5);
-    expect(result.period).toEqual(snapshot.period);
-    expect(generate).toHaveBeenCalledWith({
-      text: expect.stringContaining("## Overview"),
+describe("AI analysis service", () => {
+  it("generates both languages with one allowance and persists one row", async () => {
+    const { generate, provider } = fakeProvider({
+      en: success(englishText),
+      th: success(thaiText),
     });
-    expect(buildSnapshot).toHaveBeenCalledWith({
-      actorUserId: request.actorUserId,
-      days: request.days,
-      organizationId: request.organizationId,
-      scope: request.scope,
+    const { store, created } = fakeStore();
+    const { analyzeService: analysis } = service({ provider, store });
+
+    const result = await analysis.analyze(analyzeRequest);
+    expect(result.kind).toBe("ok");
+    if (result.kind !== "ok") throw new Error("expected success");
+    expect(result.run).toMatchObject({
+      id: RUN_ID,
+      days: 7,
+      mock: false,
+      missing: [],
+      model: "deepseek-v4.1-flash",
+      period: {
+        from: "2026-11-09",
+        scope: "organization",
+        timezone: "Asia/Bangkok",
+        to: "2026-11-16",
+      },
+    });
+    expect(result.run.languages.th?.[0]).toEqual({
+      body: "ยอดขายสุทธิ 1400.00 จาก 7 รายการ",
+      heading: "ภาพรวม",
+    });
+    expect(result.run.languages.en?.[0]?.heading).toBe("Overview");
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({
+      branchId: null,
+      contentEn: englishText,
+      contentTh: thaiText,
     });
   });
 
-  it("falls back to deterministic mock text without a provider", async () => {
-    const { analyzeService } = service();
-    const result = await analyzeService.analyze(request);
-    expect(result).toMatchObject({ kind: "ok", mock: true });
+  it("persists one language and reports the other as missing", async () => {
+    const { generate, provider } = fakeProvider({ en: success(englishText) });
+    const { store, created } = fakeStore();
+    const { analyzeService: analysis } = service({ provider, store });
+
+    const result = await analysis.analyze(analyzeRequest);
     if (result.kind !== "ok") throw new Error("expected success");
-    expect(result.text).toBe(
-      buildMockAiAnalyzeOutput({ language: "en", snapshot }),
-    );
-  });
-
-  it("limits one run per user per 60 seconds after authorization", async () => {
-    const { generate, provider } = fakeProvider(success(validText));
-    const { analyzeService, buildSnapshot, advance } = service(provider);
-    expect((await analyzeService.analyze(request)).kind).toBe("ok");
-
-    advance(30_000);
-    await expect(analyzeService.analyze(request)).resolves.toEqual({
-      kind: "rate_limited",
-      retryAfterSeconds: 30,
-    });
-    expect(generate).toHaveBeenCalledTimes(1);
-    expect(buildSnapshot).toHaveBeenCalledTimes(1);
-
-    advance(30_000);
-    expect((await analyzeService.analyze(request)).kind).toBe("ok");
+    expect(result.run.missing).toEqual(["th"]);
+    expect(result.run.languages.th).toBeNull();
+    expect(result.run.languages.en).toHaveLength(5);
+    expect(created).toHaveLength(1);
+    expect(created[0]?.contentTh).toBeNull();
     expect(generate).toHaveBeenCalledTimes(2);
   });
 
-  it("counts a provider failure toward the rate limit", async () => {
-    const { provider } = fakeProvider({
-      attempts: [],
-      failureCategory: "TIMEOUT",
-      ok: false,
+  it("persists nothing when both languages fail", async () => {
+    const { store, created } = fakeStore();
+    const { analyzeService: analysis } = service({
+      provider: fakeProvider({
+        en: { attempts: [], failureCategory: "TIMEOUT", ok: false },
+        th: { attempts: [], failureCategory: "TIMEOUT", ok: false },
+      }).provider,
+      store,
     });
-    const { analyzeService } = service(provider);
-    await expect(analyzeService.analyze(request)).resolves.toEqual({
+
+    await expect(analysis.analyze(analyzeRequest)).resolves.toEqual({
       category: "TIMEOUT",
       kind: "provider_failed",
     });
-    await expect(analyzeService.analyze(request)).resolves.toMatchObject({
+    expect(created).toHaveLength(0);
+  });
+
+  it("rejects a hallucinated number for that language only", async () => {
+    const { store, created } = fakeStore();
+    const { analyzeService: analysis } = service({
+      provider: fakeProvider({
+        en: success(englishText.replace("1400.00", "9876.54")),
+        th: success(thaiText),
+      }).provider,
+      store,
+    });
+
+    const result = await analysis.analyze(analyzeRequest);
+    if (result.kind !== "ok") throw new Error("expected success");
+    expect(result.run.missing).toEqual(["en"]);
+    expect(created[0]?.contentEn).toBeNull();
+    await expect(
+      service({
+        provider: fakeProvider({
+          en: success(englishText.replace("1400.00", "9876.54")),
+          th: success(thaiText.replace("1400.00", "9876.54")),
+        }).provider,
+        store: fakeStore().store,
+      }).analyzeService.analyze(analyzeRequest),
+    ).resolves.toEqual({ kind: "rejected" });
+  });
+
+  it("returns sample text for both languages without storing it", async () => {
+    const { store, created } = fakeStore();
+    const { analyzeService: analysis } = service({ store });
+    const result = await analysis.analyze(analyzeRequest);
+    if (result.kind !== "ok") throw new Error("expected success");
+    expect(result.run).toMatchObject({ id: null, mock: true, missing: [] });
+    expect(result.run.languages.th?.[0]?.heading).toBe("ภาพรวม");
+    expect(result.run.languages.en?.[0]?.heading).toBe("Overview");
+    expect(created).toHaveLength(0);
+  });
+
+  it("limits one provider-spending call per user per 60 seconds", async () => {
+    const { generate, provider } = fakeProvider({
+      en: success(englishText),
+      th: success(thaiText),
+    });
+    const { store } = fakeStore();
+    const { analyzeService: analysis, advance } = service({ provider, store });
+
+    expect((await analysis.analyze(analyzeRequest)).kind).toBe("ok");
+    advance(30_000);
+    await expect(analysis.analyze(analyzeRequest)).resolves.toEqual({
+      kind: "rate_limited",
+      retryAfterSeconds: 30,
+    });
+    expect(generate).toHaveBeenCalledTimes(2);
+    advance(30_000);
+    expect((await analysis.analyze(analyzeRequest)).kind).toBe("ok");
+  });
+
+  it("retries only the missing language and counts one allowance", async () => {
+    const { generate, provider } = fakeProvider({
+      en: success(englishText),
+      th: success(thaiText),
+    });
+    const { store, fillLanguage } = fakeStore([
+      row({ contentEn: englishText, contentTh: null }),
+    ]);
+    const { analyzeService: analysis, buildSnapshot } = service({
+      provider,
+      store,
+    });
+
+    const result = await analysis.retry({
+      ...analyzeRequest,
+      language: "th",
+      runId: RUN_ID,
+    });
+    if (result.kind !== "ok") throw new Error("expected success");
+    expect(result.run.missing).toEqual([]);
+    expect(result.run.languages.th?.[0]?.heading).toBe("ภาพรวม");
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(generate.mock.calls[0]?.[0].text).toContain("Answer in Thai.");
+    expect(fillLanguage).toHaveBeenCalledTimes(1);
+    // The stored run period is reused, not "today minus N days".
+    expect(buildSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        days: 7,
+        fixedPeriod: { from: "2026-11-09", to: "2026-11-16" },
+      }),
+    );
+
+    // The store now holds both languages, so a second retry is a plain read.
+    const again = await analysis.retry({
+      ...analyzeRequest,
+      language: "th",
+      runId: RUN_ID,
+    });
+    if (again.kind !== "ok") throw new Error("expected success");
+    expect(generate).toHaveBeenCalledTimes(1);
+
+    // The retry spent the one allowance for this user.
+    await expect(analysis.analyze(analyzeRequest)).resolves.toMatchObject({
       kind: "rate_limited",
     });
   });
 
-  it("rejects a hallucinated number", async () => {
-    const { provider } = fakeProvider(
-      success(validText.replace("1400.00", "9876.54")),
-    );
-    const { analyzeService } = service(provider);
-    await expect(analyzeService.analyze(request)).resolves.toEqual({
-      kind: "rejected",
+  it("never calls the provider when the language is already stored", async () => {
+    const { generate, provider } = fakeProvider({
+      th: success(thaiText),
     });
+    const { store } = fakeStore([
+      row({ contentEn: englishText, contentTh: thaiText }),
+    ]);
+    const { analyzeService: analysis, buildSnapshot } = service({
+      provider,
+      store,
+    });
+
+    const result = await analysis.retry({
+      ...analyzeRequest,
+      language: "en",
+      runId: RUN_ID,
+    });
+    if (result.kind !== "ok") throw new Error("expected success");
+    expect(result.run.languages.en).toHaveLength(5);
+    expect(generate).not.toHaveBeenCalled();
+    expect(buildSnapshot).not.toHaveBeenCalled();
   });
 
-  it("maps snapshot authorization failures and never calls the provider", async () => {
-    const generate = vi.fn<AiProvider["generate"]>();
-    const buildSnapshot = vi.fn(async () => ({ kind: "forbidden" as const }));
-    const analyzeService = createAiAnalyzeService({
-      buildSnapshot,
-      provider: { generate },
+  it("treats a run of another scope or tenant as missing", async () => {
+    const { generate, provider } = fakeProvider({ th: success(thaiText) });
+    const branchRuns = fakeStore([row({ branchId: BRANCH_ID })]);
+    const { analyzeService: sameTenant } = service({
+      provider,
+      store: branchRuns.store,
     });
-    await expect(analyzeService.analyze(request)).resolves.toEqual({
-      kind: "forbidden",
-    });
-    const unavailable = createAiAnalyzeService({
-      buildSnapshot: async () => ({ kind: "unavailable" }),
-      provider: { generate },
-    });
-    await expect(unavailable.analyze(request)).resolves.toEqual({
-      kind: "not_found",
-    });
+    await expect(
+      sameTenant.retry({
+        ...analyzeRequest,
+        language: "th",
+        runId: RUN_ID,
+      }),
+    ).resolves.toEqual({ kind: "not_found" });
+    await expect(
+      sameTenant.retry({
+        ...analyzeRequest,
+        language: "th",
+        runId: RUN_ID,
+        scope: {
+          kind: "branch",
+          branchId: "20000000-0000-4000-8000-000000000009",
+        },
+      }),
+    ).resolves.toEqual({ kind: "not_found" });
+
+    const foreign = fakeStore([
+      row({ organizationId: "10000000-0000-4000-8000-000000000009" }),
+    ]);
+    await expect(
+      service({ provider, store: foreign.store }).analyzeService.retry({
+        ...analyzeRequest,
+        language: "th",
+        runId: RUN_ID,
+      }),
+    ).resolves.toEqual({ kind: "not_found" });
     expect(generate).not.toHaveBeenCalled();
   });
 });

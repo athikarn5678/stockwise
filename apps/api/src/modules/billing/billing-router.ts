@@ -2,12 +2,17 @@ import { Router, type RequestHandler, type Response } from "express";
 import { z } from "zod";
 
 import { getTrustedAuthenticationContext } from "../identity/authentication-context.ts";
-import { billingPlanSchema } from "./billing-plans.ts";
+import { billingIntervalSchema, billingPlanSchema } from "./billing-plans.ts";
 import type { BillingService } from "./billing-service.ts";
 import { CHECKOUT_SESSION_ID } from "./stripe-client.ts";
 
 const paramsSchema = z.object({ organizationId: z.string().uuid() }).strict();
-const checkoutBodySchema = z.object({ plan: billingPlanSchema }).strict();
+const checkoutBodySchema = z
+  .object({
+    interval: billingIntervalSchema.default("MONTH"),
+    plan: billingPlanSchema,
+  })
+  .strict();
 const confirmBodySchema = z
   .object({ sessionId: z.string().regex(CHECKOUT_SESSION_ID) })
   .strict();
@@ -70,6 +75,7 @@ export function createBillingRouter(input: {
         response.setHeader("Cache-Control", "no-store");
         response.status(200).json({
           data: {
+            access: result.access,
             canManage: result.canManage,
             enabled: result.enabled,
             subscription: result.subscription,
@@ -99,6 +105,7 @@ export function createBillingRouter(input: {
           );
         const result = await input.service.checkout({
           actorUserId: actor.actor.id,
+          interval: body.data.interval,
           organizationId: params.data.organizationId,
           plan: body.data.plan,
         });

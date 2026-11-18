@@ -52,6 +52,11 @@ vi.mock("@/branch-api-client", async (importOriginal) => {
   };
 });
 
+const subscriptionGate = vi.hoisted(() => ({ blocked: false }));
+vi.mock("@/providers/subscription-provider", () => ({
+  useSubscriptionWriteGate: () => ({ writeBlocked: subscriptionGate.blocked }),
+}));
+
 vi.mock("@/membership-api-client", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("@/membership-api-client")>();
@@ -177,6 +182,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  subscriptionGate.blocked = false;
   vi.clearAllMocks();
   vi.restoreAllMocks();
 });
@@ -962,5 +968,18 @@ describe("membership management UI", () => {
       ),
     );
     expect(createInvitation).not.toHaveBeenCalled();
+  });
+
+  it("disables the member deactivation action while the subscription is expired", async () => {
+    subscriptionGate.blocked = true;
+    renderManagement();
+
+    expect(
+      await screen.findByRole("button", { name: "Deactivate" }),
+    ).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Refresh team" })).toHaveProperty(
+      "disabled",
+      false,
+    );
   });
 });

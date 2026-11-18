@@ -52,6 +52,11 @@ vi.mock("@/branch-api-client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/branch-api-client")>()),
   fetchAccessContext: vi.fn(),
 }));
+
+const subscriptionGate = vi.hoisted(() => ({ blocked: false }));
+vi.mock("@/providers/subscription-provider", () => ({
+  useSubscriptionWriteGate: () => ({ writeBlocked: subscriptionGate.blocked }),
+}));
 vi.mock("@/purchase-order-api-client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/purchase-order-api-client")>()),
   createPurchaseOrder: vi.fn(),
@@ -974,4 +979,25 @@ it("retranslates draft validation while preserving entered values and avoiding w
   ).toBeTruthy();
   expect(createPurchaseOrder).not.toHaveBeenCalled();
   localStorage.clear();
+});
+
+describe("purchase order write gate", () => {
+  afterEach(() => {
+    subscriptionGate.blocked = false;
+  });
+
+  it("disables the create purchase order action while the subscription is expired", async () => {
+    subscriptionGate.blocked = true;
+    renderManagement();
+    const form = await screen.findByRole("form", {
+      name: "Create draft purchase order",
+    });
+
+    expect(
+      within(form).getByRole("button", { name: "Create draft purchase order" }),
+    ).toHaveProperty("disabled", true);
+    expect(
+      screen.getByRole("button", { name: "Refresh orders" }),
+    ).toHaveProperty("disabled", false);
+  });
 });

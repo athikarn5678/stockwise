@@ -3,9 +3,9 @@ status: proposed
 date: 2026-11-18
 ---
 
-# ADR-050 — Product-level input for the on-demand AI analysis
+# ADR-051 — Product-level input for the on-demand AI analysis
 
-Numbering continues the global sequence (`ADR-001`…`ADR-049`). Plan: `docs/PLAN.md` M5-S3. Amends `ADR-046` §3 (snapshot contents) and `ADR-049`; provider, authorization, output contract and persistence are unchanged.
+Numbering continues the global sequence (`ADR-001`…`ADR-050`). Plan: `docs/PLAN.md` M5-S3. Amends `ADR-046` §3 (snapshot contents) and `ADR-049`; provider, authorization, output contract and persistence are unchanged.
 
 ## Context and Problem Statement
 

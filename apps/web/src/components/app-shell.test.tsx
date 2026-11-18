@@ -621,9 +621,18 @@ describe("web application shell", () => {
         return new Response(
           JSON.stringify({
             data: {
+              access: {
+                state: "ACTIVE",
+                trialDaysLeft: null,
+                trialEndsAt: null,
+              },
               canManage: true,
               enabled: true,
-              subscription: { plan: "STARTER", status: "ACTIVE" },
+              subscription: {
+                interval: "MONTH",
+                plan: "STARTER",
+                status: "ACTIVE",
+              },
             },
           }),
         );
@@ -640,12 +649,21 @@ describe("web application shell", () => {
   });
 
   it("refetches the plan badge when a subscription is confirmed", async () => {
-    let subscription: { plan: string; status: string } | null = null;
+    let subscription: {
+      interval: string;
+      plan: string;
+      status: string;
+    } | null = null;
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       if (String(input).endsWith(`/organizations/${ORG}/billing`))
         return new Response(
           JSON.stringify({
-            data: { canManage: true, enabled: true, subscription },
+            data: {
+              access: null,
+              canManage: true,
+              enabled: true,
+              subscription,
+            },
           }),
         );
       return new Response(JSON.stringify({ error: { code: "NOT_FOUND" } }), {
@@ -655,7 +673,7 @@ describe("web application shell", () => {
     renderShell(accessContext());
     await screen.findByRole("link", { name: "Billing" });
     expect(screen.queryByText("Growth")).toBeNull();
-    subscription = { plan: "GROWTH", status: "ACTIVE" };
+    subscription = { interval: "MONTH", plan: "GROWTH", status: "ACTIVE" };
     act(() => {
       window.dispatchEvent(new Event(BILLING_CHANGED_EVENT));
     });
@@ -675,5 +693,61 @@ describe("web application shell", () => {
     const nav = screen.getByRole("navigation", { name: "Primary navigation" });
     expect(within(nav).queryByRole("link", { name: "Billing" })).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  function billingResponse(access: unknown) {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith(`/organizations/${ORG}/billing`))
+        return new Response(
+          JSON.stringify({
+            data: {
+              access,
+              canManage: false,
+              enabled: true,
+              subscription: null,
+            },
+          }),
+        );
+      return new Response(JSON.stringify({ error: { code: "NOT_FOUND" } }), {
+        status: 404,
+      });
+    });
+  }
+
+  it("shows a read-only banner linking to /pricing when the subscription expired", async () => {
+    billingResponse({
+      state: "EXPIRED",
+      trialDaysLeft: null,
+      trialEndsAt: null,
+    });
+    renderShell(accessContext());
+    const banner = await screen.findByTestId("subscription-banner");
+    expect(banner.textContent).toContain("read-only");
+    expect(
+      within(banner)
+        .getByRole("link", { name: "View plans" })
+        .getAttribute("href"),
+    ).toBe("/pricing");
+  });
+
+  it("shows the days left in the trial banner and nothing when active", async () => {
+    billingResponse({
+      state: "TRIAL",
+      trialDaysLeft: 3,
+      trialEndsAt: "2026-11-21T00:00:00.000Z",
+    });
+    renderShell(accessContext());
+    expect(
+      (await screen.findByTestId("subscription-banner")).textContent,
+    ).toContain("3 days");
+    cleanup();
+    billingResponse({
+      state: "ACTIVE",
+      trialDaysLeft: null,
+      trialEndsAt: null,
+    });
+    renderShell(accessContext());
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    expect(screen.queryByTestId("subscription-banner")).toBeNull();
   });
 });

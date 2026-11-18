@@ -47,6 +47,11 @@ vi.mock("@/branch-api-client", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/branch-api-client")>();
   return { ...original, fetchAccessContext: vi.fn() };
 });
+
+const subscriptionGate = vi.hoisted(() => ({ blocked: false }));
+vi.mock("@/providers/subscription-provider", () => ({
+  useSubscriptionWriteGate: () => ({ writeBlocked: subscriptionGate.blocked }),
+}));
 vi.mock("@/sales-api-client", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/sales-api-client")>();
   return {
@@ -190,6 +195,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  subscriptionGate.blocked = false;
   if (originalScrollIntoView)
     Object.defineProperty(
       Element.prototype,
@@ -720,5 +726,20 @@ describe("sales history UI", () => {
       await screen.findByRole("heading", { name: "Sales history unavailable" }),
     ).toBeTruthy();
     expect(listSalesHistory).not.toHaveBeenCalled();
+  });
+
+  it("disables the refund action while the subscription is expired", async () => {
+    subscriptionGate.blocked = true;
+    renderSales();
+    fireEvent.click(await screen.findByRole("button", { name: "View detail" }));
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Confirm irreversible refund",
+      }),
+    ).toHaveProperty("disabled", true);
+    expect(
+      screen.getByRole("button", { name: "Print receipt" }),
+    ).toHaveProperty("disabled", false);
   });
 });

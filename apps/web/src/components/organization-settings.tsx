@@ -17,6 +17,7 @@ import { currentPrivateSessionSignal } from "@/session-lifecycle";
 import { useAccountDraft } from "@/providers/account-draft";
 import { useSessionLifecycle } from "@/providers/session-lifecycle-provider";
 import { useLanguage } from "@/providers/language-provider";
+import { useSubscriptionWriteGate } from "@/providers/subscription-provider";
 
 export function OrganizationSettings() {
   const { t } = useLanguage();
@@ -71,6 +72,7 @@ function AccessError({ onRetry }: { onRetry: () => void }) {
 
 function OrganizationEditor({ organizationId }: { organizationId: string }) {
   const { t } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
   const queryClient = useQueryClient();
   const settingsQuery = useQuery({
     queryKey: ["organization-settings", organizationId],
@@ -361,7 +363,7 @@ function OrganizationEditor({ organizationId }: { organizationId: string }) {
         <div className="flex flex-wrap gap-2">
           <Button
             type="submit"
-            disabled={saving || !dirty || message === "stale"}
+            disabled={saving || !dirty || message === "stale" || writeBlocked}
           >
             {saving ? t("organizationSettingsSaving") : t("saveChanges")}
           </Button>

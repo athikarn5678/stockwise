@@ -41,6 +41,11 @@ vi.mock("@/branch-api-client", async (importOriginal) => {
   };
 });
 
+const subscriptionGate = vi.hoisted(() => ({ blocked: false }));
+vi.mock("@/providers/subscription-provider", () => ({
+  useSubscriptionWriteGate: () => ({ writeBlocked: subscriptionGate.blocked }),
+}));
+
 const accessContext = {
   firstOrganizationOnboarding: { eligible: false },
   organizations: [
@@ -91,6 +96,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  subscriptionGate.blocked = false;
   vi.clearAllMocks();
 });
 
@@ -141,5 +147,15 @@ describe("branch management UI", () => {
     ).toBeTruthy();
     expect(fetchBranches).not.toHaveBeenCalled();
     expect(screen.queryByRole("heading", { name: "Create branch" })).toBeNull();
+  });
+
+  it("disables branch creation while the subscription is expired", async () => {
+    subscriptionGate.blocked = true;
+    renderManagement();
+
+    expect(
+      await screen.findByRole("button", { name: "Create branch" }),
+    ).toHaveProperty("disabled", true);
+    expect(screen.getByLabelText(/^Code/)).toHaveProperty("disabled", false);
   });
 });

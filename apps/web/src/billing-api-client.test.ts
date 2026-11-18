@@ -18,9 +18,14 @@ describe("billing API client", () => {
       new Response(
         JSON.stringify({
           data: {
+            access: { state: "ACTIVE", trialDaysLeft: null, trialEndsAt: null },
             canManage: true,
             enabled: true,
-            subscription: { plan: "STARTER", status: "ACTIVE" },
+            subscription: {
+              interval: "MONTH",
+              plan: "STARTER",
+              status: "ACTIVE",
+            },
           },
         }),
         { status: 200 },
@@ -29,9 +34,10 @@ describe("billing API client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(getBilling(ORGANIZATION_ID)).resolves.toEqual({
+      access: { state: "ACTIVE", trialDaysLeft: null, trialEndsAt: null },
       canManage: true,
       enabled: true,
-      subscription: { plan: "STARTER", status: "ACTIVE" },
+      subscription: { interval: "MONTH", plan: "STARTER", status: "ACTIVE" },
     });
     expect(fetchMock).toHaveBeenCalledWith(
       `/api/v1/organizations/${ORGANIZATION_ID}/billing`,
@@ -39,7 +45,7 @@ describe("billing API client", () => {
     );
   });
 
-  it("starts checkout with only the plan name and returns the URL", async () => {
+  it("starts checkout with only the plan and interval and returns the URL", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -56,7 +62,7 @@ describe("billing API client", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       `/api/v1/organizations/${ORGANIZATION_ID}/billing/checkout`,
       expect.objectContaining({
-        body: JSON.stringify({ plan: "GROWTH" }),
+        body: JSON.stringify({ interval: "MONTH", plan: "GROWTH" }),
         credentials: "same-origin",
         method: "POST",
       }),
@@ -67,7 +73,13 @@ describe("billing API client", () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          data: { subscription: { plan: "BUSINESS", status: "ACTIVE" } },
+          data: {
+            subscription: {
+              interval: "YEAR",
+              plan: "BUSINESS",
+              status: "ACTIVE",
+            },
+          },
         }),
         { status: 200 },
       ),
@@ -75,6 +87,7 @@ describe("billing API client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(postConfirm(ORGANIZATION_ID, SESSION_ID)).resolves.toEqual({
+      interval: "YEAR",
       plan: "BUSINESS",
       status: "ACTIVE",
     });

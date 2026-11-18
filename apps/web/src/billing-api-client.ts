@@ -2,15 +2,28 @@ import { z } from "zod";
 import { privateFetch, readPrivateJson } from "@/session-lifecycle";
 
 const billingPlanSchema = z.enum(["STARTER", "GROWTH", "BUSINESS"]);
-const subscriptionStatusSchema = z.enum(["ACTIVE", "PAST_DUE", "CANCELED"]);
+const billingIntervalSchema = z.enum(["MONTH", "YEAR"]);
+const subscriptionStatusSchema = z.enum([
+  "ACTIVE",
+  "PAST_DUE",
+  "CANCELED",
+  "EXPIRED",
+]);
+const accessSchema = z.object({
+  state: z.enum(["ACTIVE", "TRIAL", "EXPIRED"]),
+  trialDaysLeft: z.number().int().nullable(),
+  trialEndsAt: z.string().nullable(),
+});
 
 const subscriptionSchema = z.object({
+  interval: billingIntervalSchema,
   plan: billingPlanSchema,
   status: subscriptionStatusSchema,
 });
 
 const billingResponseSchema = z.object({
   data: z.object({
+    access: accessSchema.nullable(),
     canManage: z.boolean(),
     enabled: z.boolean(),
     subscription: subscriptionSchema.nullable(),
@@ -30,6 +43,8 @@ const errorResponseSchema = z.object({
 });
 
 export type BillingPlan = z.infer<typeof billingPlanSchema>;
+export type BillingInterval = z.infer<typeof billingIntervalSchema>;
+export type SubscriptionAccess = z.infer<typeof accessSchema>;
 export type SubscriptionStatus = z.infer<typeof subscriptionStatusSchema>;
 export type BillingSubscription = z.infer<typeof subscriptionSchema>;
 export type BillingState = z.infer<typeof billingResponseSchema>["data"];
@@ -87,13 +102,14 @@ export async function getBilling(
 export async function postCheckout(
   organizationId: string,
   plan: BillingPlan,
+  interval: BillingInterval = "MONTH",
 ): Promise<string> {
   let response: Response;
   try {
     response = await privateFetch(
       `/api/v1/organizations/${organizationId}/billing/checkout`,
       {
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ interval, plan }),
         credentials: "same-origin",
         headers: {
           accept: "application/json",

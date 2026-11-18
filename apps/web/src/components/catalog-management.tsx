@@ -25,6 +25,8 @@ import { useEffect, useId, useState } from "react";
 
 import { ProductBarcodeLabels } from "./product-barcode-labels";
 
+import { useSubscriptionWriteGate } from "@/providers/subscription-provider";
+
 import { formatMoney } from "@/money-display";
 import {
   applicationContextUrl,
@@ -684,6 +686,7 @@ function CategoryCreateForm({
   onSaved: () => Promise<void>;
 }) {
   const { t } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
 
   const mutation = useMutation({
     mutationFn: (form: HTMLFormElement) => {
@@ -714,7 +717,7 @@ function CategoryCreateForm({
       </div>
       <Button
         aria-busy={mutation.isPending}
-        disabled={mutation.isPending}
+        disabled={mutation.isPending || writeBlocked}
         type="submit"
       >
         {mutation.isPending ? t("branchCreating") : t("uiCreateCategory")}
@@ -739,6 +742,7 @@ function CategoryEditor({
   onSaved: () => Promise<void>;
 }) {
   const { t } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
 
   const updateMutation = useMutation({
     mutationFn: (form: HTMLFormElement) => {
@@ -793,7 +797,7 @@ function CategoryEditor({
             <Button
               variant="outline"
               aria-busy={updateMutation.isPending}
-              disabled={pending}
+              disabled={pending || writeBlocked}
               type="submit"
             >
               {t("saveChanges")}
@@ -803,7 +807,7 @@ function CategoryEditor({
             <Button
               variant="outline"
               aria-busy={lifecycleMutation.isPending}
-              disabled={pending}
+              disabled={pending || writeBlocked}
               onClick={() =>
                 void lifecycleMutation.mutateAsync().catch(onError)
               }
@@ -833,6 +837,7 @@ function ProductCreateForm({
 }) {
   const { t } = useLanguage();
 
+  const { writeBlocked } = useSubscriptionWriteGate();
   const [validation, setValidation] = useState<TranslationKey | null>(null);
   const mutation = useMutation({
     mutationFn: (form: HTMLFormElement) => {
@@ -919,7 +924,7 @@ function ProductCreateForm({
       ) : null}
       <Button
         aria-busy={mutation.isPending}
-        disabled={mutation.isPending}
+        disabled={mutation.isPending || writeBlocked}
         type="submit"
       >
         {mutation.isPending ? t("branchCreating") : t("uiCreateProduct")}
@@ -948,6 +953,7 @@ function ProductEditor({
   product: CatalogProduct;
 }) {
   const { t } = useLanguage();
+  const { writeBlocked } = useSubscriptionWriteGate();
 
   const [validation, setValidation] = useState<TranslationKey | null>(null);
   const updateMutation = useMutation({
@@ -1086,7 +1092,7 @@ function ProductEditor({
             <Button
               variant="outline"
               aria-busy={updateMutation.isPending}
-              disabled={pending}
+              disabled={pending || writeBlocked}
               type="submit"
             >
               {t("saveChanges")}
@@ -1096,7 +1102,7 @@ function ProductEditor({
             <Button
               variant="outline"
               aria-busy={lifecycleMutation.isPending}
-              disabled={pending}
+              disabled={pending || writeBlocked}
               onClick={() =>
                 void lifecycleMutation.mutateAsync().catch(onError)
               }

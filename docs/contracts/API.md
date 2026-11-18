@@ -1913,7 +1913,7 @@ the same trusted Organization/Branch scope as genuine insight reads, and the ser
 `UAT Demo Siam Mart`. Unauthorized scope returns `403`; authorized but unconfigured/non-demo
 organization returns `404`; invalid input `400`, anonymous `401`. Responses are not cached.
 
-**Production (ADR-043).** In Production the route is answered only for an organization that has COMPLETE operator-written provenance in `demo_dataset_runs`; no environment variable enables it. It returns the stored immutable baseline for the authorized scope after verifying the digest of all events before the baseline period end, so later live POS activity does not change it and any historical change returns `404`. Authorization, response shape, label and the no-provider guarantee are as below.
+**Production (ADR-043).** In Production the route is answered only for an organization that has COMPLETE operator-written provenance in `demo_dataset_runs`; no environment variable enables that reader (ADR-048 separately lets the local reader above run in Production when the variable equals the deterministic demo organization id `demoId("organization","UAT Demo Siam Mart")`; any other organization stays `404`). It returns the stored immutable baseline for the authorized scope after verifying the digest of all events before the baseline period end, so later live POS activity does not change it and any historical change returns `404`. Authorization, response shape, label and the no-provider guarantee are as below.
 
 `data` contains `mode: "DEMO"`, localized `label` (`Demo Insight` / `ข้อมูลตัวอย่าง`),
 `explanation`, plain `content`, `from` inclusive / `to` exclusive local dates,

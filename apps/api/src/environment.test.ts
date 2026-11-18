@@ -20,8 +20,8 @@ const verificationKeys = {
 };
 
 describe("API environment boundary", () => {
-  it("refuses accidental Production Demo Insight enablement", () => {
-    const result = apiEnvironmentSchema.safeParse({
+  it("accepts the Demo Insight allowlist in production and leaves it off when unset (ADR-048)", () => {
+    const base = {
       DATABASE_URL: "postgresql://local:local@127.0.0.1:5432/local",
       STOCKWISE_API_PORT: "3001",
       STOCKWISE_ANALYTICS_CURSOR_HMAC_KEY: analyticsKey,
@@ -30,20 +30,25 @@ describe("API environment boundary", () => {
       STOCKWISE_EMAIL_PROVIDER: "resend",
       RESEND_API_KEY: "test-only-key",
       STOCKWISE_EMAIL_FROM: "StockWise <sender@example.com>",
+      ...verificationKeys,
+    };
+    const unset = apiEnvironmentSchema.safeParse(base);
+    expect(unset.success).toBe(true);
+    expect(
+      unset.success && unset.data.STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID,
+    ).toBeUndefined();
+    const set = apiEnvironmentSchema.safeParse({
+      ...base,
       STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID:
         "00000000-0000-4000-8000-000000000001",
-      ...verificationKeys,
     });
-    expect(result.success).toBe(false);
-    if (!result.success)
-      expect(result.error.issues).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            path: ["STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID"],
-            message: "Demo Insight is disabled in production.",
-          }),
-        ]),
-      );
+    expect(set.success).toBe(true);
+    expect(
+      apiEnvironmentSchema.safeParse({
+        ...base,
+        STOCKWISE_DEMO_INSIGHT_ORGANIZATION_ID: "not-a-uuid",
+      }).success,
+    ).toBe(false);
   });
   it("loads the required local API and database configuration", () => {
     expect(

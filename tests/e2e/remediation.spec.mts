@@ -16,7 +16,7 @@ function path(resource: string) {
   return `/app/${resource}?organizationId=${E2E_ORGANIZATION_ID}&branchId=${E2E_BRANCH_ID}`;
 }
 async function signIn(page: Page) {
-  await page.goto("/login");
+  await page.goto("/login?next=%2Fapp");
   await page.waitForLoadState("networkidle");
   await page.getByLabel("Email").fill(E2E_OWNER_EMAIL);
   await page.getByLabel("Password").fill(E2E_PASSWORD);

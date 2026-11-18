@@ -8,6 +8,8 @@ export const th: Dictionary = {
   features: "ฟีเจอร์",
   pricing: "แพ็กเกจ",
   signIn: "เข้าสู่ระบบ",
+  goToDashboard: "ไปที่แดชบอร์ด",
+  profileMenu: "เมนูโปรไฟล์",
   getStarted: "เริ่มต้นใช้งาน",
   logout: "ออกจากระบบ",
   loggingOut: "กำลังออกจากระบบ…",
@@ -53,6 +55,7 @@ export const th: Dictionary = {
   openingSetup: "กำลังเปิดหน้าตั้งค่า…",
   accessError: "ไม่สามารถโหลดข้อมูลสิทธิ์การเข้าถึงได้",
   accessDenied: "คุณไม่มีสิทธิ์เข้าถึงหน้านี้",
+  sessionExpiredTitle: "เซสชันสิ้นสุดแล้ว",
   sessionExpired: "เซสชันของคุณไม่สามารถใช้งานได้แล้ว กรุณาเข้าสู่ระบบอีกครั้ง",
   accessRetry: "ลองอีกครั้ง",
   theme: "รูปแบบหน้าจอ",
@@ -124,6 +127,13 @@ export const th: Dictionary = {
   subscriptionRequired:
     "การดำเนินการนี้ต้องมีการสมัครสมาชิกที่ใช้งานอยู่ เจ้าของร้านสามารถต่ออายุได้ที่หน้าราคา",
   subscriptionDismiss: "ปิด",
+  pricingSignInToSubscribe: "เข้าสู่ระบบเพื่อสมัครสมาชิก",
+  pricingSetUpStore: "ตั้งค่าร้านค้าของคุณ",
+  pricingCurrentPlanBadge: "แพ็กเกจปัจจุบัน",
+  pricingNonOwnerNotice:
+    "เฉพาะเจ้าของร้านเท่านั้นที่สมัครหรือต่ออายุได้ โปรดแจ้งเจ้าของร้านให้ต่ออายุแพ็กเกจ",
+  pricingExpiredNotice:
+    "การสมัครสมาชิกหมดอายุแล้ว เลือกแพ็กเกจเพื่อต่ออายุ ข้อมูลของคุณยังอยู่ครบและระบบเป็นแบบอ่านอย่างเดียวจนกว่าจะต่ออายุ",
   billingErrConfirm: "ไม่สามารถยืนยันการสมัครสมาชิกได้ กรุณาลองอีกครั้ง",
   organizationSettingsUnsavedConfirm:
     "คุณมีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก ต้องการออกจากหน้านี้หรือไม่?",
@@ -156,7 +166,7 @@ export const th: Dictionary = {
   authCreatingAccount: "กำลังสร้างบัญชี…",
   authForgotPassword: "ลืมรหัสผ่าน?",
   authNeedAccount: "ยังไม่มีบัญชี?",
-  authCreateOne: "สร้างบัญชี",
+  authCreateOne: "สมัครใช้งาน",
   authAlreadyAccount: "มีบัญชีอยู่แล้ว?",
   authInvalidEmail: "กรุณากรอกอีเมลที่ถูกต้อง",
   authInvalidCredentials: "อีเมลหรือรหัสผ่านไม่ถูกต้อง",

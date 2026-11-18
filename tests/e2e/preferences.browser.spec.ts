@@ -196,7 +196,7 @@ test("preferences persist through navigation and reload without hydration errors
   await expect(page.locator("html")).toHaveAttribute("lang", "th");
   await page
     .getByRole("navigation", { name: "เมนูเว็บไซต์" })
-    .getByRole("link", { name: "เข้าสู่ระบบ" })
+    .getByRole("link", { name: "เริ่มต้นใช้งาน" })
     .click();
   await expect(page).toHaveURL("/login");
   await page.reload();

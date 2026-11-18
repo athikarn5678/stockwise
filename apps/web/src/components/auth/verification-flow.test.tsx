@@ -35,7 +35,10 @@ const { push, replace } = vi.hoisted(() => ({
   push: vi.fn(),
   replace: vi.fn(),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push, replace }),
+  useSearchParams: () => new URLSearchParams(),
+}));
 vi.mock("@/api-client", async (importOriginal) => ({
   ...(await importOriginal<typeof AuthApi>()),
   login: vi.fn(),

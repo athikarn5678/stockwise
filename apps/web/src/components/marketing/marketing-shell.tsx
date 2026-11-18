@@ -15,13 +15,14 @@ import {
 } from "@/components/ui/sheet";
 import { BrandLogo } from "@/components/brand-logo";
 import { PreferenceControls } from "@/components/preference-controls";
+import { MarketingAccount } from "./marketing-account";
 import { useLanguage } from "@/providers/language-provider";
 
 export function MarketingShell({ children }: { children: ReactNode }) {
   const { t } = useLanguage();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const links = (
+  const links = (inline: boolean) => (
     <>
       <Button
         variant="ghost"
@@ -46,21 +47,7 @@ export function MarketingShell({ children }: { children: ReactNode }) {
         {t("pricing")}
       </Button>
       <PreferenceControls />
-      <Button
-        variant="ghost"
-        nativeButton={false}
-        role="link"
-        render={<Link href="/login" onClick={() => setOpen(false)} />}
-      >
-        {t("signIn")}
-      </Button>
-      <Button
-        nativeButton={false}
-        role="link"
-        render={<Link href="/register" onClick={() => setOpen(false)} />}
-      >
-        {t("getStarted")}
-      </Button>
+      <MarketingAccount inline={inline} onNavigate={() => setOpen(false)} />
     </>
   );
   return (
@@ -84,7 +71,7 @@ export function MarketingShell({ children }: { children: ReactNode }) {
             aria-label={t("publicNavigation")}
             className="hidden items-center gap-1 md:flex"
           >
-            {links}
+            {links(false)}
           </nav>
           <div className="md:hidden">
             <Sheet open={open} onOpenChange={setOpen}>
@@ -122,7 +109,7 @@ export function MarketingShell({ children }: { children: ReactNode }) {
                   aria-label={t("publicNavigation")}
                   className="flex flex-col items-stretch gap-3 px-4"
                 >
-                  {links}
+                  {links(true)}
                 </nav>
               </SheetContent>
             </Sheet>

@@ -198,16 +198,13 @@ describe("web application shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(screen.queryByLabelText("Password")).toBeNull();
     pending.resolve(new Response(JSON.stringify({ data: accessContext() })));
-    await waitFor(() =>
-      expect(replace).toHaveBeenCalledWith(
-        `/app?organizationId=${ORG}&branchId=${BRANCH}`,
-      ),
-    );
+    // A signed-in visit to /login returns to the landing page by default.
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
     expect(screen.queryByLabelText("Password")).toBeNull();
     expect(replace).toHaveBeenCalledTimes(1);
   });
 
-  it("renders public landmarks without waiting for or requesting a session", () => {
+  it("renders public landmarks without waiting for the session probe", async () => {
     pathname = "/";
     renderShell(undefined, <HomePage />);
     expect(
@@ -219,14 +216,25 @@ describe("web application shell", () => {
         .getAttribute("href"),
     ).toBe("#main-content");
     expect(screen.getByRole("main").id).toBe("main-content");
+    const publicNav = within(
+      screen.getByRole("navigation", { name: "Public navigation" }),
+    );
+    // Guests get one call to action; a probe only decides the account slot.
     expect(
-      within(screen.getByRole("navigation", { name: "Public navigation" }))
-        .getByRole("link", { name: "Sign in" })
-        .getAttribute("href"),
+      (
+        await publicNav.findByRole("link", { name: "Get started" })
+      ).getAttribute("href"),
     ).toBe("/login");
+    expect(publicNav.queryByRole("link", { name: "Sign in" })).toBeNull();
     expect(screen.queryByRole("complementary")).toBeNull();
     expect(screen.queryByRole("link", { name: "Home" })).toBeNull();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.every(([url]) =>
+          String(url).endsWith("/me/access-context"),
+        ),
+    ).toBe(true);
   });
 
   it("does not offer Sign in after access context confirms authentication", () => {
@@ -277,7 +285,11 @@ describe("web application shell", () => {
       expect(screen.queryByText("Public authentication form")).toBeNull();
       await waitFor(() =>
         expect(replace).toHaveBeenCalledWith(
-          `/app?organizationId=${ORG}&branchId=${BRANCH}`,
+          // Sign-in pages return to the landing page; other guest pages
+          // (register, recovery) open the workspace.
+          path === "/login"
+            ? "/"
+            : `/app?organizationId=${ORG}&branchId=${BRANCH}`,
         ),
       );
       expect(screen.queryByText("Public authentication form")).toBeNull();
@@ -428,7 +440,7 @@ describe("web application shell", () => {
     ).toBe(true);
   });
 
-  it("routes marketing Get Started to the guest guard without a registration flash", async () => {
+  it("routes marketing Get Started to the login guard without a form flash", async () => {
     pathname = "/";
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Infinity } },
@@ -440,9 +452,10 @@ describe("web application shell", () => {
         </AppShell>
       </QueryClientProvider>,
     );
-    const cta = screen.getAllByRole("link", { name: "Get started" })[0]!;
-    expect(cta.getAttribute("href")).toBe("/register");
-    expect(fetch).not.toHaveBeenCalled();
+    const cta = await within(
+      screen.getByRole("navigation", { name: "Public navigation" }),
+    ).findByRole("link", { name: "Get started" });
+    expect(cta.getAttribute("href")).toBe("/login");
     pathname = cta.getAttribute("href")!;
     const response = Promise.withResolvers<Response>();
     vi.mocked(fetch).mockReturnValue(response.promise);
@@ -455,11 +468,7 @@ describe("web application shell", () => {
     );
     expect(screen.queryByLabelText("Password")).toBeNull();
     response.resolve(new Response(JSON.stringify({ data: accessContext() })));
-    await waitFor(() =>
-      expect(replace).toHaveBeenCalledWith(
-        `/app?organizationId=${ORG}&branchId=${BRANCH}`,
-      ),
-    );
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
     expect(screen.queryByRole("button", { name: "Create account" })).toBeNull();
   });
   it.each(["/", "/pricing"])(
@@ -611,11 +620,17 @@ describe("web application shell", () => {
     const client = renderShell(accessContext());
     await client.invalidateQueries({ queryKey: ["access-context"] });
     await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
-    expect(screen.getByRole("link", { name: "Sign in" })).toBeTruthy();
+    // The header link and the session-expired card both offer a real sign-in.
+    expect(screen.getAllByRole("link", { name: "Sign in" })).toHaveLength(2);
+    const card = screen.getByTestId("session-expired");
+    expect(within(card).getByText("Session ended")).toBeTruthy();
+    expect(
+      within(card).getByRole("link", { name: "Sign in" }).getAttribute("href"),
+    ).toBe("/login?next=%2Fapp");
     expect(screen.queryByRole("button", { name: "Log out" })).toBeNull();
   });
 
-  it("shows the plan badge and Billing navigation for an owner with billing enabled", async () => {
+  it("shows the plan badge but no Billing navigation for an owner with billing enabled", async () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       if (String(input).endsWith(`/organizations/${ORG}/billing`))
         return new Response(
@@ -643,9 +658,8 @@ describe("web application shell", () => {
     renderShell(accessContext());
     expect(await screen.findByText("Starter")).toBeTruthy();
     const nav = screen.getByRole("navigation", { name: "Primary navigation" });
-    expect(
-      within(nav).getByRole("link", { name: "Billing" }).getAttribute("href"),
-    ).toBe(`/app/billing?organizationId=${ORG}&branchId=${BRANCH}`);
+    // Subscribing and renewing live only on /pricing: no billing entry here.
+    expect(within(nav).queryByRole("link", { name: "Billing" })).toBeNull();
   });
 
   it("refetches the plan badge when a subscription is confirmed", async () => {
@@ -671,7 +685,13 @@ describe("web application shell", () => {
       });
     });
     renderShell(accessContext());
-    await screen.findByRole("link", { name: "Billing" });
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(fetch)
+          .mock.calls.some(([url]) => String(url).endsWith("/billing")),
+      ).toBe(true),
+    );
     expect(screen.queryByText("Growth")).toBeNull();
     subscription = { interval: "MONTH", plan: "GROWTH", status: "ACTIVE" };
     act(() => {

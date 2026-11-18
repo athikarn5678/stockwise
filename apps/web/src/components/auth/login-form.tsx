@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import { AuthApiError, login } from "@/api-client";
@@ -29,11 +29,13 @@ import {
   notifySessionChange,
 } from "@/session-lifecycle";
 import { useLanguage } from "@/providers/language-provider";
+import { safeNextPath } from "@/safe-next";
 import { hasEmailShape, passwordValidationMessage } from "./auth-form-support";
 import { verificationErrorMessage } from "./auth-copy";
 
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { t } = useLanguage();
   const pending = useRef(false);
@@ -142,7 +144,7 @@ export function LoginForm() {
           router.replace(
             invitationFlowId !== undefined || isInvitationRecoveryRequired()
               ? "/accept-invitation"
-              : "/app",
+              : safeNextPath(searchParams.get("next"), "/"),
           );
         }
         return;

@@ -219,11 +219,11 @@ describe("billing service", () => {
       url: `https://checkout.stripe.com/c/pay/${SESSION_ID}`,
     });
     expect(stripeClient?.createCheckoutSession).toHaveBeenCalledWith({
-      cancelUrl: `${PUBLIC_WEB_ORIGIN}/app/billing?organizationId=${ORGANIZATION_ID}&canceled=1`,
+      cancelUrl: `${PUBLIC_WEB_ORIGIN}/pricing?organizationId=${ORGANIZATION_ID}&canceled=1`,
       interval: "MONTH",
       organizationId: ORGANIZATION_ID,
       plan: "GROWTH",
-      successUrl: `${PUBLIC_WEB_ORIGIN}/app/billing?organizationId=${ORGANIZATION_ID}&session_id={CHECKOUT_SESSION_ID}`,
+      successUrl: `${PUBLIC_WEB_ORIGIN}/pricing?organizationId=${ORGANIZATION_ID}&session_id={CHECKOUT_SESSION_ID}`,
     });
   });
 

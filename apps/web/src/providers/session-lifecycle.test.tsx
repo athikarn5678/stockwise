@@ -180,16 +180,19 @@ it("coalesces visibility, pageshow and focus into one revalidation", async () =>
   pending.resolve(response());
   await screen.findByLabelText("Private draft");
 });
-it("does not fetch sessions on marketing after lifecycle notifications", () => {
+it("only ever probes the access context on marketing, including after lifecycle notifications", async () => {
   pathname = "/";
   mount();
+  // The public header decides guest vs signed-in from the access context.
+  await waitFor(() => expect(fetch).toHaveBeenCalled());
   act(() => {
     window.dispatchEvent(
       new PageTransitionEvent("pageshow", { persisted: true }),
     );
     window.dispatchEvent(new Event("focus"));
   });
-  expect(fetch).not.toHaveBeenCalled();
+  for (const [url] of vi.mocked(fetch).mock.calls)
+    expect(String(url)).toBe("/api/v1/me/access-context");
 });
 it("ignores a superseded access request when a second tab changes actor during reconciliation", async () => {
   mount();

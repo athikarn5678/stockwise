@@ -23,7 +23,6 @@ import {
   BarChart3,
   Boxes,
   ClipboardList,
-  CreditCard,
   Home,
   Package,
   Receipt,
@@ -55,11 +54,19 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { PreferenceControls } from "@/components/preference-controls";
 import { useLanguage } from "@/providers/language-provider";
 import { isGuestRoute, routeAccessPolicy } from "@/route-access-policy";
 import { type BillingSubscription } from "@/billing-api-client";
+import { loginUrlWithNext, safeNextPath } from "@/safe-next";
 import type { VerificationLinkWindow } from "@/verification-link-entry";
 import type { CredentialLinkWindow } from "@/credential-link-entry";
 import {
@@ -123,11 +130,8 @@ export function AppShell({ children }: AppShellProps) {
       policy === "invitation")
   )
     return (
-      <main className="p-6">
-        <p role="alert">{t("sessionExpired")}</p>
-        <Link href="/login" replace>
-          {t("signIn")}
-        </Link>
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <SessionExpiredCard />
       </main>
     );
   // Recheck a guest entry even when Back/Forward restores a cached 401.
@@ -137,6 +141,43 @@ export function AppShell({ children }: AppShellProps) {
     >
       {children}
     </WorkspaceShell>
+  );
+}
+
+/**
+ * Shown when the session is gone on a protected page: a clear message and a
+ * real Sign in button that returns to the page the user was on afterwards.
+ */
+function SessionExpiredCard() {
+  const { t } = useLanguage();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const query = searchParams.toString();
+  return (
+    <Card className="w-full max-w-md text-center" data-testid="session-expired">
+      <CardHeader>
+        <CardTitle className="text-lg" role="heading" aria-level={1}>
+          {t("sessionExpiredTitle")}
+        </CardTitle>
+        <CardDescription role="alert">{t("sessionExpired")}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button
+          nativeButton={false}
+          render={
+            <Link
+              href={loginUrlWithNext(
+                query === "" ? pathname : `${pathname}?${query}`,
+              )}
+              replace
+            />
+          }
+          role="link"
+        >
+          {t("signIn")}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -323,10 +364,17 @@ function WorkspaceShell({ children }: AppShellProps) {
         (window as VerificationLinkWindow).__stockwiseTakeVerificationLink?.();
       if (pathname === "/reset-password")
         (window as CredentialLinkWindow).__stockwiseTakeCredentialLink?.();
-      router.replace(homeUrl);
+      // A sign-in returns to a safe same-origin `next`, else the landing page;
+      // other guest pages (register, recovery) still open the workspace.
+      router.replace(
+        pathname === "/login"
+          ? safeNextPath(searchParams.get("next"), "/")
+          : homeUrl,
+      );
     }
   }, [
     checkingSession,
+    searchParams,
     homeUrl,
     openingWorkspace,
     pathname,
@@ -407,7 +455,9 @@ function WorkspaceShell({ children }: AppShellProps) {
       ) : openingWorkspace ? (
         <p aria-live="polite">{t("openingWorkspace")}</p>
       ) : signedOut && protectedRoute ? (
-        <p role="alert">{t("sessionExpired")}</p>
+        <div className="flex w-full items-center justify-center">
+          <SessionExpiredCard />
+        </div>
       ) : !signedOut && !context && !preserveGuestDraft ? (
         <div className="space-y-4">
           <p role="alert">
@@ -518,7 +568,6 @@ const destinationIcons: Record<string, LucideIcon> = {
   "/app/branches": Store,
   "/app/members": Users,
   "/app/profile": UserRound,
-  "/app/billing": CreditCard,
   "/app/organization-settings": Settings,
 };
 
@@ -559,10 +608,7 @@ function WorkspaceNavigation({
   const { billing } = useSubscription();
   const subscription: BillingSubscription | null =
     billing?.subscription ?? null;
-  const navigationItems =
-    organization?.role === "OWNER" && billing?.enabled === true
-      ? [...destinations, { label: t("billing"), path: "/app/billing" }]
-      : destinations;
+  const navigationItems = destinations;
   return (
     <Sidebar collapsible="offcanvas" closeLabel={t("closeMenu")}>
       <aside aria-label={t("sidebar")} className="flex h-full min-h-0 flex-col">

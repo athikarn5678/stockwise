@@ -12,7 +12,11 @@ import {
   CardHeader,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import type { TranslationKey } from "@/i18n/en";
 import { useLanguage } from "@/providers/language-provider";
+import type { BillingPlan } from "@/billing-api-client";
+import { loginUrlWithNext } from "@/safe-next";
+import { usePricingBilling } from "./pricing-billing";
 
 export const plans = [
   {
@@ -62,6 +66,85 @@ export const plans = [
   },
 ] as const;
 
+function planLabel(plan: BillingPlan, t: (key: TranslationKey) => string) {
+  return t(
+    plan === "STARTER"
+      ? "billingPlanStarter"
+      : plan === "GROWTH"
+        ? "billingPlanGrowth"
+        : "billingPlanBusiness",
+  );
+}
+
+function PlanAction({
+  billingPeriod,
+  plan,
+  pricing,
+}: {
+  billingPeriod: "monthly" | "yearly";
+  plan: BillingPlan;
+  pricing: ReturnType<typeof usePricingBilling>;
+}) {
+  const { t } = useLanguage();
+  const className = "mt-auto";
+  if (pricing.mode === "loading")
+    return (
+      <Button className={className} disabled type="button" variant="outline">
+        {t("billingLoading")}
+      </Button>
+    );
+  if (pricing.mode === "guest")
+    return (
+      <Button
+        className={className}
+        nativeButton={false}
+        render={<Link href={loginUrlWithNext("/pricing")} />}
+        role="link"
+        variant="outline"
+      >
+        {t("pricingSignInToSubscribe")}
+        <ArrowRight aria-hidden="true" />
+      </Button>
+    );
+  if (pricing.mode === "no-organization")
+    return (
+      <Button
+        className={className}
+        nativeButton={false}
+        render={<Link href="/onboarding" />}
+        role="link"
+        variant="outline"
+      >
+        {t("pricingSetUpStore")}
+        <ArrowRight aria-hidden="true" />
+      </Button>
+    );
+  if (pricing.currentPlan === plan)
+    return (
+      <Badge className={`${className} w-fit`} variant="secondary">
+        {t("pricingCurrentPlanBadge")}
+      </Badge>
+    );
+  return (
+    <Button
+      className={className}
+      disabled={!pricing.canSubscribe || pricing.subscribing !== null}
+      onClick={() =>
+        void pricing.subscribe(
+          plan,
+          billingPeriod === "yearly" ? "YEAR" : "MONTH",
+        )
+      }
+      type="button"
+      variant="outline"
+    >
+      {pricing.subscribing === plan
+        ? t("billingSubscribing")
+        : t("billingSubscribe")}
+    </Button>
+  );
+}
+
 const enterprise = {
   audience: "pricingEnterpriseAudience",
   focus: "pricingEnterpriseFocus",
@@ -69,8 +152,20 @@ const enterprise = {
   users: "pricingEnterpriseUsers",
 } as const;
 
-export function PricingContent() {
+const PLAN_KEYS: Record<(typeof plans)[number]["name"], BillingPlan> = {
+  Business: "BUSINESS",
+  Growth: "GROWTH",
+  Starter: "STARTER",
+};
+
+export function PricingContent({
+  navigate,
+}: {
+  /** Test seam: the browser redirect to Stripe's hosted page. */
+  navigate?: (url: string) => void;
+} = {}) {
   const { t } = useLanguage();
+  const pricing = usePricingBilling(navigate);
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">(
     "monthly",
   );
@@ -123,6 +218,54 @@ export function PricingContent() {
             {t("pricingYearly")}
           </button>
         </div>
+      </div>
+      <div className="mx-auto mb-6 max-w-3xl space-y-3 text-center">
+        {pricing.canceled ? (
+          <p role="status">{t("billingCanceledNote")}</p>
+        ) : null}
+        {pricing.confirming ? (
+          <p aria-live="polite">{t("billingConfirming")}</p>
+        ) : null}
+        {pricing.confirmed ? (
+          <p className="rounded-lg border bg-card p-4" role="status">
+            {t("billingConfirmed").replace(
+              "{plan}",
+              planLabel(pricing.confirmed.plan, t),
+            )}
+          </p>
+        ) : null}
+        {pricing.error ? <p role="alert">{t(pricing.error)}</p> : null}
+        {pricing.mode === "non-owner" ? (
+          <p className="rounded-lg border bg-card p-4" role="status">
+            {t("pricingNonOwnerNotice")}
+          </p>
+        ) : null}
+        {pricing.mode === "owner" && pricing.billing?.enabled === false ? (
+          <p role="status">{t("billingUnavailable")}</p>
+        ) : null}
+        {pricing.mode === "owner" && pricing.billingFailed ? (
+          <p role="alert">{t("billingLoadError")}</p>
+        ) : null}
+        {pricing.mode === "owner" &&
+        pricing.billing?.access?.state === "EXPIRED" ? (
+          <p className="rounded-lg border bg-card p-4" role="status">
+            {t("pricingExpiredNotice")}
+          </p>
+        ) : null}
+        {pricing.currentPlan !== null && pricing.subscription !== null ? (
+          <p className="font-medium" role="status">
+            {t("billingCurrentPlan")
+              .replace("{plan}", planLabel(pricing.currentPlan, t))
+              .replace(
+                "{status}",
+                t(
+                  pricing.subscription.interval === "YEAR"
+                    ? "pricingYearly"
+                    : "pricingMonthly",
+                ),
+              )}
+          </p>
+        ) : null}
       </div>
       <section
         aria-label={t("pricingPlansLabel")}
@@ -184,16 +327,11 @@ export function PricingContent() {
                   <li>{t(plan.branches)}</li>
                   <li>{t(plan.users)}</li>
                 </ul>
-                <Button
-                  variant="outline"
-                  className="mt-auto"
-                  nativeButton={false}
-                  role="link"
-                  render={<Link href="/register" />}
-                >
-                  {t("pricingCreateAccount")}
-                  <ArrowRight aria-hidden="true" />
-                </Button>
+                <PlanAction
+                  billingPeriod={billingPeriod}
+                  plan={PLAN_KEYS[plan.name]}
+                  pricing={pricing}
+                />
               </CardContent>
             </Card>
           </article>

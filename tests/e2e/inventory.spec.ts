@@ -13,7 +13,7 @@ import { selectOption } from "./select-helpers.ts";
 const inventoryPath = `/app/inventory?organizationId=${E2E_ORGANIZATION_ID}&branchId=${E2E_BRANCH_ID}`;
 
 async function signIn(page: import("@playwright/test").Page, email: string) {
-  await page.goto("/login");
+  await page.goto("/login?next=%2Fapp");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(E2E_PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -66,6 +66,11 @@ test("inventory has no automated axe violations on desktop and mobile", async ({
   await signIn(page, E2E_OWNER_EMAIL);
   await page.goto(inventoryPath);
   await page.getByRole("button", { name: /Inventory test tea/ }).click();
+  // Axe must not sample colours mid-transition (the selected row fades in).
+  await page.addStyleTag({
+    content:
+      "*,*::before,*::after{transition:none!important;animation:none!important}",
+  });
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
   await page.setViewportSize({ height: 844, width: 390 });

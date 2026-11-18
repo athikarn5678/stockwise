@@ -962,7 +962,7 @@ describe("analytics HTTP API with PostgreSQL", () => {
         (
           await get(
             fixture.organization.id,
-            `reorder-recommendations?${pair}&leadTimeDays=2`,
+            `reorder-recommendations?${pair}&leadTimeDays=7`,
             user.cookie,
           )
         ).status,
@@ -982,7 +982,7 @@ describe("analytics HTTP API with PostgreSQL", () => {
       (
         await get(
           fixture.organization.id,
-          `reorder-recommendations?${outsideBranch}&leadTimeDays=2`,
+          `reorder-recommendations?${outsideBranch}&leadTimeDays=7`,
           fixture.inventory.cookie,
         )
       ).status,
@@ -1039,6 +1039,7 @@ describe("analytics HTTP API with PostgreSQL", () => {
       unit: "EA",
     });
     expect(forecast.body.data.forecast.days).toHaveLength(7);
+    expect(forecast.body.data.forecast.horizonDays).toBe(7);
     const missing = await get(
       fixture.organization.id,
       `reorder-recommendations?${pair}`,
@@ -1048,33 +1049,66 @@ describe("analytics HTTP API with PostgreSQL", () => {
       status: "UNAVAILABLE",
       reason: "LEAD_TIME_REQUIRED",
     });
-    for (const leadTimeDays of ["-1", "0", "1.5", "8"]) {
+    for (const leadTimeDays of [
+      "-1",
+      "0",
+      "1",
+      "1.5",
+      "2",
+      "6",
+      "7.5",
+      "8",
+      "31",
+      "abc",
+      "07",
+      "%207",
+      "7.0",
+      "%2B7",
+      "7e0",
+      "",
+      "7&leadTimeDays=30",
+    ]) {
       const invalid = await get(
         fixture.organization.id,
         `reorder-recommendations?${pair}&leadTimeDays=${leadTimeDays}`,
         fixture.owner.cookie,
       );
-      expect(invalid.status).toBe(200);
-      expect(invalid.body.data.recommendation).toMatchObject({
-        status: "UNAVAILABLE",
-        reason: "UNSUPPORTED_LEAD_TIME",
-      });
+      expect(invalid.status).toBe(400);
+      expect(invalid.body.error.code).toBe("VALIDATION_ERROR");
     }
     const reorder = await get(
       fixture.organization.id,
-      `reorder-recommendations?${pair}&leadTimeDays=2`,
+      `reorder-recommendations?${pair}&leadTimeDays=7`,
       fixture.owner.cookie,
     );
     expect(reorder.body.data.recommendation).toMatchObject({
       reorderVersion: "reorder-v1",
       forecastVersion: "forecast-sale-mean-28d-v1",
       status: "AVAILABLE",
-      leadTimeDemand: "0.0714",
+      leadTimeDays: 7,
+      leadTimeDemand: "0.2499",
       onHand: "9.0000",
       rawNeed: "0.0000",
       recommendedQuantity: "0.0000",
       sourceCutoff: now.toISOString(),
     });
+    expect(reorder.body.data.recommendation.dailyForecast).toHaveLength(7);
+    const reorderThirty = await get(
+      fixture.organization.id,
+      `reorder-recommendations?${pair}&leadTimeDays=30`,
+      fixture.owner.cookie,
+    );
+    expect(reorderThirty.body.data.recommendation).toMatchObject({
+      status: "AVAILABLE",
+      leadTimeDays: 30,
+      leadTimeDemand: "1.0710",
+      onHand: "9.0000",
+      rawNeed: "0.0000",
+      recommendedQuantity: "0.0000",
+    });
+    expect(reorderThirty.body.data.recommendation.dailyForecast).toHaveLength(
+      7,
+    );
     expect(JSON.stringify(reorder.body)).not.toMatch(
       /cost|supplier|purchaseOrder|unitPrice/i,
     );
@@ -1089,7 +1123,7 @@ describe("analytics HTTP API with PostgreSQL", () => {
     });
     const integrity = await get(
       fixture.organization.id,
-      `reorder-recommendations?${pair}&leadTimeDays=2`,
+      `reorder-recommendations?${pair}&leadTimeDays=7`,
       fixture.owner.cookie,
     );
     expect(integrity.body.data.recommendation).toMatchObject({
@@ -1114,10 +1148,10 @@ describe("analytics HTTP API with PostgreSQL", () => {
       (
         await get(
           fixture.organization.id,
-          `reorder-recommendations?${pair}&leadTimeDays=2`,
+          `reorder-recommendations?${pair}&leadTimeDays=7`,
           fixture.owner.cookie,
         )
       ).body.data.recommendation.reason,
     ).toBe("INACTIVE_PRODUCT");
-  });
+  }, 20_000);
 });

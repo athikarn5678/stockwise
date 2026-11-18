@@ -197,14 +197,14 @@ export async function validateDemoGoldens(prisma: PrismaClient): Promise<void> {
   const forecast = createPrismaForecastRepository(prisma, { now: fixedNow });
   const reorder = createPrismaReorderRepository(prisma, { now: fixedNow });
   for (const [branch, sku, daily, total, leadTime, recommendation, reason] of [
-    ["DEMO-A", "DEMO-STABLE", "2.0000", "14.0000", 2, "1.0000", null],
-    ["DEMO-B", "DEMO-STABLE", "1.0000", "7.0000", 2, "0.0000", null],
-    ["DEMO-A", "DEMO-WEEKLY", "1.7500", "12.2500", 2, "0.0000", null],
-    ["DEMO-A", "DEMO-WEIGHT", "0.5000", "3.5000", 3, "0.5000", null],
+    ["DEMO-A", "DEMO-STABLE", "2.0000", "14.0000", 7, "11.0000", null],
+    ["DEMO-B", "DEMO-STABLE", "1.0000", "7.0000", 7, "0.0000", null],
+    ["DEMO-A", "DEMO-WEEKLY", "1.7500", "12.2500", 7, "0.0000", null],
+    ["DEMO-A", "DEMO-WEIGHT", "0.5000", "3.5000", 7, "2.5000", null],
     ["DEMO-A", "DEMO-SPARSE", "0.1429", "1.0003", 7, "1.0000", null],
-    ["DEMO-B", "DEMO-SPARSE", "0.0000", "0.0000", 2, "0.0000", null],
-    ["DEMO-A", "DEMO-NEW", null, null, 2, null, "INSUFFICIENT_DATA"],
-    ["DEMO-A", "DEMO-ARCHIVED", null, null, 2, null, "INACTIVE_PRODUCT"],
+    ["DEMO-B", "DEMO-SPARSE", "0.0000", "0.0000", 7, "0.0000", null],
+    ["DEMO-A", "DEMO-NEW", null, null, 7, null, "INSUFFICIENT_DATA"],
+    ["DEMO-A", "DEMO-ARCHIVED", null, null, 7, null, "INACTIVE_PRODUCT"],
   ] as const) {
     const identity = {
       actorUserId: ownerId,

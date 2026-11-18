@@ -93,7 +93,7 @@ export function ForecastReorderView({
   // input with the item label) never restarts the search.
   const [queryText, setQueryText] = useState("");
   const [search, setSearch] = useState("");
-  const [leadTimeDays, setLeadTimeDays] = useState<number | null>(null);
+  const [leadTimeDays, setLeadTimeDays] = useState<7 | 30 | null>(null);
   const productInputId = useId();
   const activeBranch = organization.branches.find(
     (branch) => branch.id === branchId,
@@ -277,23 +277,27 @@ export function ForecastReorderView({
             </p>
           ) : null}
         </div>
-        <Label className="form-field">
-          {t("uiPlanningLeadTime")}
-          <OptionSelect
-            className="w-full form-control--compact"
-            onValueChange={(value) =>
-              setLeadTimeDays(value === "" ? null : Number(value))
-            }
-            options={[
-              { label: t("uiChoose17Days"), value: "" },
-              ...[1, 2, 3, 4, 5, 6, 7].map((days) => ({
-                label: `${days} ${days === 1 ? "day" : "days"}`,
-                value: String(days),
-              })),
-            ]}
-            value={leadTimeDays === null ? "" : String(leadTimeDays)}
-          />
-        </Label>
+        <div className="space-y-2">
+          <Label className="form-field">
+            {t("uiPlanningLeadTime")}
+            <OptionSelect
+              className="w-full form-control--compact"
+              onValueChange={(value) =>
+                setLeadTimeDays(value === "7" ? 7 : value === "30" ? 30 : null)
+              }
+              options={[
+                { label: t("uiChoose7Or30Days"), value: "" },
+                { label: t("uiLeadTime7Days"), value: "7" },
+                { label: t("uiLeadTime30Days"), value: "30" },
+              ]}
+              value={leadTimeDays === null ? "" : String(leadTimeDays)}
+            />
+          </Label>
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <p>{t("uiPlanningLeadTimeExplanation")}</p>
+            <p>{t("uiWhyRecommendedQuantityCanBeZero")}</p>
+          </div>
+        </div>
       </div>
       {!activeBranch ? (
         <p className="form-message" role="alert">

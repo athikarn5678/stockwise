@@ -168,7 +168,7 @@ test("owner selects a Branch/Product and lead time for deterministic advisory st
     "Inventory test tea",
     { value: E2E_INVENTORY_PRODUCT_ID },
   );
-  await selectOption(page, "Planning lead time", { value: "2" });
+  await selectOption(page, "Planning lead time", { value: "7" });
   await expect(page.getByLabel("Forecast result")).toContainText(
     "forecast-sale-mean-28d-v1",
   );
@@ -188,7 +188,7 @@ test("cashier cannot call forecast or reorder API directly", async ({
 }) => {
   await signIn(page, E2E_CASHIER_EMAIL);
   for (const path of ["forecast", "reorder-recommendations"]) {
-    const leadTime = path === "forecast" ? "" : "&leadTimeDays=2";
+    const leadTime = path === "forecast" ? "" : "&leadTimeDays=7";
     const response = await page.request.get(
       `/api/v1/organizations/${E2E_ORGANIZATION_ID}/analytics/${path}?branchId=${E2E_BRANCH_ID}&productId=${E2E_INVENTORY_PRODUCT_ID}${leadTime}`,
     );

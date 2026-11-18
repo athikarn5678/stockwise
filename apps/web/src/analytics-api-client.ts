@@ -373,7 +373,7 @@ export function getAnalyticsReorder(
     organizationId: string;
     branchId: string;
     productId: string;
-    leadTimeDays: number | null;
+    leadTimeDays: 7 | 30 | null;
   },
   signal?: AbortSignal,
 ) {

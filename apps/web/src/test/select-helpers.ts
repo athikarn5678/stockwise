@@ -111,6 +111,19 @@ export async function readSelectOptionValues(
   return values;
 }
 
+/** Reads every option label in the popup, then closes it again. */
+export async function readSelectOptionLabels(
+  trigger: HTMLElement,
+): Promise<string[]> {
+  openSelect(trigger);
+  const labels = optionElements().map((element) =>
+    (element.textContent ?? "").trim(),
+  );
+  fireEvent.keyDown(document.activeElement ?? trigger, { key: "Escape" });
+  await settle();
+  return labels;
+}
+
 /** Asserts the label the trigger shows for the current value. */
 export function expectSelectValue(
   trigger: HTMLElement,

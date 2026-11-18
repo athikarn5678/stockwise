@@ -7,6 +7,10 @@ const Decimal = Prisma.Decimal.clone({ precision: 80, rounding: 4 });
 const ZERO = new Decimal(0);
 export const FORECAST_VERSION = "forecast-sale-mean-28d-v1" as const;
 export const FORECAST_REFERENCE_VERSION = "last-day-naive" as const;
+/** The published forecast endpoint and its chart stay at seven days. */
+export const FORECAST_HORIZON_DAYS = 7 as const;
+/** Reorder needs a longer horizon to cover its 30-day planning lead time. */
+export const REORDER_HORIZON_DAYS = 30 as const;
 
 export interface ForecastDayBounds {
   localDate: string;
@@ -38,7 +42,7 @@ interface ForecastContext {
   trainingStartInclusive: string;
   trainingEndExclusive: string;
   historyStartAt: string | null;
-  horizonDays: 7;
+  horizonDays: number;
   horizonStartInclusive: string;
   horizonEndExclusive: string;
 }
@@ -81,7 +85,10 @@ function dayBounds(
 export function createForecastWindow(
   sourceCutoff: Date,
   reportingTimezone: string,
+  horizonLength: number = FORECAST_HORIZON_DAYS,
 ): ForecastWindow {
+  if (!Number.isInteger(horizonLength) || horizonLength < 1)
+    throw new Error("Forecast horizon must be a positive whole day count.");
   const localDay = Temporal.Instant.fromEpochMilliseconds(
     sourceCutoff.getTime(),
   )
@@ -99,7 +106,7 @@ export function createForecastWindow(
   const trainingDays = Array.from({ length: 28 }, (_, index) =>
     dayBounds(trainingStart.add({ days: index }), reportingTimezone),
   );
-  const horizonDays = Array.from({ length: 7 }, (_, index) =>
+  const horizonDays = Array.from({ length: horizonLength }, (_, index) =>
     dayBounds(horizonStart.add({ days: index }), reportingTimezone),
   );
   return {
@@ -107,7 +114,8 @@ export function createForecastWindow(
     trainingStartInclusive: trainingDays[0]!.bucketStartInclusive,
     trainingEndExclusive: currentMidnight.toISOString(),
     horizonStartInclusive: horizonDays[0]!.bucketStartInclusive,
-    horizonEndExclusive: horizonDays[6]!.bucketEndExclusive,
+    horizonEndExclusive:
+      horizonDays[horizonDays.length - 1]!.bucketEndExclusive,
     trainingDays,
     horizonDays,
   };
@@ -144,7 +152,7 @@ export function buildForecast(input: {
     trainingStartInclusive: input.window.trainingStartInclusive,
     trainingEndExclusive: input.window.trainingEndExclusive,
     historyStartAt: input.historyStartAt?.toISOString() ?? null,
-    horizonDays: 7,
+    horizonDays: input.window.horizonDays.length,
     horizonStartInclusive: input.window.horizonStartInclusive,
     horizonEndExclusive: input.window.horizonEndExclusive,
   };

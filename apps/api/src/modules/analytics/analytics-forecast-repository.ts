@@ -8,6 +8,7 @@ import { createPrismaAnalyticsScopeRepository } from "./analytics-scope-reposito
 import {
   buildForecast,
   createForecastWindow,
+  FORECAST_HORIZON_DAYS,
   type ForecastResult,
   type ForecastWindow,
 } from "./analytics-forecast-values.ts";
@@ -77,7 +78,7 @@ export async function readForecastInTransaction(
   tx: Prisma.TransactionClient,
   input: ForecastReadInput,
   sourceCutoff: Date,
-  activeBranchOnly = false,
+  options: { activeBranchOnly?: boolean; horizonLength?: number } = {},
 ): Promise<ForecastRepositoryOutcome> {
   const resolved = await createPrismaAnalyticsScopeRepository(tx).resolve({
     actorUserId: input.actorUserId,
@@ -87,7 +88,11 @@ export async function readForecastInTransaction(
   });
   if (resolved.kind !== "success") return resolved;
 
-  const window = createForecastWindow(sourceCutoff, resolved.reportingTimezone);
+  const window = createForecastWindow(
+    sourceCutoff,
+    resolved.reportingTimezone,
+    options.horizonLength ?? FORECAST_HORIZON_DAYS,
+  );
   const branchIds = resolved.scope.branchIds.map(
     (id) => Prisma.sql`${id}::uuid`,
   );
@@ -103,7 +108,7 @@ export async function readForecastInTransaction(
             CROSS JOIN products AS product
             WHERE branch.organization_id = ${input.organizationId}::uuid
               AND branch.id IN (${Prisma.join(branchIds)})
-              ${activeBranchOnly ? Prisma.sql`AND branch.status = 'ACTIVE'` : Prisma.empty}
+              ${options.activeBranchOnly === true ? Prisma.sql`AND branch.status = 'ACTIVE'` : Prisma.empty}
               AND product.organization_id = ${input.organizationId}::uuid
               AND product.id = ${input.productId}::uuid
           )

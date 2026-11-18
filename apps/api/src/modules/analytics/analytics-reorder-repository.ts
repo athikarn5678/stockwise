@@ -1,11 +1,13 @@
 import { Prisma, type PrismaClient } from "../../generated/prisma/client.ts";
 import { readForecastInTransaction } from "./analytics-forecast-repository.ts";
+import { REORDER_HORIZON_DAYS } from "./analytics-forecast-values.ts";
 import {
   invalidInventoryMovementSql,
   inventorySourceItemErrorsSql,
 } from "./analytics-inventory-integrity.ts";
 import {
   buildReorder,
+  isSupportedLeadTime,
   type ReorderResult,
   type ReorderStock,
 } from "./analytics-reorder-values.ts";
@@ -54,7 +56,7 @@ export function createPrismaReorderRepository(
               scope: { kind: "branch", branchId: input.branchId },
             },
             sourceCutoff,
-            true,
+            { activeBranchOnly: true, horizonLength: REORDER_HORIZON_DAYS },
           );
           if (forecast.kind !== "success") return forecast;
           const pair = forecast.forecasts[0];
@@ -67,9 +69,7 @@ export function createPrismaReorderRepository(
           if (
             pair.status === "UNAVAILABLE" ||
             input.leadTimeDays === undefined ||
-            !Number.isInteger(input.leadTimeDays) ||
-            input.leadTimeDays < 1 ||
-            input.leadTimeDays > 7
+            !isSupportedLeadTime(input.leadTimeDays)
           ) {
             return {
               kind: "success",

@@ -3,6 +3,7 @@ import { Prisma, type ProductUnit } from "../../generated/prisma/client.ts";
 import {
   buildForecast,
   createForecastWindow,
+  REORDER_HORIZON_DAYS,
   type ForecastResult,
 } from "./analytics-forecast-values.ts";
 import { buildReorder } from "./analytics-reorder-values.ts";
@@ -14,6 +15,7 @@ const decimal = (value: string) => new Prisma.Decimal(value);
 function forecast(
   unit: ProductUnit = "EA",
   status: "ACTIVE" | "INACTIVE" = "ACTIVE",
+  horizonLength?: number,
 ) {
   return buildForecast({
     organizationId: "org",
@@ -24,7 +26,10 @@ function forecast(
     generatedAt: cutoff,
     sourceCutoff: cutoff,
     historyStartAt: new Date(window.trainingStartInclusive),
-    window,
+    window:
+      horizonLength === undefined
+        ? window
+        : createForecastWindow(cutoff, "Asia/Bangkok", horizonLength),
     training: Array.from({ length: 28 }, () => decimal("1")),
   });
 }
@@ -46,8 +51,11 @@ describe("Reorder V1 values", () => {
     [undefined, "LEAD_TIME_REQUIRED"],
     [0, "UNSUPPORTED_LEAD_TIME"],
     [-1, "UNSUPPORTED_LEAD_TIME"],
+    [1, "UNSUPPORTED_LEAD_TIME"],
     [1.5, "UNSUPPORTED_LEAD_TIME"],
+    [6, "UNSUPPORTED_LEAD_TIME"],
     [8, "UNSUPPORTED_LEAD_TIME"],
+    [31, "UNSUPPORTED_LEAD_TIME"],
   ] as const)("rejects lead time %s", (leadTimeDays, reason) => {
     const result = buildReorder({
       forecast: forecast(),
@@ -63,47 +71,70 @@ describe("Reorder V1 values", () => {
     expect(result.dailyForecast).toHaveLength(7);
   });
 
-  it("accepts one and seven days and sums serialized daily values", () => {
+  it("accepts seven and thirty days and sums serialized daily values", () => {
     const base = forecast();
     if (base.status !== "AVAILABLE") throw new Error("fixture");
     const rounded: ForecastResult = {
       ...base,
       days: base.days.map((day) => ({ ...day, quantity: "0.1071" })),
     };
-    const one = buildReorder({
-      forecast: rounded,
-      leadTimeDays: 1,
-      stock: stock("0"),
-    });
+    const thirtyBase = forecast("EA", "ACTIVE", REORDER_HORIZON_DAYS);
+    if (thirtyBase.status !== "AVAILABLE") throw new Error("fixture");
+    expect(thirtyBase.days).toHaveLength(30);
+    const roundedThirty: ForecastResult = {
+      ...thirtyBase,
+      days: thirtyBase.days.map((day) => ({ ...day, quantity: "0.1071" })),
+    };
     const seven = buildReorder({
       forecast: rounded,
       leadTimeDays: 7,
       stock: stock("0"),
     });
-    expect(one).toMatchObject({
-      status: "AVAILABLE",
-      leadTimeDemand: "0.1071",
-      recommendedQuantity: "1.0000",
+    const thirty = buildReorder({
+      forecast: roundedThirty,
+      leadTimeDays: 30,
+      stock: stock("0"),
     });
     expect(seven).toMatchObject({
       status: "AVAILABLE",
+      leadTimeDays: 7,
       leadTimeDemand: "0.7497",
       rawNeed: "0.7497",
     });
+    expect(thirty).toMatchObject({
+      status: "AVAILABLE",
+      leadTimeDays: 30,
+      leadTimeDemand: "3.2130",
+      rawNeed: "3.2130",
+      recommendedQuantity: "4.0000",
+    });
     expect(seven.sourceCutoff).toBe(cutoff.toISOString());
+    expect(seven.dailyForecast).toHaveLength(7);
+    expect(thirty.dailyForecast).toHaveLength(7);
+    expect(thirty.dailyForecast?.[0]?.localDate).toBe("2026-09-26");
     expect(seven.dailyForecast?.[0]?.localDate).toBe("2026-09-26");
   });
 
+  it("requires a forecast horizon that covers the lead time", () => {
+    expect(() =>
+      buildReorder({
+        forecast: forecast(),
+        leadTimeDays: 30,
+        stock: stock("0"),
+      }),
+    ).toThrow(/forecast horizon/);
+  });
+
   it.each([
-    ["2", "0.0000"],
-    ["1", "0.0000"],
-    ["0.9999", "0.0001"],
-    ["0", "1.0000"],
+    ["2", "5.0000"],
+    ["1", "6.0000"],
+    ["0.9999", "6.0001"],
+    ["0", "7.0000"],
   ])("floors demand minus %s on hand", (onHand, rawNeed) => {
     expect(
       buildReorder({
         forecast: forecast("KG"),
-        leadTimeDays: 1,
+        leadTimeDays: 7,
         stock: stock(onHand),
       }),
     ).toMatchObject({
@@ -121,15 +152,15 @@ describe("Reorder V1 values", () => {
       for (const [quantity, expected] of [
         ["0.0000", "0.0000"],
         ["0.0001", "1.0000"],
-        ["1.0000", "1.0000"],
-        ["1.0001", "2.0000"],
+        ["1.0000", "7.0000"],
+        ["1.0001", "8.0000"],
       ] as const) {
         const result = buildReorder({
           forecast: {
             ...base,
             days: base.days.map((day) => ({ ...day, quantity })),
           },
-          leadTimeDays: 1,
+          leadTimeDays: 7,
           stock: stock("0"),
         });
         expect(result.recommendedQuantity).toBe(expected);
@@ -147,12 +178,12 @@ describe("Reorder V1 values", () => {
           ...base,
           days: base.days.map((day) => ({ ...day, quantity: "1.0001" })),
         },
-        leadTimeDays: 1,
+        leadTimeDays: 7,
         stock: stock("0"),
       });
       expect(result).toMatchObject({
-        rawNeed: "1.0001",
-        recommendedQuantity: "1.0001",
+        rawNeed: "7.0007",
+        recommendedQuantity: "7.0007",
       });
     },
   );
@@ -166,7 +197,7 @@ describe("Reorder V1 values", () => {
           ...base,
           days: base.days.map((day) => ({ ...day, quantity })),
         },
-        leadTimeDays: 1,
+        leadTimeDays: 7,
         stock: stock("0"),
       });
       expect(result).toMatchObject({
@@ -182,7 +213,7 @@ describe("Reorder V1 values", () => {
   it("keeps forecast reason precedence and leaves derived guidance null", () => {
     const inactive = buildReorder({
       forecast: forecast("EA", "INACTIVE"),
-      leadTimeDays: 0,
+      leadTimeDays: 7,
     });
     const insufficient = buildForecast({
       organizationId: "org",
@@ -203,7 +234,7 @@ describe("Reorder V1 values", () => {
       onHand: null,
     });
     expect(
-      buildReorder({ forecast: insufficient, leadTimeDays: 0 }),
+      buildReorder({ forecast: insufficient, leadTimeDays: 7 }),
     ).toMatchObject({
       status: "UNAVAILABLE",
       reason: "INSUFFICIENT_DATA",
@@ -212,7 +243,7 @@ describe("Reorder V1 values", () => {
     expect(
       buildReorder({
         forecast: forecast(),
-        leadTimeDays: 1,
+        leadTimeDays: 7,
         stock: stock("-1"),
       }),
     ).toMatchObject({
@@ -238,7 +269,7 @@ describe("Reorder V1 values", () => {
           ...base,
           days: base.days.map((day) => ({ ...day, quantity: "0.0000" })),
         },
-        leadTimeDays: 1,
+        leadTimeDays: 7,
         stock: stock("0"),
       }),
     ).toMatchObject({
@@ -255,7 +286,7 @@ describe("Reorder V1 values", () => {
     (current) => {
       const result = buildReorder({
         forecast: forecast(),
-        leadTimeDays: 1,
+        leadTimeDays: 7,
         stock: current,
       });
       expect(result).toMatchObject({

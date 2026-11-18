@@ -6,6 +6,7 @@ import {
   buildForecast,
   createForecastWindow,
   meanDailyForecast,
+  REORDER_HORIZON_DAYS,
   summarizeForecastBacktests,
 } from "./analytics-forecast-values.ts";
 
@@ -75,6 +76,81 @@ describe("forecast-sale-mean-28d-v1 values", () => {
     ).toBe(25 * 60 * 60 * 1000);
   });
 
+  it("builds a contiguous 30-day horizon with the same daily bounds", () => {
+    const thirty = createForecastWindow(
+      new Date("2026-09-25T05:00:00.000Z"),
+      "Asia/Bangkok",
+      REORDER_HORIZON_DAYS,
+    );
+    expect(thirty.trainingDays).toHaveLength(28);
+    expect(thirty.horizonDays).toHaveLength(30);
+    expect(thirty.horizonDays[0]?.localDate).toBe("2026-09-26");
+    expect(thirty.horizonDays[29]?.localDate).toBe("2026-10-25");
+    expect(thirty.horizonStartInclusive).toBe("2026-09-25T17:00:00.000Z");
+    expect(thirty.horizonEndExclusive).toBe("2026-10-25T17:00:00.000Z");
+    expect(thirty.horizonEndExclusive).toBe(
+      thirty.horizonDays[29]?.bucketEndExclusive,
+    );
+    for (const [index, day] of thirty.horizonDays.entries()) {
+      expect(
+        new Date(day.bucketEndExclusive).getTime() -
+          new Date(day.bucketStartInclusive).getTime(),
+      ).toBe(24 * 60 * 60 * 1000);
+      if (index > 0)
+        expect(day.bucketStartInclusive).toBe(
+          thirty.horizonDays[index - 1]?.bucketEndExclusive,
+        );
+    }
+  });
+
+  it("keeps a 30-day horizon contiguous across both DST transitions", () => {
+    const spring = createForecastWindow(
+      new Date("2026-03-01T05:00:00.000Z"),
+      "America/New_York",
+      REORDER_HORIZON_DAYS,
+    );
+    const fall = createForecastWindow(
+      new Date("2026-10-20T04:00:00.000Z"),
+      "America/New_York",
+      REORDER_HORIZON_DAYS,
+    );
+    for (const window of [spring, fall]) {
+      expect(window.horizonDays).toHaveLength(30);
+      expect(window.horizonEndExclusive).toBe(
+        window.horizonDays[29]?.bucketEndExclusive,
+      );
+      for (const [index, day] of window.horizonDays.entries()) {
+        if (index > 0)
+          expect(day.bucketStartInclusive).toBe(
+            window.horizonDays[index - 1]?.bucketEndExclusive,
+          );
+      }
+    }
+    const springDay = spring.horizonDays.find(
+      (day) => day.localDate === "2026-03-08",
+    )!;
+    const fallDay = fall.horizonDays.find(
+      (day) => day.localDate === "2026-11-01",
+    )!;
+    expect(
+      new Date(springDay.bucketEndExclusive).getTime() -
+        new Date(springDay.bucketStartInclusive).getTime(),
+    ).toBe(23 * 60 * 60 * 1000);
+    expect(
+      new Date(fallDay.bucketEndExclusive).getTime() -
+        new Date(fallDay.bucketStartInclusive).getTime(),
+    ).toBe(25 * 60 * 60 * 1000);
+    expect(
+      new Date(fall.horizonEndExclusive).getTime() -
+        new Date(fall.horizonStartInclusive).getTime(),
+    ).toBe(30 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000);
+  });
+
+  it("rejects a non-positive forecast horizon", () => {
+    expect(() => createForecastWindow(cutoff, "Asia/Bangkok", 0)).toThrow();
+    expect(() => createForecastWindow(cutoff, "Asia/Bangkok", 7.5)).toThrow();
+  });
+
   it("uses exact Decimal mean, HALF_UP daily rounding, and sum of rounded days", () => {
     const training = [
       decimal("1"),
@@ -102,6 +178,45 @@ describe("forecast-sale-mean-28d-v1 values", () => {
         ...Array.from({ length: 27 }, () => decimal("0")),
       ]),
     ).toBe("0.0001");
+  });
+
+  it("repeats the same 28-day mean over a 30-day horizon without changing the 7-day default", () => {
+    const thirtyWindow = createForecastWindow(
+      cutoff,
+      "Asia/Bangkok",
+      REORDER_HORIZON_DAYS,
+    );
+    const training = [
+      decimal("1"),
+      ...Array.from({ length: 27 }, () => decimal("0")),
+    ];
+    const thirty = buildForecast({
+      organizationId: "org",
+      branchId: "branch",
+      productId: "product",
+      unit: "EA",
+      productStatus: "ACTIVE",
+      generatedAt: cutoff,
+      sourceCutoff: cutoff,
+      historyStartAt: new Date(thirtyWindow.trainingStartInclusive),
+      window: thirtyWindow,
+      training,
+    });
+    expect(thirty).toMatchObject({
+      status: "AVAILABLE",
+      horizonDays: 30,
+      horizonStartInclusive: "2026-09-25T17:00:00.000Z",
+      horizonEndExclusive: "2026-10-25T17:00:00.000Z",
+      horizonTotal: "1.0710",
+    });
+    if (thirty.status !== "AVAILABLE") throw new Error("fixture");
+    expect(thirty.days).toHaveLength(30);
+    expect(thirty.days.every((day) => day.quantity === "0.0357")).toBe(true);
+    const seven = forecast({ training });
+    expect(seven).toMatchObject({ horizonDays: 7, horizonTotal: "0.2499" });
+    if (seven.status !== "AVAILABLE") throw new Error("fixture");
+    expect(seven.days).toHaveLength(7);
+    expect(thirty.days.slice(0, 7)).toEqual(seven.days);
   });
 
   it("keeps zero history available and integral units as decimal expectations", () => {

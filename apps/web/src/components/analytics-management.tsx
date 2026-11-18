@@ -40,6 +40,7 @@ import {
 } from "@/analytics-api-client";
 import { formatThb } from "@/money-display";
 import { resolveApplicationContext } from "@/application-context";
+import { PageTabs } from "@/components/page-layout";
 import { AiAnalysisContent, mayAnalyze } from "@/components/ai-analysis-page";
 import { AiInsightView } from "@/components/ai-insight-view";
 import { InventoryAnalyticsView } from "@/components/inventory-analytics-view";
@@ -748,8 +749,10 @@ function AnalyticsContent({
           </p>
         </div>
       </form>
-      <nav aria-label={t("uiAnalyticsViews")} className="flex flex-wrap gap-2">
-        {(organization.role === "INVENTORY_STAFF"
+      <PageTabs<View>
+        ariaLabel={t("uiAnalyticsViews")}
+        onValueChange={setView}
+        tabs={(organization.role === "INVENTORY_STAFF"
           ? (["inventory"] as const)
           : ([
               "sales",
@@ -760,30 +763,25 @@ function AnalyticsContent({
               "insights",
               ...(canAnalyze ? (["ai-analysis"] as const) : []),
             ] as const)
-        ).map((item) => (
-          <Button
-            key={item}
-            type="button"
-            aria-pressed={view === item}
-            onClick={() => setView(item)}
-            variant={view === item ? "secondary" : "outline"}
-          >
-            {item === "sales"
+        ).map((id) => ({
+          id,
+          label:
+            id === "sales"
               ? t("marketingSales")
-              : item === "categories"
+              : id === "categories"
                 ? t("uiCategories")
-                : item === "branches"
+                : id === "branches"
                   ? t("branchTitle")
-                  : item === "inventory"
+                  : id === "inventory"
                     ? t("inventoryTitle")
-                    : item === "insights"
+                    : id === "insights"
                       ? t("aiTitle")
-                      : item === "ai-analysis"
+                      : id === "ai-analysis"
                         ? t("aiAnalysis")
-                        : t("uiForecastReorder")}
-          </Button>
-        ))}
-      </nav>
+                        : t("uiForecastReorder"),
+        }))}
+        value={view}
+      />
       {view === "ai-analysis" ? (
         <AiAnalysisContent
           key={selectedBranchId ?? ""}

@@ -372,7 +372,7 @@ afterEach(() => {
 describe("analytics management", () => {
   it("places the AI analysis tab directly after AI insights for an owner", async () => {
     renderPage();
-    const tabs = await screen.findByRole("navigation", {
+    const tabs = await screen.findByRole("group", {
       name: "Analytics views",
     });
     const labels = Array.from(tabs.querySelectorAll("button")).map(
@@ -386,7 +386,7 @@ describe("analytics management", () => {
   it("does not offer the AI analysis tab to inventory staff", async () => {
     role = "INVENTORY_STAFF";
     renderPage();
-    await screen.findByRole("navigation", { name: "Analytics views" });
+    await screen.findByRole("group", { name: "Analytics views" });
     expect(screen.queryByRole("button", { name: "AI analysis" })).toBeNull();
   });
 
@@ -407,7 +407,7 @@ describe("analytics management", () => {
     viewParam = "&view=ai-analysis";
     role = "INVENTORY_STAFF";
     renderPage();
-    await screen.findByRole("navigation", { name: "Analytics views" });
+    await screen.findByRole("group", { name: "Analytics views" });
     expect(
       screen.queryByRole("button", { name: "Generate analysis" }),
     ).toBeNull();

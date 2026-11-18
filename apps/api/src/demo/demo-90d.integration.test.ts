@@ -233,7 +233,7 @@ suite("DEMO-90D one-command seed on disposable PostgreSQL", () => {
     expect(organizations).toHaveLength(1);
     expect(organizations[0]).toEqual({
       id: organizationId,
-      name: "UAT Demo Siam Mart",
+      name: "Siam Mart",
       reportingTimezone: "Asia/Bangkok",
     });
 
@@ -302,7 +302,9 @@ suite("DEMO-90D one-command seed on disposable PostgreSQL", () => {
       where: { organizationId },
       select: { status: true, receipt: { select: { id: true } } },
     });
-    expect(orders).toHaveLength(18);
+    expect(orders).toHaveLength(
+      3 * Math.ceil(demoWindowShape(REFERENCE_DATE).days / 15),
+    );
     expect(orders.every((order) => order.status === "RECEIVED")).toBe(true);
     expect(orders.every((order) => order.receipt !== null)).toBe(true);
     expect(
@@ -432,7 +434,7 @@ suite("DEMO-90D one-command seed on disposable PostgreSQL", () => {
     const sales = await createPrismaAnalyticsSalesRepository(prisma).read(
       resolved.context,
     );
-    expect(sales.buckets).toHaveLength(90);
+    expect(sales.buckets).toHaveLength(demoWindowShape(REFERENCE_DATE).days);
     expect(sales.buckets[0]?.localStartInclusive).toBe(plan.from);
     expect(sales.buckets.reduce((count, b) => count + b.saleCount, 0)).toBe(
       plan.sales.length,

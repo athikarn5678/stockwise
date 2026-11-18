@@ -16,6 +16,7 @@ import {
 } from "./demo-30d-plan.ts";
 import { readDemoProvenance } from "./demo-30d-provenance.ts";
 import { runDemo30d } from "./demo-30d-runner.ts";
+import { seedStoredReports } from "./demo-seed-reports.ts";
 import { loadDemoDatabaseEnvironment } from "./demo-environment.ts";
 import { verifyDemoSeedTarget } from "./demo-local-database.ts";
 
@@ -136,6 +137,14 @@ async function main() {
       shape: demoWindowShape(referenceDate),
       apply: true,
     });
+    // Stored weekly/monthly reports are derived from the applied history, so they
+    // run only after the plan is complete and never in preview mode.
+    const reports = await seedStoredReports(prisma, {
+      from: result.from,
+      organizationId: bootstrap.organizationId,
+      reportingTimezone: catalog.organization.timezone,
+      to: result.to,
+    });
     process.stdout.write(
       `${JSON.stringify(
         {
@@ -147,6 +156,7 @@ async function main() {
           orderCount: result.orderCount,
           refundCount: result.refundCount,
           adjustmentCount: result.adjustmentCount ?? 0,
+          reports,
           organizationName: catalog.organization.name,
           accounts: catalog.users.map(({ role, email }) => ({ role, email })),
           passwordSource: source,

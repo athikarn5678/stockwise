@@ -4,10 +4,7 @@ import { useLanguage } from "@/providers/language-provider";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+import { OptionSelect } from "@/components/option-select";
 
 import {
   type InfiniteData,
@@ -974,23 +971,18 @@ function DiscountControls({
       <legend className="font-medium">{t("uiWholeSaleDiscount")}</legend>
       <Label className="form-field">
         {t("uiDiscountType")}
-        <NativeSelect
+        <OptionSelect
           className="w-full "
-          onChange={(event) =>
-            onChange(event.target.value as DiscountType, value, reason)
+          onValueChange={(nextType) =>
+            onChange(nextType as DiscountType, value, reason)
           }
+          options={[
+            { label: t("uiNoDiscount"), value: "NONE" },
+            { label: t("uiAmountTHB"), value: "AMOUNT" },
+            { label: t("uiPercent"), value: "PERCENT" },
+          ]}
           value={type}
-        >
-          <NativeSelectOption value="NONE">
-            {t("uiNoDiscount")}
-          </NativeSelectOption>
-          <NativeSelectOption value="AMOUNT">
-            {t("uiAmountTHB")}
-          </NativeSelectOption>
-          <NativeSelectOption value="PERCENT">
-            {t("uiPercent")}
-          </NativeSelectOption>
-        </NativeSelect>
+        />
       </Label>
       {type !== "NONE" ? (
         <>
@@ -1234,20 +1226,17 @@ function VatProfilePanel({
     >
       <Label className="form-field">
         {t("uiSalesVATStatus")}
-        <NativeSelect
+        <OptionSelect
           className="w-full "
-          onChange={(event) =>
-            setStatus(event.target.value as SalesVatProfile["salesVatStatus"])
+          onValueChange={(value) =>
+            setStatus(value as SalesVatProfile["salesVatStatus"])
           }
+          options={[
+            { label: t("uiNotRegistered"), value: "NOT_REGISTERED" },
+            { label: t("uiRegistered"), value: "REGISTERED" },
+          ]}
           value={status}
-        >
-          <NativeSelectOption value="NOT_REGISTERED">
-            {t("uiNotRegistered")}
-          </NativeSelectOption>
-          <NativeSelectOption value="REGISTERED">
-            {t("uiRegistered")}
-          </NativeSelectOption>
-        </NativeSelect>
+        />
       </Label>
       {status === "REGISTERED" ? (
         <Label className="form-field">

@@ -11,10 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
 import { DateInput } from "@/components/ui/date-input";
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+import { OptionSelect } from "@/components/option-select";
 import { Button } from "@/components/ui/button";
 
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
@@ -686,52 +683,44 @@ function AnalyticsContent({
           </Label>
           <Label className="form-field">
             {t("uiGranularity")}
-            <NativeSelect
-              value={draftPeriod.granularity}
-              onChange={(event) =>
+            <OptionSelect
+              className="w-full "
+              onValueChange={(value) =>
                 setDraftPeriod({
                   ...draftPeriod,
-                  granularity: event.target
-                    .value as AnalyticsPeriod["granularity"],
+                  granularity: value as AnalyticsPeriod["granularity"],
                 })
               }
-              className="w-full "
-            >
-              <NativeSelectOption value="day">{t("uiDay")}</NativeSelectOption>
-              <NativeSelectOption value="week">
-                {t("uiWeek")}
-              </NativeSelectOption>
-              <NativeSelectOption value="month">
-                {t("uiMonth")}
-              </NativeSelectOption>
-              <NativeSelectOption value="year">
-                {t("uiYear")}
-              </NativeSelectOption>
-            </NativeSelect>
+              options={[
+                { label: t("uiDay"), value: "day" },
+                { label: t("uiWeek"), value: "week" },
+                { label: t("uiMonth"), value: "month" },
+                { label: t("uiYear"), value: "year" },
+              ]}
+              value={draftPeriod.granularity}
+            />
           </Label>
           <Label className="form-field">
             {t("uiScope")}
-            <NativeSelect
+            <OptionSelect
               aria-label={t("uiAnalyticsScope")}
+              className="w-full "
+              onValueChange={setScopeValue}
+              options={[
+                ...(isWideRole
+                  ? [{ label: t("aiAllBranches"), value: "organization" }]
+                  : []),
+                ...allowedBranches.map((branch) => ({
+                  label: `${branch.code} — ${branch.name}`,
+                  value: branch.id,
+                })),
+              ]}
               value={
                 effectiveScope.scope === "organization"
                   ? "organization"
                   : effectiveScope.branchId
               }
-              onChange={(event) => setScopeValue(event.target.value)}
-              className="w-full "
-            >
-              {isWideRole ? (
-                <NativeSelectOption value="organization">
-                  {t("aiAllBranches")}
-                </NativeSelectOption>
-              ) : null}
-              {allowedBranches.map((branch) => (
-                <NativeSelectOption key={branch.id} value={branch.id}>
-                  {branch.code} — {branch.name}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
+            />
           </Label>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -820,20 +809,15 @@ function AnalyticsContent({
           {buckets.length > 0 ? (
             <Label className="form-field max-w-xs">
               {t("uiSelectedPeriod")}
-              <NativeSelect
-                value={activeBucket?.localStartInclusive ?? ""}
-                onChange={(event) => setSelectedBucket(event.target.value)}
+              <OptionSelect
                 className="w-full "
-              >
-                {buckets.map((bucket) => (
-                  <NativeSelectOption
-                    value={bucket.localStartInclusive}
-                    key={bucket.localStartInclusive}
-                  >
-                    {bucket.label}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
+                onValueChange={setSelectedBucket}
+                options={buckets.map((bucket) => ({
+                  label: bucket.label,
+                  value: bucket.localStartInclusive,
+                }))}
+                value={activeBucket?.localStartInclusive ?? ""}
+              />
             </Label>
           ) : null}
           {view === "sales" ? (

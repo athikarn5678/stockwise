@@ -10,6 +10,7 @@ import {
   nextMail,
   test,
 } from "./demo-fixtures.ts";
+import { selectOption } from "../select-helpers.ts";
 
 /**
  * STOCKWISE-DEMO-E2E-01: essential AWS Academy demo journeys on Better Auth
@@ -183,14 +184,16 @@ test("3 invitation: owner invites a CASHIER for MAIN who registers and accepts",
     await page.getByRole("link", { name: "Manage members" }).first().click();
     await expect(page).toHaveURL(/\/app\/members\?/);
     // Member cards also render role/branch controls; use the invite form only.
-    // A wrapped <select> is named by its label plus the selected option.
+    // The select itself is a Base UI trigger, so drive it through the helper.
     const inviteForm = page.locator("form").filter({
       has: page.getByRole("heading", { name: "Invite member", exact: true }),
     });
     await inviteForm.getByLabel("Email", { exact: true }).fill(cashier.email);
-    await inviteForm
-      .getByRole("combobox", { name: /^Role\b/ })
-      .selectOption("CASHIER");
+    await selectOption(
+      page,
+      inviteForm.getByRole("combobox", { name: /^Role\b/ }),
+      { value: "CASHIER" },
+    );
     await inviteForm.getByRole("checkbox", { name: /^MAIN — / }).check();
     page.once("dialog", (dialog) => void dialog.accept());
     const invitation = post(

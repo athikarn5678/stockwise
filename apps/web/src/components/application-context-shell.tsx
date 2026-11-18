@@ -2,10 +2,7 @@
 import { useLanguage } from "@/providers/language-provider";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+import { OptionSelect } from "@/components/option-select";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -141,11 +138,11 @@ export function ApplicationContextShell() {
         <div className="mt-5 grid max-w-4xl gap-4 sm:grid-cols-2">
           <Label className="form-field">
             {t("organization")}
-            <NativeSelect
+            <OptionSelect
               className="w-full "
-              onChange={(event) => {
+              onValueChange={(value) => {
                 const organization = contextQuery.data.organizations.find(
-                  ({ id }) => id === event.target.value,
+                  ({ id }) => id === value,
                 );
                 if (organization)
                   void switchTo(
@@ -153,39 +150,32 @@ export function ApplicationContextShell() {
                     organization.branches[0]?.id ?? null,
                   );
               }}
+              options={contextQuery.data.organizations.map((organization) => ({
+                label: organization.name,
+                value: organization.id,
+              }))}
               value={activeOrganization.id}
-            >
-              {contextQuery.data.organizations.map((organization) => (
-                <NativeSelectOption
-                  key={organization.id}
-                  value={organization.id}
-                >
-                  {organization.name}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
+            />
           </Label>
           <Label className="form-field">
             {t("branch")}
-            <NativeSelect
+            <OptionSelect
               className="w-full "
               disabled={activeOrganization.branches.length === 0}
-              onChange={(event) =>
-                void switchTo(activeOrganization.id, event.target.value)
+              onValueChange={(value) =>
+                void switchTo(activeOrganization.id, value)
               }
+              options={[
+                ...(activeOrganization.branches.length === 0
+                  ? [{ label: t("noBranch"), value: "" }]
+                  : []),
+                ...activeOrganization.branches.map((branch) => ({
+                  label: `${branch.code} — ${branch.name}`,
+                  value: branch.id,
+                })),
+              ]}
               value={resolved.branch?.id ?? ""}
-            >
-              {activeOrganization.branches.length === 0 ? (
-                <NativeSelectOption value="">
-                  {t("noBranch")}
-                </NativeSelectOption>
-              ) : null}
-              {activeOrganization.branches.map((branch) => (
-                <NativeSelectOption key={branch.id} value={branch.id}>
-                  {branch.code} — {branch.name}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
+            />
           </Label>
         </div>
       </div>

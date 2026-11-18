@@ -7,10 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+import { OptionSelect } from "@/components/option-select";
 
 import {
   type InfiniteData,
@@ -653,24 +650,20 @@ function ProductListControls({
       <SearchControl onSearch={onSearch} search={search} />
       <Label className="form-field" htmlFor={categorySelectId}>
         {t("uiCategoryFilter")}
-        <NativeSelect
+        <OptionSelect
           className="w-full "
           id={categorySelectId}
-          onChange={(event) => onCategoryFilterChange(event.target.value)}
+          onValueChange={onCategoryFilterChange}
+          options={[
+            { label: t("uiAllCategories"), value: "" },
+            { label: t("uiUncategorized"), value: "uncategorized" },
+            ...categories.map((category) => ({
+              label: category.name,
+              value: category.id,
+            })),
+          ]}
           value={categoryFilter}
-        >
-          <NativeSelectOption value="">
-            {t("uiAllCategories")}
-          </NativeSelectOption>
-          <NativeSelectOption value="uncategorized">
-            {t("uiUncategorized")}
-          </NativeSelectOption>
-          {categories.map((category) => (
-            <NativeSelectOption key={category.id} value={category.id}>
-              {category.name}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
+        />
       </Label>
     </div>
   );
@@ -839,6 +832,10 @@ function ProductCreateForm({
 
   const { writeBlocked } = useSubscriptionWriteGate();
   const [validation, setValidation] = useState<TranslationKey | null>(null);
+  // The selects submit through their hidden form inputs, so their values live in
+  // state: a native `form.reset()` cannot restore a controlled select.
+  const [unit, setUnit] = useState<(typeof PRODUCT_UNITS)[number]>("EA");
+  const [categoryId, setCategoryId] = useState("");
   const mutation = useMutation({
     mutationFn: (form: HTMLFormElement) => {
       const data = new FormData(form);
@@ -861,7 +858,7 @@ function ProductCreateForm({
     onSuccess: onSaved,
   });
   const unitId = useId();
-  const categoryId = useId();
+  const categorySelectId = useId();
   return (
     <form
       className="rounded-lg border bg-card p-5"
@@ -871,7 +868,11 @@ function ProductCreateForm({
         setValidation(null);
         void mutation
           .mutateAsync(form)
-          .then(() => form.reset())
+          .then(() => {
+            form.reset();
+            setUnit("EA");
+            setCategoryId("");
+          })
           .catch((error: unknown) => {
             setValidation(errorMessage(error));
             onError(error);
@@ -891,29 +892,36 @@ function ProductCreateForm({
         />
         <Label className="form-field" htmlFor={unitId}>
           {t("uiUnit")}
-          <NativeSelect
+          <OptionSelect
             className="w-full form-control--compact"
-            defaultValue="EA"
             id={unitId}
             name="unit"
-          >
-            {PRODUCT_UNITS.map((unit) => (
-              <NativeSelectOption key={unit}>{unit}</NativeSelectOption>
-            ))}
-          </NativeSelect>
+            onValueChange={(value) =>
+              setUnit(value as (typeof PRODUCT_UNITS)[number])
+            }
+            options={PRODUCT_UNITS.map((option) => ({
+              label: option,
+              value: option,
+            }))}
+            value={unit}
+          />
         </Label>
-        <Label className="form-field" htmlFor={categoryId}>
+        <Label className="form-field" htmlFor={categorySelectId}>
           {t("uiCategoryOptional")}
-          <NativeSelect className="w-full " id={categoryId} name="categoryId">
-            <NativeSelectOption value="">
-              {t("uiUncategorized")}
-            </NativeSelectOption>
-            {categories.map((category) => (
-              <NativeSelectOption key={category.id} value={category.id}>
-                {category.name}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+          <OptionSelect
+            className="w-full "
+            id={categorySelectId}
+            name="categoryId"
+            onValueChange={setCategoryId}
+            options={[
+              { label: t("uiUncategorized"), value: "" },
+              ...categories.map((category) => ({
+                label: category.name,
+                value: category.id,
+              })),
+            ]}
+            value={categoryId}
+          />
         </Label>
         <TextareaField label={t("uiDescriptionOptional")} name="description" />
       </div>
@@ -956,6 +964,8 @@ function ProductEditor({
   const { writeBlocked } = useSubscriptionWriteGate();
 
   const [validation, setValidation] = useState<TranslationKey | null>(null);
+  // Mirrors the saved category so the hidden form input keeps submitting it.
+  const [categoryId, setCategoryId] = useState(product.categoryId ?? "");
   const updateMutation = useMutation({
     mutationFn: (form: HTMLFormElement) => {
       const data = new FormData(form);
@@ -1034,26 +1044,23 @@ function ProductEditor({
           />
           <Label className="form-field" htmlFor={categorySelectId}>
             {t("uiCategoryOptional")}
-            <NativeSelect
+            <OptionSelect
               className="w-full "
-              defaultValue={product.categoryId ?? ""}
               id={categorySelectId}
               name="categoryId"
-            >
-              <NativeSelectOption value="">
-                {t("uiUncategorized")}
-              </NativeSelectOption>
-              {needsCurrentCategoryOption ? (
-                <NativeSelectOption value={product.categoryId ?? ""}>
-                  {categoryName}
-                </NativeSelectOption>
-              ) : null}
-              {categories.map((category) => (
-                <NativeSelectOption key={category.id} value={category.id}>
-                  {category.name}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
+              onValueChange={setCategoryId}
+              options={[
+                { label: t("uiUncategorized"), value: "" },
+                ...(needsCurrentCategoryOption && product.categoryId !== null
+                  ? [{ label: categoryName ?? "", value: product.categoryId }]
+                  : []),
+                ...categories.map((category) => ({
+                  label: category.name,
+                  value: category.id,
+                })),
+              ]}
+              value={categoryId}
+            />
           </Label>
           <p className="self-end text-sm text-muted-foreground">
             {t("uiUnit2")} {product.unit} {t("uiImmutable")}

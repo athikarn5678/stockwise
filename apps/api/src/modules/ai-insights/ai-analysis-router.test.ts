@@ -236,6 +236,18 @@ describe("AI analysis routes", () => {
     expect((await post(missing.url, {})).status).toBe(404);
   });
 
+  it("maps insufficient_data to 422 without a retry hint", async () => {
+    const { analyze, url } = await start({
+      analyzeResult: { kind: "insufficient_data" },
+    });
+    const response = await post(url, { days: 30 });
+    expect(response.status).toBe(422);
+    expect(await errorCode(response)).toBe("INSUFFICIENT_DATA");
+    expect(response.headers.get("retry-after")).toBeNull();
+    expect(response.headers.get("cache-control")).toBeNull();
+    expect(analyze).toHaveBeenCalledTimes(1);
+  });
+
   it("pages the history newest first", async () => {
     const { list, url } = await start({
       listResult: { items: [run], nextCursor: RUN_ID },

@@ -39,6 +39,8 @@ function collectNumbers(value: unknown, collected: number[]): void {
   }
   if (typeof value === "string") {
     collected.push(...numbersIn(value));
+    // A name like "Tissue 1,000 sheets" may be copied as "1000" (grouping stripped).
+    collected.push(...numbersIn(value.replace(GROUPED_DIGITS, "")));
     return;
   }
   if (Array.isArray(value)) {
@@ -204,6 +206,73 @@ function costLine(snapshot: AiAnalyzeSnapshot, language: AiAnalyzeLanguage) {
     : `Gross profit ${snapshot.cost.grossProfitAmount}; gross margin ${snapshot.cost.grossMarginPercent ?? "unavailable"}`;
 }
 
+function productLines(
+  snapshot: AiAnalyzeSnapshot,
+  language: AiAnalyzeLanguage,
+): readonly string[] {
+  const { products } = snapshot;
+  const th = language === "th";
+  const sold = (item: {
+    name: string;
+    netSalesAmount: string;
+    quantity: string;
+  }) =>
+    th
+      ? `- ${item.name}: ${item.quantity} หน่วย ยอดขาย ${item.netSalesAmount}`
+      : `- ${item.name}: ${item.quantity} units, net sales ${item.netSalesAmount}`;
+  return [
+    ...(products.topByNetSales.length === 0
+      ? [th ? "ไม่มีข้อมูลสินค้าขายดี" : "No product sales in this period"]
+      : [
+          th ? "สินค้าขายดี (ตามยอดขาย):" : "Top products by net sales:",
+          ...products.topByNetSales.map(sold),
+        ]),
+    ...(products.topByQuantity.length === 0
+      ? []
+      : [
+          th ? "สินค้าขายดี (ตามจำนวน):" : "Top products by quantity:",
+          ...products.topByQuantity.map(sold),
+        ]),
+    ...(products.slowestByQuantity.length === 0
+      ? []
+      : [
+          th ? "สินค้าขายช้า (ตามจำนวน):" : "Slowest products by quantity:",
+          ...products.slowestByQuantity.map(sold),
+        ]),
+    ...(products.noSales.count === 0
+      ? []
+      : [
+          th
+            ? `สินค้าที่ไม่มียอดขาย ${products.noSales.count} รายการ: ${products.noSales.names.join(", ")}`
+            : `Products with no sales (${products.noSales.count}): ${products.noSales.names.join(", ")}`,
+        ]),
+  ];
+}
+
+function stockLines(
+  snapshot: AiAnalyzeSnapshot,
+  language: AiAnalyzeLanguage,
+): readonly string[] {
+  const { lowStock, outOfStock } = snapshot.products;
+  const th = language === "th";
+  return [
+    ...(outOfStock.count === 0
+      ? []
+      : [
+          th
+            ? `สินค้าหมดสต็อก ${outOfStock.count} รายการ: ${outOfStock.items.map((item) => item.name).join(", ")}`
+            : `Out of stock (${outOfStock.count}): ${outOfStock.items.map((item) => item.name).join(", ")}`,
+        ]),
+    ...(lowStock.count === 0
+      ? []
+      : [
+          th
+            ? `สินค้าใกล้หมด (เหลือไม่เกิน ${lowStock.coverDaysThreshold} วัน) ${lowStock.count} รายการ: ${lowStock.items.map((item) => `${item.name} คงเหลือ ${item.onHandQuantity}`).join(", ")}`
+            : `Low stock (cover of at most ${lowStock.coverDaysThreshold} days) ${lowStock.count}: ${lowStock.items.map((item) => `${item.name} on hand ${item.onHandQuantity}`).join(", ")}`,
+        ]),
+  ];
+}
+
 /**
  * Deterministic sample text used when no provider is configured. It obeys the
  * same heading and number contract as provider output.
@@ -224,7 +293,7 @@ export function buildMockAiAnalyzeOutput(input: {
       `ยอดคืนเงิน ${totals.refundAmount} จำนวน ${totals.refundCount} รายการ`,
       `มูลค่าเฉลี่ยต่อรายการ ${average}`,
       "## สินค้าขายดีและขายช้า",
-      "ข้อมูลที่มีคือระดับหมวดหมู่เท่านั้น ยังไม่มีข้อมูลระดับสินค้า",
+      ...productLines(input.snapshot, "th"),
       ...(categories.top.length === 0
         ? ["ยังไม่มีข้อมูลหมวดหมู่"]
         : ["หมวดหมู่ขายดี:", ...categoryList(categories.top)]),
@@ -233,6 +302,7 @@ export function buildMockAiAnalyzeOutput(input: {
         : ["หมวดหมู่ขายช้า:", ...categoryList(categories.bottom)]),
       "## ข้อสังเกต",
       costLine(input.snapshot, "th"),
+      ...stockLines(input.snapshot, "th"),
       extremeDay(input.snapshot.bestDay, "วันที่ขายดีที่สุด"),
       extremeDay(input.snapshot.worstDay, "วันที่ขายน้อยที่สุด"),
       "## สิ่งที่ควรทำ",
@@ -248,7 +318,7 @@ export function buildMockAiAnalyzeOutput(input: {
     `Refunds ${totals.refundAmount} across ${totals.refundCount} refunds`,
     `Average order value ${average}`,
     "## Products",
-    "Only category-level data is supplied; product-level detail is unavailable.",
+    ...productLines(input.snapshot, "en"),
     ...(categories.top.length === 0
       ? ["No category data"]
       : ["Top categories:", ...categoryList(categories.top)]),
@@ -257,6 +327,7 @@ export function buildMockAiAnalyzeOutput(input: {
       : ["Slowest categories:", ...categoryList(categories.bottom)]),
     "## Notes & risks",
     costLine(input.snapshot, "en"),
+    ...stockLines(input.snapshot, "en"),
     extremeDay(input.snapshot.bestDay, "Best day"),
     extremeDay(input.snapshot.worstDay, "Weakest day"),
     "## Recommended actions",

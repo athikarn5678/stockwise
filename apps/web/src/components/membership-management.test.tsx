@@ -28,6 +28,11 @@ import { th } from "@/i18n/th";
 import { en } from "@/i18n/en";
 
 import { MembershipManagement } from "./membership-management";
+import {
+  chooseOption,
+  expectSelectValue,
+  readSelectOptionValues,
+} from "@/test/select-helpers";
 
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const BRANCH_ID = "20000000-0000-4000-8000-000000000001";
@@ -301,12 +306,7 @@ describe("membership management UI", () => {
         expect(self.queryByRole("button")).toBeNull();
       }
       for (const select of screen.getAllByRole("combobox")) {
-        expect(
-          Array.from(
-            (select as HTMLSelectElement).options,
-            (option) => option.value,
-          ),
-        ).toEqual(allowed);
+        expect(await readSelectOptionValues(select)).toEqual(allowed);
       }
     },
   );
@@ -409,9 +409,7 @@ describe("membership management UI", () => {
         target: { value: "wide@example.com" },
       });
       await screen.findAllByLabelText("MAIN — Main");
-      fireEvent.change(screen.getAllByLabelText("Role")[0]!, {
-        target: { value: "ADMIN" },
-      });
+      await chooseOption(screen.getAllByLabelText("Role")[0]!, en.ADMIN);
       fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
       await waitFor(() =>
         expect(createInvitation).toHaveBeenCalledWith(ORGANIZATION_ID, {
@@ -454,9 +452,9 @@ describe("membership management UI", () => {
       fireEvent.change(screen.getByLabelText("Email"), {
         target: { value: "later@example.com" },
       });
-      fireEvent.change(screen.getAllByLabelText("Role")[0]!, {
-        target: { value: "ADMIN" },
-      });
+      // The dialog is open while the user keeps editing: the scope checkbox is
+      // cleared, so the draft no longer matches the captured submission.
+      fireEvent.click(screen.getAllByLabelText("MAIN — Main")[0]!);
       return true;
     });
     renderManagement();
@@ -476,8 +474,9 @@ describe("membership management UI", () => {
       "later@example.com",
     );
     expect(
-      (screen.getAllByLabelText("Role")[0] as HTMLSelectElement).value,
-    ).toBe("ADMIN");
+      screen.getAllByLabelText("MAIN — Main")[0]!.getAttribute("aria-checked"),
+    ).toBe("false");
+    expectSelectValue(screen.getAllByLabelText("Role")[0]!, en.CASHIER);
   });
 
   it("does not send the confirmed invite after actor authority changes during confirmation", async () => {
@@ -679,9 +678,7 @@ describe("membership management UI", () => {
     expect(screen.queryByRole("button", { name: "Revoke" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Reissue" })).toBeNull();
     for (const select of screen.getAllByLabelText("Role"))
-      expect(
-        within(select).queryByRole("option", { name: "OWNER" }),
-      ).toBeNull();
+      expect(await readSelectOptionValues(select)).not.toContain("OWNER");
   });
 
   it("does not mutate when a consequential change is cancelled", async () => {
@@ -690,9 +687,7 @@ describe("membership management UI", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Revoke" }));
     fireEvent.click(screen.getByRole("button", { name: "Reissue" }));
     fireEvent.click(screen.getByRole("button", { name: "Deactivate" }));
-    fireEvent.change(screen.getAllByLabelText("Role")[1]!, {
-      target: { value: "ADMIN" },
-    });
+    await chooseOption(screen.getAllByLabelText("Role")[1]!, en.ADMIN);
     fireEvent.click(screen.getByRole("button", { name: "Save access" }));
     expect(revokeInvitation).not.toHaveBeenCalled();
     expect(createInvitation).not.toHaveBeenCalled();
@@ -704,9 +699,7 @@ describe("membership management UI", () => {
     const client = renderManagement();
     await screen.findByRole("button", { name: "Deactivate" });
     const invalidate = vi.spyOn(client, "invalidateQueries");
-    fireEvent.change(screen.getAllByLabelText("Role")[1]!, {
-      target: { value: "ADMIN" },
-    });
+    await chooseOption(screen.getAllByLabelText("Role")[1]!, en.ADMIN);
     fireEvent.click(screen.getByRole("button", { name: "Save access" }));
     await waitFor(() =>
       expect(replaceMembership).toHaveBeenCalledWith(
@@ -734,9 +727,7 @@ describe("membership management UI", () => {
   it("preserves a draft on background update and requires explicit reload before rebasing", async () => {
     const client = renderManagement();
     await screen.findByRole("button", { name: "Deactivate" });
-    fireEvent.change(screen.getAllByLabelText("Role")[1]!, {
-      target: { value: "ADMIN" },
-    });
+    await chooseOption(screen.getAllByLabelText("Role")[1]!, en.ADMIN);
     const latest = {
       ...membership,
       role: "BRANCH_MANAGER" as const,
@@ -747,9 +738,7 @@ describe("membership management UI", () => {
       pageParams: [null],
     });
     await screen.findByRole("button", { name: "Reload latest access" });
-    expect(
-      (screen.getAllByLabelText("Role")[1] as HTMLSelectElement).value,
-    ).toBe("ADMIN");
+    expectSelectValue(screen.getAllByLabelText("Role")[1]!, en.ADMIN);
     expect(
       (
         screen.getByRole("button", { name: "Save access" }) as HTMLButtonElement
@@ -764,13 +753,12 @@ describe("membership management UI", () => {
       screen.getByRole("button", { name: "Reload latest access" }),
     );
     await waitFor(() =>
-      expect(
-        (screen.getAllByLabelText("Role")[1] as HTMLSelectElement).value,
-      ).toBe("BRANCH_MANAGER"),
+      expectSelectValue(
+        screen.getAllByLabelText("Role")[1]!,
+        en.BRANCH_MANAGER,
+      ),
     );
-    fireEvent.change(screen.getAllByLabelText("Role")[1]!, {
-      target: { value: "ADMIN" },
-    });
+    await chooseOption(screen.getAllByLabelText("Role")[1]!, en.ADMIN);
     fireEvent.click(screen.getByRole("button", { name: "Save access" }));
     await waitFor(() =>
       expect(replaceMembership).toHaveBeenCalledWith(
@@ -839,9 +827,10 @@ describe("membership management UI", () => {
     vi.mocked(replaceMembership).mockReturnValueOnce(promise);
     renderManagement();
     await screen.findByRole("button", { name: "Deactivate" });
-    fireEvent.change(screen.getAllByLabelText("Role")[1]!, {
-      target: { value: "INVENTORY_STAFF" },
-    });
+    await chooseOption(
+      screen.getAllByLabelText("Role")[1]!,
+      en.INVENTORY_STAFF,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Save access" }));
     await screen.findByRole("button", { name: "Saving…" });
     expect(
@@ -895,21 +884,15 @@ describe("membership management UI", () => {
   it("removes a privileged draft when actor or authority changes", async () => {
     const client = renderManagement();
     await screen.findByRole("button", { name: "Deactivate" });
-    fireEvent.change(screen.getAllByLabelText("Role")[1]!, {
-      target: { value: "ADMIN" },
-    });
+    await chooseOption(screen.getAllByLabelText("Role")[1]!, en.ADMIN);
     client.setQueryData(["access-context"], {
       ...context(),
       user: { ...context().user, id: "60000000-0000-4000-8000-000000000002" },
     });
     await waitFor(() =>
-      expect(
-        (screen.getAllByLabelText("Role")[1] as HTMLSelectElement).value,
-      ).toBe("CASHIER"),
+      expectSelectValue(screen.getAllByLabelText("Role")[1]!, en.CASHIER),
     );
-    fireEvent.change(screen.getAllByLabelText("Role")[1]!, {
-      target: { value: "ADMIN" },
-    });
+    await chooseOption(screen.getAllByLabelText("Role")[1]!, en.ADMIN);
     client.setQueryData(["access-context"], context("CASHIER"));
     await screen.findByRole("heading", {
       name: "Member management unavailable",
@@ -923,9 +906,7 @@ describe("membership management UI", () => {
     renderManagement();
     await screen.findByRole("heading", { name: th.teamTitle });
     await screen.findByRole("heading", { name: "Cashier" });
-    fireEvent.change(screen.getAllByLabelText(th.teamRole)[1]!, {
-      target: { value: "ADMIN" },
-    });
+    await chooseOption(screen.getAllByLabelText(th.teamRole)[1]!, th.ADMIN);
     fireEvent.click(screen.getByRole("button", { name: th.teamSave }));
     await waitFor(() =>
       expect(window.confirm).toHaveBeenCalledWith(th.teamConfirmSave),

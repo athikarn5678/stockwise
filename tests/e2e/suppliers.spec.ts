@@ -9,6 +9,7 @@ import {
   E2E_OWNER_EMAIL,
   E2E_PASSWORD,
 } from "./catalog-fixtures.ts";
+import { selectOption } from "./select-helpers.ts";
 
 const supplierPath = `/app/suppliers?organizationId=${E2E_ORGANIZATION_ID}&branchId=${E2E_BRANCH_ID}`;
 const otherSupplierPath = `/app/suppliers?organizationId=${E2E_OTHER_ORGANIZATION_ID}`;
@@ -48,11 +49,11 @@ test("owner creates, edits, filters, and changes Supplier lifecycle", async ({
   await card().getByLabel("Phone (optional)").fill("02-123");
   await card().getByRole("button", { name: "Save changes" }).click();
   await card().getByRole("button", { name: "Deactivate" }).click();
-  await page.getByLabel("Status").selectOption("inactive");
+  await selectOption(page, "Status", { value: "inactive" });
   await expect(page.getByRole("heading", { name: "Tea Supply" })).toBeVisible();
   await expect(card().getByText("Inactive")).toBeVisible();
   await card().getByRole("button", { name: "Reactivate" }).click();
-  await page.getByLabel("Status").selectOption("active");
+  await selectOption(page, "Status", { value: "active" });
   await expect(page.getByRole("heading", { name: "Tea Supply" })).toBeVisible();
   await expect(card().getByText("Active")).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);

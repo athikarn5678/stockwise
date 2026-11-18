@@ -2,10 +2,7 @@
 import type { TranslationKey } from "@/i18n/en";
 import { useLanguage } from "@/providers/language-provider";
 import { Label } from "@/components/ui/label";
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+import { OptionSelect } from "@/components/option-select";
 import { Input } from "@/components/ui/input";
 import { DateInput } from "@/components/ui/date-input";
 import { Button } from "@/components/ui/button";
@@ -434,37 +431,35 @@ function PurchaseOrderContent({
       <div className="grid items-end gap-4 rounded-lg border bg-card p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_12rem_12rem_auto]">
         <Label className="form-field">
           {t("uiStatusFilter")}
-          <NativeSelect
+          <OptionSelect
             className="w-full "
-            onChange={(event) =>
-              setStatus(event.target.value as PurchaseOrderStatus | "all")
+            onValueChange={(value) =>
+              setStatus(value as PurchaseOrderStatus | "all")
             }
+            options={STATUS_OPTIONS.map((value) => ({
+              label:
+                value === "all" ? t("uiAllStatuses") : statusLabel(value, t),
+              value,
+            }))}
             value={status}
-          >
-            {STATUS_OPTIONS.map((value) => (
-              <NativeSelectOption key={value} value={value}>
-                {value === "all" ? t("uiAllStatuses") : statusLabel(value, t)}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+          />
         </Label>
         <Label className="form-field">
           {t("uiSupplierFilter")}
-          <NativeSelect
+          <OptionSelect
             className="w-full "
-            onChange={(event) => setSupplierId(event.target.value)}
+            onValueChange={setSupplierId}
+            options={[
+              { label: t("uiAllSuppliers"), value: "" },
+              ...suppliers.map((supplier) => ({
+                label: `${supplier.name}${
+                  supplier.status === "INACTIVE" ? t("uiInactiveSuffix") : ""
+                }`,
+                value: supplier.id,
+              })),
+            ]}
             value={supplierId}
-          >
-            <NativeSelectOption value="">
-              {t("uiAllSuppliers")}
-            </NativeSelectOption>
-            {suppliers.map((supplier) => (
-              <NativeSelectOption key={supplier.id} value={supplier.id}>
-                {supplier.name}
-                {supplier.status === "INACTIVE" ? t("uiInactiveSuffix") : ""}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+          />
         </Label>
         <Label className="form-field">
           {t("uiOrderDateFrom")}
@@ -682,37 +677,35 @@ function PurchaseOrderForm({
       <div className="mt-4 grid min-w-0 items-start gap-4 sm:grid-cols-2">
         <Label className="form-field" htmlFor={supplierId}>
           {t("uiSupplier")}
-          <NativeSelect
+          <OptionSelect
             aria-describedby={describedBy}
             aria-invalid={validation !== null}
             className="w-full "
             id={supplierId}
-            onChange={(event) =>
-              setInput((current) => ({
-                ...current,
-                supplierId: event.target.value,
-              }))
+            onValueChange={(value) =>
+              setInput((current) => ({ ...current, supplierId: value }))
             }
+            options={[
+              { label: t("uiChooseAnActiveSupplier2"), value: "" },
+              ...(initialOrder !== null &&
+              input.supplierId !== "" &&
+              !activeSuppliers.some(
+                (supplier) => supplier.id === input.supplierId,
+              )
+                ? [
+                    {
+                      label: t("uiHistoricalInactiveSupplier"),
+                      value: input.supplierId,
+                    },
+                  ]
+                : []),
+              ...activeSuppliers.map((supplier) => ({
+                label: supplier.name,
+                value: supplier.id,
+              })),
+            ]}
             value={input.supplierId}
-          >
-            <NativeSelectOption value="">
-              {t("uiChooseAnActiveSupplier2")}
-            </NativeSelectOption>
-            {initialOrder !== null &&
-            input.supplierId !== "" &&
-            !activeSuppliers.some(
-              (supplier) => supplier.id === input.supplierId,
-            ) ? (
-              <NativeSelectOption value={input.supplierId}>
-                {t("uiHistoricalInactiveSupplier")}
-              </NativeSelectOption>
-            ) : null}
-            {activeSuppliers.map((supplier) => (
-              <NativeSelectOption key={supplier.id} value={supplier.id}>
-                {supplier.name}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+          />
         </Label>
         <Label className="form-field" htmlFor={orderDateId}>
           {t("uiOrderDate")}
@@ -769,7 +762,7 @@ function PurchaseOrderForm({
               </legend>
               <Label className="form-field">
                 {t("marketingProduct")}
-                <NativeSelect
+                <OptionSelect
                   aria-describedby={describedBy}
                   aria-invalid={validation !== null}
                   aria-label={t("uiLineProduct").replace(
@@ -777,25 +770,26 @@ function PurchaseOrderForm({
                     String(index + 1),
                   )}
                   className="w-full "
-                  onChange={(event) =>
-                    updateLine(index, { productId: event.target.value })
+                  onValueChange={(value) =>
+                    updateLine(index, { productId: value })
                   }
+                  options={[
+                    { label: t("uiChooseAProduct"), value: "" },
+                    ...(line.productId !== "" && selected === undefined
+                      ? [
+                          {
+                            label: t("uiHistoricalProduct"),
+                            value: line.productId,
+                          },
+                        ]
+                      : []),
+                    ...availableProducts.map((product) => ({
+                      label: `${product.name} · ${product.sku} (${product.unit})`,
+                      value: product.id,
+                    })),
+                  ]}
                   value={line.productId}
-                >
-                  <NativeSelectOption value="">
-                    {t("uiChooseAProduct")}
-                  </NativeSelectOption>
-                  {line.productId !== "" && selected === undefined ? (
-                    <NativeSelectOption value={line.productId}>
-                      {t("uiHistoricalProduct")}
-                    </NativeSelectOption>
-                  ) : null}
-                  {availableProducts.map((product) => (
-                    <NativeSelectOption key={product.id} value={product.id}>
-                      {product.name} · {product.sku} ({product.unit})
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
+                />
               </Label>
               <Label className="form-field">
                 {t("uiQuantity")}

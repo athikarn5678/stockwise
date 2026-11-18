@@ -2,12 +2,16 @@
 import type { TranslationKey } from "@/i18n/en";
 import { useLanguage } from "@/providers/language-provider";
 import { Label } from "@/components/ui/label";
+import { OptionSelect } from "@/components/option-select";
 import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxLoadMore,
+} from "@/components/ui/combobox";
 import {
   Table,
   TableHeader,
@@ -18,7 +22,7 @@ import {
 } from "@/components/ui/table";
 
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import {
   AnalyticsApiError,
@@ -27,6 +31,17 @@ import {
 } from "@/analytics-api-client";
 import type { AccessibleOrganization } from "@/branch-api-client";
 import { listProducts } from "@/catalog-api-client";
+
+/**
+ * The product list is server-searched, so the debounce happens here rather than
+ * inside the combobox (a `filter={null}` root never filters on its own).
+ */
+const PRODUCT_SEARCH_DEBOUNCE_MS = 300;
+
+// Base UI reports change reasons as kebab-case strings.
+const USER_INPUT_REASONS = new Set(["input-change", "clear-press"]);
+
+type ProductOption = { value: string; label: string };
 
 function reasonLabels(
   t: (key: TranslationKey) => string,
@@ -73,8 +88,13 @@ export function ForecastReorderView({
 
   const [branchId, setBranchId] = useState(organization.branches[0]?.id ?? "");
   const [productId, setProductId] = useState("");
+  // `queryText` is what the user typed; `search` is the debounced value that
+  // becomes the product query key, so selecting an item (which rewrites the
+  // input with the item label) never restarts the search.
+  const [queryText, setQueryText] = useState("");
   const [search, setSearch] = useState("");
   const [leadTimeDays, setLeadTimeDays] = useState<7 | 30 | null>(null);
+  const productInputId = useId();
   const activeBranch = organization.branches.find(
     (branch) => branch.id === branchId,
   );
@@ -106,7 +126,23 @@ export function ForecastReorderView({
   });
   const options =
     products.data?.pages.flatMap((page) => page.data.products) ?? [];
+  const items: ProductOption[] = options.map((product) => ({
+    value: product.id,
+    label: `${product.sku} — ${product.name}${
+      product.status === "INACTIVE" ? t("uiInactiveSuffix") : ""
+    }`,
+  }));
+  const selectedItem = items.find((item) => item.value === productId) ?? null;
   const chosenProduct = options.find((product) => product.id === productId);
+
+  useEffect(() => {
+    if (queryText === search) return undefined;
+    const timeout = setTimeout(
+      () => setSearch(queryText),
+      PRODUCT_SEARCH_DEBOUNCE_MS,
+    );
+    return () => clearTimeout(timeout);
+  }, [queryText, search]);
   const pair = {
     organizationId: organization.id,
     branchId: activeBranch?.id ?? "",
@@ -141,53 +177,96 @@ export function ForecastReorderView({
       <div className="grid gap-4 rounded-lg border bg-card p-4 sm:grid-cols-3">
         <Label className="form-field">
           {t("branch")}
-          <NativeSelect
-            value={activeBranch?.id ?? ""}
-            onChange={(event) => {
-              setBranchId(event.target.value);
+          <OptionSelect
+            className="w-full "
+            onValueChange={(value) => {
+              setBranchId(value);
               setProductId("");
             }}
-            className="w-full "
-          >
-            {organization.branches.map((branch) => (
-              <NativeSelectOption key={branch.id} value={branch.id}>
-                {branch.code} — {branch.name}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+            options={organization.branches.map((branch) => ({
+              label: `${branch.code} — ${branch.name}`,
+              value: branch.id,
+            }))}
+            value={activeBranch?.id ?? ""}
+          />
         </Label>
         <div className="space-y-2">
-          <Label className="form-field">
-            {t("uiFindProduct")}
-            <Input
-              type="search"
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
+          <Label className="form-field" htmlFor={productInputId}>
+            {t("marketingProduct")}
+            <Combobox<ProductOption>
+              filter={null}
+              inputValue={selectedItem?.label ?? queryText}
+              itemToStringLabel={(item) => item.label}
+              itemToStringValue={(item) => item.value}
+              items={items}
+              onInputValueChange={(value, details) => {
+                // Base UI also reports its own input writes (item press, popup
+                // close, value sync). Only a user edit or the clear button may
+                // drop the selected product. An `input-clear` while a product
+                // is selected is the user deleting the label itself (the only
+                // path that skips `input-change` is IME composition).
+                const dropSelection =
+                  USER_INPUT_REASONS.has(details.reason) ||
+                  (details.reason === "input-clear" && selectedItem !== null);
+                if (!dropSelection) {
+                  return;
+                }
+                // Seed the query with exactly what the input now shows, so the
+                // first edit after a selection searches the edited text
+                // instead of re-sending the pre-selection query.
+                setQueryText(value);
                 setProductId("");
               }}
-              className=""
-            />
-          </Label>
-          <Label className="form-field">
-            {t("marketingProduct")}
-            <NativeSelect
-              value={chosenProduct?.id ?? ""}
-              onChange={(event) => setProductId(event.target.value)}
-              className="w-full "
+              onValueChange={(item) => setProductId(item?.value ?? "")}
+              value={selectedItem}
             >
-              <NativeSelectOption value="">
-                {t("uiChooseAProduct2")}
-              </NativeSelectOption>
-              {options.map((product) => (
-                <NativeSelectOption key={product.id} value={product.id}>
-                  {product.sku} — {product.name}
-                  {product.status === "INACTIVE" ? t("uiInactiveSuffix") : ""}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
+              <ComboboxInput
+                clearLabel={t("uiClearProductSearch")}
+                id={productInputId}
+                placeholder={t("uiSearchProductsPlaceholder")}
+                showClear
+                triggerLabel={t("uiShowProductOptions")}
+              />
+              <ComboboxContent>
+                <ComboboxEmpty>
+                  {/* A new server query empties the list while it loads; only a
+                      settled empty result is a true "no matches" state. A
+                      disabled query (no active Branch) stays pending forever,
+                      so it gets its own hint instead of a loading label. */}
+                  {activeBranch === undefined
+                    ? t("uiChooseABranchToSearchProducts")
+                    : products.isError
+                      ? t("uiProductsCouldNotBeLoaded")
+                      : products.isLoading
+                        ? t("uiLoadingProducts")
+                        : t("uiNoProductsMatchThisSearch")}
+                </ComboboxEmpty>
+                <ComboboxList>
+                  {items.map((item) => (
+                    <ComboboxItem
+                      data-value={item.value}
+                      key={item.value}
+                      value={item}
+                    >
+                      {item.label}
+                    </ComboboxItem>
+                  ))}
+                </ComboboxList>
+                {products.hasNextPage ? (
+                  <ComboboxLoadMore
+                    loading={products.isFetchingNextPage}
+                    onClick={() => void products.fetchNextPage()}
+                    // Keep focus in the input so the click cannot dismiss the
+                    // popup before the next page arrives.
+                    onMouseDown={(event) => event.preventDefault()}
+                  >
+                    {t("uiLoadMoreProducts")}
+                  </ComboboxLoadMore>
+                ) : null}
+              </ComboboxContent>
+            </Combobox>
           </Label>
-          {products.isPending && activeBranch ? (
+          {products.isLoading && activeBranch ? (
             <p aria-live="polite" className="text-sm">
               {t("uiLoadingProducts")}
             </p>
@@ -197,44 +276,22 @@ export function ForecastReorderView({
               {t("uiProductsCouldNotBeLoaded")}
             </p>
           ) : null}
-          {products.isSuccess && options.length === 0 ? (
-            <p className="text-sm">{t("uiNoProductsMatchThisSearch")}</p>
-          ) : null}
-          {products.hasNextPage ? (
-            <Button
-              variant="outline"
-              type="button"
-              onClick={() => void products.fetchNextPage()}
-              disabled={products.isFetchingNextPage}
-              className=""
-            >
-              {products.isFetchingNextPage
-                ? t("commonLoading")
-                : t("uiLoadMoreProducts")}
-            </Button>
-          ) : null}
         </div>
         <div className="space-y-2">
           <Label className="form-field">
             {t("uiPlanningLeadTime")}
-            <NativeSelect
-              value={leadTimeDays ?? ""}
-              onChange={(event) => {
-                const value = event.target.value;
-                setLeadTimeDays(value === "7" ? 7 : value === "30" ? 30 : null);
-              }}
+            <OptionSelect
               className="w-full form-control--compact"
-            >
-              <NativeSelectOption value="">
-                {t("uiChoose7Or30Days")}
-              </NativeSelectOption>
-              <NativeSelectOption value={7}>
-                {t("uiLeadTime7Days")}
-              </NativeSelectOption>
-              <NativeSelectOption value={30}>
-                {t("uiLeadTime30Days")}
-              </NativeSelectOption>
-            </NativeSelect>
+              onValueChange={(value) =>
+                setLeadTimeDays(value === "7" ? 7 : value === "30" ? 30 : null)
+              }
+              options={[
+                { label: t("uiChoose7Or30Days"), value: "" },
+                { label: t("uiLeadTime7Days"), value: "7" },
+                { label: t("uiLeadTime30Days"), value: "30" },
+              ]}
+              value={leadTimeDays === null ? "" : String(leadTimeDays)}
+            />
           </Label>
           <div className="space-y-1 text-xs text-muted-foreground">
             <p>{t("uiPlanningLeadTimeExplanation")}</p>

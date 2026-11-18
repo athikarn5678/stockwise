@@ -1,16 +1,15 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  chooseOption,
+  chooseOptionByValue,
+  expectSelectValue,
+  readSelectOptionValues,
+} from "@/test/select-helpers";
 import type { AccessibleOrganization } from "@/branch-api-client";
 import { AiInsightView } from "./ai-insight-view";
 
@@ -175,12 +174,7 @@ function storedReportRequests() {
 }
 
 async function periodOptions() {
-  const select = (await screen.findByLabelText(
-    "Report period",
-  )) as HTMLSelectElement;
-  return within(select)
-    .getAllByRole("option")
-    .map((option) => option.textContent);
+  return readSelectOptionValues(await screen.findByLabelText("Report period"));
 }
 
 beforeEach(() => {
@@ -279,15 +273,12 @@ describe("stored AI report picker", () => {
   it("offers only Weekly and Monthly, with Weekly selected by default", async () => {
     renderView();
     await screen.findByRole("heading", { name: "Successful AI summary" });
-    const cadence = screen.getByLabelText(
-      "Insight cadence",
-    ) as HTMLSelectElement;
-    expect(cadence.value).toBe("WEEKLY");
-    expect(
-      within(cadence)
-        .getAllByRole("option")
-        .map((option) => option.textContent),
-    ).toEqual(["Weekly", "Monthly"]);
+    const cadence = screen.getByLabelText("Insight cadence");
+    expectSelectValue(cadence, "Weekly");
+    expect(await readSelectOptionValues(cadence)).toEqual([
+      "WEEKLY",
+      "MONTHLY",
+    ]);
     expect(requests.some(({ url }) => url.includes("cadence=WEEKLY"))).toBe(
       true,
     );
@@ -306,10 +297,7 @@ describe("stored AI report picker", () => {
     ];
     renderView();
     await waitFor(async () =>
-      expect(await periodOptions()).toEqual([
-        WEEKLY_NEWEST_LABEL,
-        WEEKLY_OLDER_LABEL,
-      ]),
+      expect(await periodOptions()).toEqual([weeklyNewest.id, weeklyOlder.id]),
     );
     const listRequests = storedReportRequests();
     expect(listRequests).toHaveLength(2);
@@ -319,9 +307,10 @@ describe("stored AI report picker", () => {
     expect(listRequests[0]?.url).not.toContain("cursor=");
     expect(listRequests[1]?.url).toContain(`cursor=${pageCursor(1)}`);
     expect(listRequests[1]?.url).toContain("limit=100");
-    expect(
-      (screen.getByLabelText("Report period") as HTMLSelectElement).value,
-    ).toBe(weeklyNewest.id);
+    expectSelectValue(
+      screen.getByLabelText("Report period"),
+      WEEKLY_NEWEST_LABEL,
+    );
     expect(
       screen.getByText(/Report period: Sep 28, 2026–Oct 4, 2026/),
     ).toBeTruthy();
@@ -345,27 +334,27 @@ describe("stored AI report picker", () => {
     renderView();
     await screen.findByRole("heading", { name: "Successful AI summary" });
     await waitFor(async () =>
-      expect(await periodOptions()).toEqual([
-        WEEKLY_NEWEST_LABEL,
-        WEEKLY_OLDER_LABEL,
-      ]),
+      expect(await periodOptions()).toEqual([weeklyNewest.id, weeklyOlder.id]),
     );
-    fireEvent.change(screen.getByLabelText("Report period"), {
-      target: { value: weeklyOlder.id },
-    });
+    await chooseOptionByValue(
+      screen.getByLabelText("Report period"),
+      weeklyOlder.id,
+    );
+    expectSelectValue(
+      screen.getByLabelText("Report period"),
+      WEEKLY_OLDER_LABEL,
+    );
     expect(screen.getByText("Older weekly content")).toBeTruthy();
     expect(
       screen.getByText(/Report period: Sep 21, 2026–Sep 27, 2026/),
     ).toBeTruthy();
     expect(screen.queryByText("Newest monthly content")).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Insight cadence"), {
-      target: { value: "MONTHLY" },
-    });
+    await chooseOption(screen.getByLabelText("Insight cadence"), "Monthly");
     await waitFor(async () =>
       expect(await periodOptions()).toEqual([
-        MONTHLY_NEWEST_LABEL,
-        MONTHLY_OLDER_LABEL,
+        monthlyNewest.id,
+        monthlyOlder.id,
       ]),
     );
     expect(
@@ -375,15 +364,21 @@ describe("stored AI report picker", () => {
       ),
     ).toBe(true);
     // Changing the cadence restarts at the newest period of the new list.
-    expect(
-      (screen.getByLabelText("Report period") as HTMLSelectElement).value,
-    ).toBe(monthlyNewest.id);
+    expectSelectValue(
+      screen.getByLabelText("Report period"),
+      MONTHLY_NEWEST_LABEL,
+    );
     expect(screen.getByText("Newest monthly content")).toBeTruthy();
     expect(screen.queryByText("Older weekly content")).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Report period"), {
-      target: { value: monthlyOlder.id },
-    });
+    await chooseOptionByValue(
+      screen.getByLabelText("Report period"),
+      monthlyOlder.id,
+    );
+    expectSelectValue(
+      screen.getByLabelText("Report period"),
+      MONTHLY_OLDER_LABEL,
+    );
     expect(screen.getByText("Older monthly content")).toBeTruthy();
     expect(screen.queryByText("Newest monthly content")).toBeNull();
   });
@@ -391,9 +386,7 @@ describe("stored AI report picker", () => {
   it("reloads the stored reports with the selected branch", async () => {
     renderView();
     await screen.findByRole("heading", { name: "Successful AI summary" });
-    fireEvent.change(screen.getByLabelText("Insight scope"), {
-      target: { value: B },
-    });
+    await chooseOptionByValue(screen.getByLabelText("Insight scope"), B);
     await waitFor(() =>
       expect(
         storedReportRequests().some(
@@ -434,9 +427,9 @@ describe("stored AI report picker", () => {
         "No persisted insight yet for this scope and cadence.",
       ),
     ).toBeTruthy();
-    expect(await periodOptions()).toEqual([
-      "No stored report period is available.",
-    ]);
+    const periodSelect = await screen.findByLabelText("Report period");
+    expectSelectValue(periodSelect, "No stored report period is available.");
+    expect(periodSelect).toHaveProperty("disabled", true);
     expect(
       screen.queryByRole("heading", { name: "Successful AI summary" }),
     ).toBeNull();
@@ -451,9 +444,10 @@ describe("stored AI report picker", () => {
         "No persisted insight yet for this scope and cadence.",
       ),
     ).toBeTruthy();
-    expect(
-      (screen.getByLabelText("Report period") as HTMLSelectElement).disabled,
-    ).toBe(true);
+    expect(screen.getByLabelText("Report period")).toHaveProperty(
+      "disabled",
+      true,
+    );
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -461,9 +455,10 @@ describe("stored AI report picker", () => {
     pending = true;
     renderView();
     expect(screen.getByText("Loading persisted insight…")).toBeTruthy();
-    expect(
-      (screen.getByLabelText("Report period") as HTMLSelectElement).disabled,
-    ).toBe(true);
+    expect(screen.getByLabelText("Report period")).toHaveProperty(
+      "disabled",
+      true,
+    );
     cleanup();
     pending = false;
     listStatus = 403;
@@ -515,10 +510,11 @@ describe("stored AI report picker", () => {
       storedReports[listKey("organization", "", cadence)] = [[stored]];
       renderView();
       if (cadence !== "WEEKLY")
-        fireEvent.change(screen.getByLabelText("Insight cadence"), {
-          target: { value: cadence },
-        });
-      await waitFor(async () => expect(await periodOptions()).toEqual([label]));
+        await chooseOption(screen.getByLabelText("Insight cadence"), "Monthly");
+      await waitFor(async () =>
+        expect(await periodOptions()).toEqual([stored.id]),
+      );
+      expectSelectValue(screen.getByLabelText("Report period"), label);
       expect(
         screen.getByText(new RegExp(`Report period: ${label}`)),
       ).toBeTruthy();
@@ -529,8 +525,15 @@ describe("stored AI report picker", () => {
     renderView();
     await screen.findByRole("heading", { name: "Successful AI summary" });
     const scope = screen.getByLabelText("Insight scope");
-    await screen.findByRole("option", { name: "OLD — Old (inactive)" });
-    fireEvent.change(scope, { target: { value: A } });
+    await chooseOption(scope, "OLD — Old (inactive)");
+    await waitFor(() =>
+      expect(
+        storedReportRequests().some(({ url }) =>
+          url.includes(`branchId=${OLD}`),
+        ),
+      ).toBe(true),
+    );
+    await chooseOptionByValue(scope, A);
     await waitFor(() =>
       expect(
         storedReportRequests().some(
@@ -539,24 +542,14 @@ describe("stored AI report picker", () => {
         ),
       ).toBe(true),
     );
-    fireEvent.change(scope, { target: { value: B } });
+    await chooseOptionByValue(scope, B);
     await waitFor(() =>
       expect(
         storedReportRequests().some(({ url }) => url.includes(`branchId=${B}`)),
       ).toBe(true),
     );
-    fireEvent.change(scope, { target: { value: OLD } });
-    await waitFor(() =>
-      expect(
-        storedReportRequests().some(({ url }) =>
-          url.includes(`branchId=${OLD}`),
-        ),
-      ).toBe(true),
-    );
-    fireEvent.change(scope, { target: { value: "organization" } });
-    fireEvent.change(screen.getByLabelText("Insight cadence"), {
-      target: { value: "MONTHLY" },
-    });
+    await chooseOptionByValue(scope, "organization");
+    await chooseOption(screen.getByLabelText("Insight cadence"), "Monthly");
     await waitFor(() =>
       expect(
         storedReportRequests().some(
@@ -573,10 +566,12 @@ describe("stored AI report picker", () => {
   it("limits a branch manager to assigned active branch choices", async () => {
     renderView("BRANCH_MANAGER");
     await screen.findByRole("heading", { name: "Successful AI summary" });
-    expect(
-      screen.queryByRole("option", { name: "All organization branches" }),
-    ).toBeNull();
-    expect(screen.queryByRole("option", { name: /inactive/ })).toBeNull();
+    const options = await readSelectOptionValues(
+      screen.getByLabelText("Insight scope"),
+    );
+    expect(options).toEqual([A, B]);
+    expect(options).not.toContain("organization");
+    expect(options).not.toContain(OLD);
     expect(requests.some(({ url }) => url.includes("includeInactive"))).toBe(
       false,
     );
@@ -586,22 +581,19 @@ describe("stored AI report picker", () => {
     renderView();
     await screen.findByRole("heading", { name: "Successful AI summary" });
     pending = true;
-    fireEvent.change(screen.getByLabelText("Insight scope"), {
-      target: { value: A },
-    });
+    await chooseOptionByValue(screen.getByLabelText("Insight scope"), A);
     expect(screen.getByText("Loading persisted insight…")).toBeTruthy();
     expect(
       screen.queryByRole("heading", { name: "Successful AI summary" }),
     ).toBeNull();
     pending = false;
-    fireEvent.change(screen.getByLabelText("Insight scope"), {
-      target: { value: "organization" },
-    });
+    await chooseOptionByValue(
+      screen.getByLabelText("Insight scope"),
+      "organization",
+    );
     await screen.findByRole("heading", { name: "Successful AI summary" });
     pending = true;
-    fireEvent.change(screen.getByLabelText("Insight cadence"), {
-      target: { value: "MONTHLY" },
-    });
+    await chooseOption(screen.getByLabelText("Insight cadence"), "Monthly");
     expect(screen.getByText("Loading persisted insight…")).toBeTruthy();
     expect(
       screen.queryByRole("heading", { name: "Successful AI summary" }),

@@ -603,6 +603,8 @@ export const en = {
   aiAnalyzeErrAccess: "AI analysis is not available for your current access.",
   aiAnalyzeErrProvider:
     "The AI system is unavailable or its output failed validation. Try again.",
+  aiAnalyzeErrInsufficient:
+    "There are no sales in the selected period, so there is nothing to analyze yet. Try a longer period.",
   aiAnalyzeErrLoad: "The analysis could not be completed. Try again later.",
   aiTitle: "AI insights",
   aiAnalysis: "AI analysis",
@@ -1177,11 +1179,13 @@ export const en = {
   uiForecastAndReorder: "Forecast and reorder",
   uiOneBranchAndProductForecastDatesAndTrainingWindow:
     "One Branch and Product. Forecast dates and training window are fixed by the organization reporting timezone.",
-  uiFindProduct: "Find Product",
-  uiChooseAProduct2: "Choose a Product",
+  uiSearchProductsPlaceholder: "Search products…",
+  uiShowProductOptions: "Show product options",
+  uiClearProductSearch: "Clear product search",
   uiLoadingProducts: "Loading Products…",
   uiProductsCouldNotBeLoaded: "Products could not be loaded.",
   uiNoProductsMatchThisSearch: "No Products match this search.",
+  uiChooseABranchToSearchProducts: "Choose a Branch to search Products.",
   uiLoadMoreProducts: "Load more Products",
   uiPlanningLeadTime: "Planning lead time",
   uiChoose7Or30Days: "Choose 7 or 30 days",

@@ -124,4 +124,14 @@ describe("DateInput", () => {
     expect(field.getAttribute("aria-invalid")).toBe("true");
     expect(screen.getByRole("button", { name: "Choose date" })).toBeTruthy();
   });
+
+  it("reserves room for a full YYYY-MM-DD so the value is never clipped", () => {
+    render(<Harness />);
+    const field = screen.getByLabelText("Order date") as HTMLInputElement;
+    fireEvent.change(field, { target: { value: "2026-10-15" } });
+    // jsdom has no layout: guard the width contract through the classes.
+    expect(field.className).toContain("min-w-[calc(10ch+");
+    expect(field.parentElement?.className).toContain("min-w-[calc(10ch+");
+    expect(field.maxLength).toBe(10);
+  });
 });

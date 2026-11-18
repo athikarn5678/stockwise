@@ -110,7 +110,7 @@ test("a drafted profile survives hidden→visible and blur→focus without a loa
   page,
 }) => {
   const state = await mockSession(context);
-  await page.goto("/app/profile");
+  await page.goto("/app/settings");
   const name = page.getByLabel("Display name", { exact: true });
   await expect(name).toHaveValue("Store A");
   await name.fill("Unsaved Store A draft");
@@ -152,7 +152,7 @@ test("an actor switch on return resets the screen to the new actor", async ({
   page,
 }) => {
   const state = await mockSession(context);
-  await page.goto("/app/profile");
+  await page.goto("/app/settings");
   const name = page.getByLabel("Display name", { exact: true });
   await expect(name).toHaveValue("Store A");
   await name.fill("Unsaved Store A draft");
@@ -178,7 +178,7 @@ test("a role downgrade on return resets the private screen", async ({
   page,
 }) => {
   const state = await mockSession(context);
-  await page.goto("/app/profile");
+  await page.goto("/app/settings");
   const name = page.getByLabel("Display name", { exact: true });
   await expect(name).toHaveValue("Store A");
   await expect(
@@ -203,7 +203,7 @@ test("a 401 on return signs out instead of restoring the draft", async ({
   page,
 }) => {
   const state = await mockSession(context);
-  await page.goto("/app/profile");
+  await page.goto("/app/settings");
   const name = page.getByLabel("Display name", { exact: true });
   await expect(name).toHaveValue("Store A");
   await name.fill("Unsaved Store A draft");
@@ -223,12 +223,12 @@ test("logout in a second page purges the first even while the first is hidden", 
   page,
 }) => {
   const state = await mockSession(context);
-  await page.goto("/app/profile");
+  await page.goto("/app/settings");
   const name = page.getByLabel("Display name", { exact: true });
   await expect(name).toHaveValue("Store A");
   await name.fill("Unsaved Store A draft");
   const second = await context.newPage();
-  await second.goto("/app/profile");
+  await second.goto("/app/settings");
   await expect(second.getByLabel("Display name", { exact: true })).toHaveValue(
     "Store A",
   );

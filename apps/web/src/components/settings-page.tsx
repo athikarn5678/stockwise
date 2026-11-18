@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 
 import { resolveApplicationContext } from "@/application-context";
 import { fetchAccessContext } from "@/branch-api-client";
+import { PageContainer, PageHeader } from "@/components/page-layout";
 import { OrganizationSettings } from "@/components/organization-settings";
 import { SelfProfile } from "@/components/self-profile";
 import { useLanguage } from "@/providers/language-provider";
@@ -32,11 +33,11 @@ export function SettingsPage() {
     organization?.role === "OWNER" || organization?.role === "ADMIN";
 
   return (
-    <div className="w-full max-w-3xl space-y-6">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold">{t("settingsTitle")}</h1>
-        <p className="text-muted-foreground">{t("settingsDescription")}</p>
-      </header>
+    <PageContainer>
+      <PageHeader
+        description={t("settingsDescription")}
+        title={t("settingsTitle")}
+      />
       <section
         aria-label={t("profileTitle")}
         className="rounded-lg border bg-card p-5 sm:p-6"
@@ -51,7 +52,7 @@ export function SettingsPage() {
           <OrganizationSettings embedded />
         </section>
       ) : null}
-    </div>
+    </PageContainer>
   );
 }
 

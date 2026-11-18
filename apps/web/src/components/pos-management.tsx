@@ -1,5 +1,6 @@
 "use client";
 import type { TranslationKey } from "@/i18n/en";
+import { PageContainer, PageHeader } from "@/components/page-layout";
 import { useLanguage } from "@/providers/language-provider";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -277,13 +278,12 @@ function ContextUnavailable({
   const { t } = useLanguage();
 
   return (
-    <section className="space-y-4">
-      <h1 className="text-2xl font-semibold">{heading}</h1>
-      <p className="text-muted-foreground">{message}</p>
+    <PageContainer className="space-y-4">
+      <PageHeader description={message} title={heading} />
       <Link className="underline" href="/app">
         {t("uiReturnToWorkspace")}
       </Link>
-    </section>
+    </PageContainer>
   );
 }
 
@@ -528,20 +528,23 @@ function PosContent({
   }
 
   return (
-    <section className="w-full space-y-6">
-      <header className="space-y-2">
+    <PageContainer>
+      <PageHeader
+        description={
+          <>
+            {branch.code} — {branch.name}
+            {t("uiProductPricesAndFinalTotalsAreConfirmedByCheckout")}
+          </>
+        }
+        title={t("marketingFeaturePos")}
+      >
         <Link
           className="text-sm underline"
           href={applicationContextUrl(organization.id, branch.id)}
         >
           {t("backToWorkspace")}
         </Link>
-        <h1 className="text-2xl font-semibold">{t("marketingFeaturePos")}</h1>
-        <p className="text-muted-foreground">
-          {branch.code} — {branch.name}
-          {t("uiProductPricesAndFinalTotalsAreConfirmedByCheckout")}
-        </p>
-      </header>
+      </PageHeader>
 
       {canConfigureVat ? (
         <VatProfilePanel
@@ -770,7 +773,7 @@ function PosContent({
           </fieldset>
         </aside>
       </div>
-    </section>
+    </PageContainer>
   );
 }
 

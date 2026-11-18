@@ -594,6 +594,8 @@ export const th: Dictionary = {
   aiAnalyzeErrAccess: "สิทธิ์ปัจจุบันของคุณไม่สามารถใช้การวิเคราะห์ด้วย AI ได้",
   aiAnalyzeErrProvider:
     "ระบบ AI ไม่พร้อมใช้งานหรือผลลัพธ์ไม่ผ่านการตรวจ ลองใหม่อีกครั้ง",
+  aiAnalyzeErrInsufficient:
+    "ยังไม่มียอดขายในช่วงที่เลือก จึงยังไม่มีข้อมูลให้วิเคราะห์ ลองเลือกช่วงเวลาที่ยาวขึ้น",
   aiAnalyzeErrLoad: "ไม่สามารถวิเคราะห์ได้ กรุณาลองใหม่ภายหลัง",
   aiTitle: "ข้อมูลเชิงลึกจาก AI",
   aiAnalysis: "วิเคราะห์ด้วย AI",
@@ -1161,11 +1163,13 @@ export const th: Dictionary = {
   uiForecastAndReorder: "พยากรณ์และแนะนำสั่งซื้อ",
   uiOneBranchAndProductForecastDatesAndTrainingWindow:
     "ข้อมูลสำหรับหนึ่งสาขาและหนึ่งสินค้า วันที่พยากรณ์และช่วงข้อมูลฝึกอ้างอิงเขตเวลารายงานขององค์กร",
-  uiFindProduct: "ค้นหาสินค้า",
-  uiChooseAProduct2: "เลือกสินค้า",
+  uiSearchProductsPlaceholder: "ค้นหาสินค้า…",
+  uiShowProductOptions: "แสดงตัวเลือกสินค้า",
+  uiClearProductSearch: "ล้างการค้นหาสินค้า",
   uiLoadingProducts: "กำลังโหลดสินค้า…",
   uiProductsCouldNotBeLoaded: "ไม่สามารถโหลดสินค้าได้",
   uiNoProductsMatchThisSearch: "ไม่มีสินค้าที่ตรงกับการค้นหา",
+  uiChooseABranchToSearchProducts: "เลือกสาขาเพื่อค้นหาสินค้า",
   uiLoadMoreProducts: "โหลดสินค้าเพิ่มเติม",
   uiPlanningLeadTime: "ระยะเวลารอสินค้า",
   uiChoose17Days: "เลือก 1–7 วัน",

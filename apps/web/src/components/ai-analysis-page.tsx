@@ -73,6 +73,7 @@ function errorKey(error: unknown): TranslationKey {
     if (error.status === 429) return "aiAnalyzeErrRate";
     if (error.status === 401 || error.status === 403 || error.status === 404)
       return "aiAnalyzeErrAccess";
+    if (error.status === 422) return "aiAnalyzeErrInsufficient";
     if (error.status === 502) return "aiAnalyzeErrProvider";
   }
   return "aiAnalyzeErrLoad";

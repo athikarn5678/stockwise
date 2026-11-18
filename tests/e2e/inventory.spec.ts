@@ -8,6 +8,7 @@ import {
   E2E_OWNER_EMAIL,
   E2E_PASSWORD,
 } from "./catalog-fixtures.ts";
+import { selectOption } from "./select-helpers.ts";
 
 const inventoryPath = `/app/inventory?organizationId=${E2E_ORGANIZATION_ID}&branchId=${E2E_BRANCH_ID}`;
 
@@ -37,7 +38,7 @@ test("owner adjusts a branch balance and sees the immutable movement", async ({
     name: "Adjust stock for Inventory test tea",
   });
   await form.getByLabel("Signed adjustment (EA)").fill("+2");
-  await form.getByLabel("Reason").selectOption("FOUND");
+  await selectOption(page, form.getByLabel("Reason"), { value: "FOUND" });
   await form.getByRole("button", { name: "Submit adjustment" }).click();
 
   await expect(page.getByText("2 EA").last()).toBeVisible();

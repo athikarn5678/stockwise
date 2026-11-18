@@ -8,6 +8,7 @@ import {
   E2E_OWNER_EMAIL,
   E2E_PASSWORD,
 } from "./catalog-fixtures.ts";
+import { selectOption } from "./select-helpers.ts";
 
 const posPath = `/app/pos?organizationId=${E2E_ORGANIZATION_ID}&branchId=${E2E_BRANCH_ID}`;
 const salesPath = `/app/sales?organizationId=${E2E_ORGANIZATION_ID}&branchId=${E2E_BRANCH_ID}`;
@@ -28,7 +29,9 @@ test("owner creates a linked refund that cashiers can review without mutation co
 }) => {
   await signIn(page);
   await page.goto(posPath);
-  await page.getByLabel("Sales VAT status").selectOption("NOT_REGISTERED");
+  await selectOption(page, "Sales VAT status", {
+    value: "NOT_REGISTERED",
+  });
   await page.getByRole("button", { name: "Save VAT profile" }).click();
   await page.getByLabel("Search products").fill("POS-E2E-03");
   await page.getByRole("button", { name: "Search" }).click();
@@ -123,9 +126,11 @@ test("exact monetary displays stay consistent from catalog through receiving and
     await create.getByLabel("Product name").fill(name!);
     await create.getByLabel("SKU").fill(name!.replace(" ", "-"));
     await create.getByLabel("Base price").fill(price!);
-    await create
-      .getByRole("combobox", { name: "Unit", exact: true })
-      .selectOption("KG");
+    await selectOption(
+      page,
+      create.getByRole("combobox", { name: /^Unit\b/ }),
+      { value: "KG" },
+    );
     await create.getByRole("button", { name: "Create product" }).click();
     await expect(
       page.getByText(
@@ -145,12 +150,12 @@ test("exact monetary displays stay consistent from catalog through receiving and
 
   await page.goto(`/app/purchase-orders?${scope}`);
   const draft = page.getByRole("form", { name: "Create draft purchase order" });
-  await draft
-    .getByLabel("Supplier")
-    .selectOption({ label: "Purchase order E2E supplier" });
-  await draft
-    .getByLabel("Product line 1 product")
-    .selectOption({ label: "Money precision · MONEY-PRECISION (KG)" });
+  await selectOption(page, draft.getByLabel("Supplier"), {
+    label: "Purchase order E2E supplier",
+  });
+  await selectOption(page, draft.getByLabel("Product line 1 product"), {
+    label: "Money precision · MONEY-PRECISION (KG)",
+  });
   await draft.getByLabel("Product line 1 quantity (KG)").fill("1.25");
   await draft
     .getByLabel("Product line 1 expected unit cost (THB)")
@@ -178,7 +183,9 @@ test("exact monetary displays stay consistent from catalog through receiving and
   ).toBeVisible();
 
   await page.goto(posPath);
-  await page.getByLabel("Sales VAT status").selectOption("NOT_REGISTERED");
+  await selectOption(page, "Sales VAT status", {
+    value: "NOT_REGISTERED",
+  });
   await page.getByRole("button", { name: "Save VAT profile" }).click();
   await page.getByLabel("Search products").fill("MONEY-PRECISION");
   await page.getByRole("button", { name: "Search" }).click();

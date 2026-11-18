@@ -23,6 +23,10 @@ import {
 } from "@/catalog-api-client";
 
 import { CatalogManagement } from "./catalog-management";
+import {
+  chooseOptionByValue,
+  readSelectOptionValues,
+} from "@/test/select-helpers";
 
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const BRANCH_ID = "20000000-0000-4000-8000-000000000001";
@@ -191,9 +195,10 @@ describe("catalog management UI", () => {
     renderCatalog();
     await screen.findByText("Tea");
 
-    fireEvent.change(screen.getByLabelText("Category filter"), {
-      target: { value: "uncategorized" },
-    });
+    await chooseOptionByValue(
+      screen.getByLabelText("Category filter"),
+      "uncategorized",
+    );
     fireEvent.change(screen.getByLabelText("Search catalog"), {
       target: { value: "tea" },
     });
@@ -211,10 +216,16 @@ describe("catalog management UI", () => {
 
   it("creates a product without numeric price conversion and uses the selected active category", async () => {
     renderCatalog();
-    await screen.findAllByRole("option", { name: "Drinks" });
-    const createForm = screen
-      .getByRole("heading", { name: "Create product" })
-      .closest("form")!;
+    const createForm = (
+      await screen.findByRole("heading", { name: "Create product" })
+    ).closest("form")!;
+    await waitFor(async () =>
+      expect(
+        await readSelectOptionValues(
+          within(createForm).getByLabelText("Category (optional)"),
+        ),
+      ).toContain(CATEGORY_ID),
+    );
 
     fireEvent.change(within(createForm).getByLabelText("Product name"), {
       target: { value: "Coffee" },
@@ -228,9 +239,10 @@ describe("catalog management UI", () => {
     fireEvent.change(within(createForm).getByLabelText("Barcode (optional)"), {
       target: { value: "0012345678905" },
     });
-    fireEvent.change(within(createForm).getByLabelText("Category (optional)"), {
-      target: { value: CATEGORY_ID },
-    });
+    await chooseOptionByValue(
+      within(createForm).getByLabelText("Category (optional)"),
+      CATEGORY_ID,
+    );
     fireEvent.submit(createForm);
 
     await waitFor(() =>

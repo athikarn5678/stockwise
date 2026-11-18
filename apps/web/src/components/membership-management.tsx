@@ -21,10 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+import { OptionSelect } from "@/components/option-select";
 import type { TranslationKey } from "@/i18n/en";
 import {
   createInvitation,
@@ -944,25 +941,20 @@ function RoleSelect({
     <div className="space-y-2">
       <Label className="form-field">
         {t("teamRole")}
-        <NativeSelect
+        <OptionSelect
           className="mt-1 w-full"
-          value={value}
-          onChange={(event) => {
-            const next = ALL_ROLES.find(
-              (role) =>
-                role === event.target.value && canAssignRole(actorRole, role),
+          onValueChange={(next) => {
+            const role = ALL_ROLES.find(
+              (candidate) =>
+                candidate === next && canAssignRole(actorRole, candidate),
             );
-            if (next) onChange(next);
+            if (role) onChange(role);
           }}
-        >
-          {ALL_ROLES.filter((role) => canAssignRole(actorRole, role)).map(
-            (role) => (
-              <NativeSelectOption key={role} value={role}>
-                {t(role)}
-              </NativeSelectOption>
-            ),
-          )}
-        </NativeSelect>
+          options={ALL_ROLES.filter((role) =>
+            canAssignRole(actorRole, role),
+          ).map((role) => ({ label: t(role), value: role }))}
+          value={value}
+        />
       </Label>
       <p className="text-sm text-muted-foreground">{t(ROLE_HELP[value])}</p>
     </div>

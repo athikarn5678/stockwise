@@ -7,6 +7,7 @@ import {
   E2E_OWNER_EMAIL,
   E2E_PASSWORD,
 } from "./catalog-fixtures.ts";
+import { selectOption } from "./select-helpers.ts";
 
 const posPath = `/app/pos?organizationId=${E2E_ORGANIZATION_ID}&branchId=${E2E_BRANCH_ID}`;
 
@@ -29,7 +30,9 @@ test("owner configures VAT, searches, and completes a cash POS sale", async ({
   const posAlert = page.locator("main").getByRole("alert");
   await expect(posAlert).toContainText(/VAT profile/i);
 
-  await page.getByLabel("Sales VAT status").selectOption("NOT_REGISTERED");
+  await selectOption(page, "Sales VAT status", {
+    value: "NOT_REGISTERED",
+  });
   await page.getByRole("button", { name: "Save VAT profile" }).click();
   await expect(posAlert).toHaveCount(0);
 

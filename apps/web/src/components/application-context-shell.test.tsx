@@ -11,6 +11,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApplicationContextShell } from "./application-context-shell";
+import { chooseOptionByValue, expectSelectValue } from "@/test/select-helpers";
 
 const replace = vi.fn();
 let currentSearchParams = new URLSearchParams();
@@ -103,7 +104,7 @@ describe("application context shell", () => {
     expect(
       await screen.findByRole("heading", { name: "Store One" }),
     ).toBeTruthy();
-    expect(screen.getByLabelText("Branch")).toHaveProperty("value", BRANCH_A);
+    expectSelectValue(screen.getByLabelText("Branch"), "A — Alpha");
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByRole("button", { name: "Log out" })).toBeNull();
     await waitFor(() =>
@@ -155,7 +156,7 @@ describe("application context shell", () => {
     );
 
     const branchSelect = await screen.findByLabelText("Branch");
-    fireEvent.change(branchSelect, { target: { value: BRANCH_B } });
+    await chooseOptionByValue(branchSelect, BRANCH_B);
     await waitFor(() =>
       expect(replace).toHaveBeenCalledWith(
         `/app?organizationId=${ORG_ONE}&branchId=${BRANCH_B}`,

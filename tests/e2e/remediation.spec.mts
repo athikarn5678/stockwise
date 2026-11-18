@@ -8,6 +8,7 @@ import {
   E2E_OWNER_EMAIL,
   E2E_PASSWORD,
 } from "./catalog-fixtures.ts";
+import { selectOption } from "./select-helpers.ts";
 
 const prisma = createTestPrismaClient(loadTestDatabaseEnvironment());
 test.afterAll(async () => prisma.$disconnect());
@@ -123,12 +124,12 @@ test("MT-004 PO create, selected lines, edit and detail fit mobile and desktop",
   const create = page.getByRole("form", {
     name: "Create draft purchase order",
   });
-  await create
-    .getByLabel("Supplier")
-    .selectOption({ label: "Purchase order E2E supplier" });
-  await create
-    .getByLabel("Product line 1 product")
-    .selectOption(E2E_INVENTORY_PRODUCT_ID);
+  await selectOption(page, create.getByLabel("Supplier"), {
+    label: "Purchase order E2E supplier",
+  });
+  await selectOption(page, create.getByLabel("Product line 1 product"), {
+    value: E2E_INVENTORY_PRODUCT_ID,
+  });
   await create.getByLabel("Product line 1 quantity (EA)").fill("2");
   await create
     .getByLabel("Product line 1 expected unit cost (THB)")
@@ -225,7 +226,9 @@ test("MT-006/007 populated Sales list, detail and receipt fit mobile with accept
 }) => {
   await signIn(page);
   await page.goto(path("pos"));
-  await page.getByLabel("Sales VAT status").selectOption("NOT_REGISTERED");
+  await selectOption(page, "Sales VAT status", {
+    value: "NOT_REGISTERED",
+  });
   await page.getByRole("button", { name: "Save VAT profile" }).click();
   await page.getByLabel("Search products").fill("POS-E2E-03");
   await page.getByRole("button", { name: "Search" }).click();

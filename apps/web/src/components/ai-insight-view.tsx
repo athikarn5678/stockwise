@@ -1,9 +1,6 @@
 "use client";
 import { Label } from "@/components/ui/label";
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+import { OptionSelect } from "@/components/option-select";
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
@@ -134,48 +131,44 @@ export function AiInsightView({
         <div className="mt-4 grid max-w-4xl gap-4 sm:grid-cols-2">
           <Label className="form-field">
             {t("aiScope")}
-            <NativeSelect
+            <OptionSelect
               className="w-full "
-              onChange={(event) => {
+              onValueChange={(value) => {
                 setSelectedPeriodId(null);
-                setScopeValue(event.target.value);
+                setScopeValue(value);
               }}
+              options={[
+                ...(wide
+                  ? [{ label: t("aiAllBranches"), value: "organization" }]
+                  : []),
+                ...branches.map((item) => ({
+                  label: `${item.code} — ${item.name}${
+                    "status" in item && item.status === "INACTIVE"
+                      ? t("aiInactiveSuffix")
+                      : ""
+                  }`,
+                  value: item.id,
+                })),
+              ]}
               value={
                 scope.scope === "organization" ? "organization" : scope.branchId
               }
-            >
-              {wide ? (
-                <NativeSelectOption value="organization">
-                  {t("aiAllBranches")}
-                </NativeSelectOption>
-              ) : null}
-              {branches.map((item) => (
-                <NativeSelectOption key={item.id} value={item.id}>
-                  {item.code} — {item.name}
-                  {"status" in item && item.status === "INACTIVE"
-                    ? t("aiInactiveSuffix")
-                    : ""}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
+            />
           </Label>
           <Label className="form-field">
             {t("aiCadence")}
-            <NativeSelect
+            <OptionSelect
               className="w-full "
-              onChange={(event) => {
+              onValueChange={(value) => {
                 setSelectedPeriodId(null);
-                setCadence(event.target.value as InsightCadence);
+                setCadence(value as InsightCadence);
               }}
+              options={[
+                { label: t("cadenceWeekly"), value: "WEEKLY" },
+                { label: t("cadenceMonthly"), value: "MONTHLY" },
+              ]}
               value={cadence}
-            >
-              <NativeSelectOption value="WEEKLY">
-                {t("cadenceWeekly")}
-              </NativeSelectOption>
-              <NativeSelectOption value="MONTHLY">
-                {t("cadenceMonthly")}
-              </NativeSelectOption>
-            </NativeSelect>
+            />
           </Label>
         </div>
         {wide && branchesQuery.isPending ? (
@@ -201,24 +194,20 @@ export function AiInsightView({
           <div className="rounded-lg border bg-card p-4">
             <Label className="form-field max-w-md">
               {t("aiReportPeriodPicker")}
-              <NativeSelect
+              <OptionSelect
                 className="w-full"
                 disabled={reportsQuery.isPending || periods.length === 0}
-                onChange={(event) => setSelectedPeriodId(event.target.value)}
+                onValueChange={(value) => setSelectedPeriodId(value)}
+                options={
+                  periods.length === 0
+                    ? [{ label: t("aiNoReportPeriods"), value: "" }]
+                    : periods.map((report) => ({
+                        label: period(report, language),
+                        value: report.id,
+                      }))
+                }
                 value={selected?.id ?? ""}
-              >
-                {periods.length === 0 ? (
-                  <NativeSelectOption value="">
-                    {t("aiNoReportPeriods")}
-                  </NativeSelectOption>
-                ) : (
-                  periods.map((report) => (
-                    <NativeSelectOption key={report.id} value={report.id}>
-                      {period(report, language)}
-                    </NativeSelectOption>
-                  ))
-                )}
-              </NativeSelect>
+              />
             </Label>
           </div>
           {reportsQuery.isPending ? (

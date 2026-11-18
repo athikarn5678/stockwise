@@ -3453,6 +3453,12 @@ Before apply the operator takes and verifies a database export. `retire` (bound 
 - **Status:** Accepted by the owner on 2026-11-17. Full record: `docs/decisions/0047-stripe-subscription-billing-v1.md`.
 - **Type:** Billing, permission and schema addition. Test-mode hosted Checkout, OWNER-only `billing.manage`, `organization_subscriptions` table; no webhook, limits or portal yet.
 
+## ADR-049 — AI analysis page: persisted, bilingual runs
+
+- **Date:** 2026-11-18
+- **Status:** Proposed. Full record: `docs/decisions/0049-ai-analysis-page-persisted-bilingual.md`.
+- **Type:** AI and schema amendment. Amends `ADR-046`: `/app/ai-analysis` page, Thai and English generated together, persisted in `ai_analysis_runs`, history and per-language retry; the on-demand endpoint moves to `/ai-analysis/runs`.
+
 ## 2. Explicitly superseded planning directions
 
 The current ADRs supersede these earlier, unimplemented ideas:

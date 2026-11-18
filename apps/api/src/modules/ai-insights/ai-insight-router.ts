@@ -2,7 +2,6 @@ import { Router, type RequestHandler, type Response } from "express";
 import { z } from "zod";
 
 import { getTrustedAuthenticationContext } from "../identity/authentication-context.ts";
-import type { AiAnalyzeService } from "./ai-analyze-service.ts";
 import type { DemoInsightReader } from "./demo-production-insight.ts";
 import {
   publicInsight,
@@ -51,17 +50,6 @@ const listSchema = z.discriminatedUnion("scope", [
     })
     .strict(),
 ]);
-const analyzeQuerySchema = z.discriminatedUnion("scope", [
-  z.object({ scope: z.literal("organization") }).strict(),
-  z.object({ scope: z.literal("branch"), branchId: z.uuid() }).strict(),
-]);
-const analyzeBodySchema = z
-  .object({
-    language: z.enum(["en", "th"]),
-    days: z.union([z.literal(7), z.literal(14), z.literal(30)]).optional(),
-  })
-  .strict();
-
 function error(
   response: Response,
   status: number,
@@ -78,127 +66,11 @@ function error(
 }
 
 export function createAiInsightRouter(input: {
-  analyzeService?: AiAnalyzeService;
   authenticationMiddleware: RequestHandler;
   reader: AiInsightReadReader;
   demoReader?: DemoInsightReader;
 }): Router {
   const router = Router();
-
-  router.post(
-    "/organizations/:organizationId/ai-insights/analyze",
-    input.authenticationMiddleware,
-    async (request, response, next) => {
-      try {
-        const params = paramsSchema.safeParse(request.params);
-        const query = analyzeQuerySchema.safeParse(request.query);
-        if (!params.success || !query.success)
-          return error(
-            response,
-            400,
-            "VALIDATION_ERROR",
-            "The analysis request is invalid.",
-          );
-        const actor = getTrustedAuthenticationContext(response);
-        if (actor === null)
-          return error(
-            response,
-            401,
-            "AUTHENTICATION_REQUIRED",
-            "Authentication is required.",
-          );
-        const scope: InsightReadScope =
-          query.data.scope === "organization"
-            ? { kind: "organization" }
-            : { kind: "branch", branchId: query.data.branchId };
-        // Same three-permission check as the persisted reads (ADR-046).
-        if (
-          !(await input.reader.authorize({
-            actorUserId: actor.actor.id,
-            organizationId: params.data.organizationId,
-            scope,
-          }))
-        )
-          return error(
-            response,
-            403,
-            "FORBIDDEN",
-            "The operation is not permitted.",
-          );
-        const body = analyzeBodySchema.safeParse(request.body);
-        if (!body.success)
-          return error(
-            response,
-            400,
-            "VALIDATION_ERROR",
-            "The analysis request is invalid.",
-          );
-        if (!input.analyzeService)
-          return error(
-            response,
-            404,
-            "NOT_FOUND",
-            "The resource is unavailable.",
-          );
-        const result = await input.analyzeService.analyze({
-          actorUserId: actor.actor.id,
-          days: body.data.days ?? 7,
-          language: body.data.language,
-          organizationId: params.data.organizationId,
-          scope,
-        });
-        if (result.kind === "forbidden")
-          return error(
-            response,
-            403,
-            "FORBIDDEN",
-            "The operation is not permitted.",
-          );
-        if (result.kind === "not_found")
-          return error(
-            response,
-            404,
-            "NOT_FOUND",
-            "The resource is unavailable.",
-          );
-        if (result.kind === "rate_limited") {
-          response.setHeader("Retry-After", String(result.retryAfterSeconds));
-          return error(
-            response,
-            429,
-            "RATE_LIMITED",
-            "The analysis was requested too recently.",
-          );
-        }
-        if (result.kind === "provider_failed")
-          return error(
-            response,
-            502,
-            "AI_PROVIDER_FAILED",
-            "The AI provider is unavailable.",
-          );
-        if (result.kind === "rejected")
-          return error(
-            response,
-            502,
-            "AI_RESPONSE_REJECTED",
-            "The AI response did not meet the required contract.",
-          );
-        response.setHeader("Cache-Control", "no-store");
-        response.status(200).json({
-          data: {
-            language: result.language,
-            mock: result.mock,
-            period: result.period,
-            sections: result.sections,
-            text: result.text,
-          },
-        });
-      } catch (cause) {
-        next(cause);
-      }
-    },
-  );
 
   router.get(
     "/organizations/:organizationId/ai-insights/demo",

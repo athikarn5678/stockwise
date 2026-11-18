@@ -1682,6 +1682,8 @@ The implementation may choose row locking, conditional/versioned updates, atomic
 
 `organization_subscriptions` (ADR-047; one row per Organization, Stripe test mode): `organization_id` unique/FK (restrict), `plan` (`subscription_plan`: STARTER|GROWTH|BUSINESS), `status` (`subscription_status`: ACTIVE|PAST_DUE|CANCELED; only ACTIVE is written until webhooks exist), `stripe_customer_id`, `stripe_subscription_id` (unique), `stripe_checkout_session_id` (unique), timestamps. CHECKs pin the `cus_`/`sub_`/`cs_test_` prefixes. Stripe ids are references, not credentials. Additive and forward-only; written only by the OWNER-only confirm endpoint.
 
+`ai_analysis_runs` (ADR-049; one row per successful on-demand analysis click): `organization_id` FK (restrict), nullable `branch_id` (NULL = Organization scope) with the composite same-Organization branch FK, `actor_user_id` FK (restrict, never returned), `days` (CHECK 7/14/30), `local_from`/`local_to` `DATE` (CHECK `local_from < local_to`), `reporting_timezone`, nullable `content_th`/`content_en` (CHECK at least one non-null; a language that failed stays NULL until retried), `model`, timestamps. Ordering index `(organization_id, branch_id, created_at DESC, id DESC)` serves the history keyset. Additive and forward-only; written only by the AI analysis endpoints.
+
 ## 9. Index plan by access pattern
 
 Indexes must be validated against actual queries and PostgreSQL plans; do not add every possible index.

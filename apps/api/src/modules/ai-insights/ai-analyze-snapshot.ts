@@ -75,6 +75,8 @@ export type AiAnalyzeSnapshotRequest = Readonly<{
   days: number;
   organizationId: string;
   scope: AiAnalyzeScope;
+  /** Retry of a stored run: reuse its exact local period instead of "today". */
+  fixedPeriod?: Readonly<{ from: string; to: string }>;
 }>;
 
 type OrganizationReader = Pick<PrismaClient, "organization">;
@@ -249,10 +251,10 @@ export function createAiAnalyzeSnapshotBuilder(input: {
       const from = today.subtract({ days: request.days });
       period = {
         days: request.days,
-        from: from.toString(),
+        from: request.fixedPeriod?.from ?? from.toString(),
         scope: request.scope.kind,
         timezone,
-        to: today.toString(),
+        to: request.fixedPeriod?.to ?? today.toString(),
       };
     } catch {
       return { kind: "unavailable" };

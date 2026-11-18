@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const redirect = vi.fn((url: string) => {
-  throw new Error(`redirect:${url}`);
-});
+const { redirect } = vi.hoisted(() => ({
+  redirect: vi.fn((url: string) => {
+    throw new Error(`redirect:${url}`);
+  }),
+}));
 vi.mock("next/navigation", () => ({ redirect }));
 
 import AiAnalysisRoute from "./page";

@@ -59,6 +59,8 @@ export const DEMO_AUTHENTICATION_TABLES = [
   "demo_dataset_runs",
   // ADR-047 Stripe subscription: written only by the OWNER billing confirm flow, so this fixture must find it empty.
   "organization_subscriptions",
+  // Written only by the AI analysis page; this fixture must find it empty.
+  "ai_analysis_runs",
 ] as const;
 
 const MIGRATION_TABLE = "_prisma_migrations";

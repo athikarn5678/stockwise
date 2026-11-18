@@ -503,6 +503,9 @@ describe("web application shell", () => {
       expect(!!screen.queryByRole("link", { name: "Analytics" })).toBe(
         analytics,
       );
+      expect(!!screen.queryByRole("link", { name: "AI analysis" })).toBe(
+        role === "OWNER" || role === "ADMIN" || role === "BRANCH_MANAGER",
+      );
       expect(!!screen.queryByRole("link", { name: "Suppliers" })).toBe(
         suppliers,
       );
@@ -533,6 +536,14 @@ describe("web application shell", () => {
     expect(
       screen.getByRole("link", { name: "Home" }).getAttribute("aria-current"),
     ).toBeNull();
+  });
+
+  it("hides AI analysis from a branch manager without an assigned branch", () => {
+    const context = accessContext("BRANCH_MANAGER");
+    context.organizations[0]!.branches = [];
+    renderShell(context);
+    expect(screen.queryByRole("link", { name: "AI analysis" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Analytics" })).toBeNull();
   });
 
   it("hides branch operations when no effective branch remains", () => {

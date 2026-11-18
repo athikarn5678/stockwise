@@ -1,5 +1,5 @@
 ---
-status: proposed (owner-specified in the 2026-11-18 sprint brief, task M6-S2; acceptance to be recorded by the planner)
+status: accepted (2026-11-18, planner decision)
 date: 2026-11-18
 ---
 

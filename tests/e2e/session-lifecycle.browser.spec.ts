@@ -82,6 +82,18 @@ async function mockSession(
   });
   return state;
 }
+/**
+ * A sign-in returns to the landing page by default, so the workspace is one
+ * click away: open it from the public header when the page is still there.
+ */
+async function expectWorkspaceHeading(page: Page, name: string) {
+  const dashboard = page.getByRole("link", { name: "Go to dashboard" });
+  const heading = page.getByRole("heading", { name, exact: true });
+  await expect(heading.or(dashboard)).toBeVisible();
+  if (await dashboard.isVisible()) await dashboard.click();
+  await expect(heading).toBeVisible();
+}
+
 async function submitLogin(page: Page) {
   await page
     .getByLabel("Email address", { exact: true })
@@ -116,12 +128,8 @@ for (const fallback of [false, true]) {
     await expect(second).toHaveURL(/\/login$/);
     await expect(second.getByText("Store A", { exact: true })).toHaveCount(0);
     await submitLogin(page);
-    await expect(
-      page.getByRole("heading", { name: "Store B", exact: true }),
-    ).toBeVisible();
-    await expect(
-      second.getByRole("heading", { name: "Store B", exact: true }),
-    ).toBeVisible();
+    await expectWorkspaceHeading(page, "Store B");
+    await expectWorkspaceHeading(second, "Store B");
     // The successor has a different user ID and reduced role, not just a new display name.
     await expect(
       second.getByRole("link", { name: "Members", exact: true }),
@@ -320,9 +328,7 @@ test("late accepted login after pagehide reconciles actual authority on restorat
       new PageTransitionEvent("pageshow", { persisted: true }),
     ),
   );
-  await expect(
-    page.getByRole("heading", { name: "Store B", exact: true }),
-  ).toBeVisible();
+  await expectWorkspaceHeading(page, "Store B");
   expect(
     await page.evaluate(() =>
       sessionStorage.getItem("stockwise_verification_continuation"),
@@ -352,9 +358,9 @@ test("a protected resource 401 removes private content and offers recovery witho
     .getByRole("main")
     .getByRole("link", { name: "Sign in", exact: true })
     .click();
-  await expect(
-    page.getByRole("heading", { name: "Store A", exact: true }),
-  ).toBeVisible();
+  // The sign-in link carries the page the visitor was on as `next`; the mocked
+  // session is still valid, so sign-in returns there (its categories stay 401).
+  await expect(page).toHaveURL(/\/app\/catalog\?/);
 });
 
 test("native history Back never restores expired private authority", async ({
@@ -491,9 +497,12 @@ for (const authPath of ["/login", "/register"]) {
       window.dispatchEvent(new Event("blur"));
       window.dispatchEvent(new Event("focus"));
     });
-    await expect(
-      page.getByRole("heading", { name: "Store A", exact: true }),
-    ).toBeVisible();
+    // Sign-in pages return to the landing page; other guest pages open the app.
+    if (authPath === "/login") await expectWorkspaceHeading(page, "Store A");
+    else
+      await expect(
+        page.getByRole("heading", { name: "Store A", exact: true }),
+      ).toBeVisible();
     await expect(page).toHaveURL(/\/app/);
     await expect(page.getByLabel("Email address", { exact: true })).toHaveCount(
       0,

@@ -65,6 +65,11 @@ test("inventory has no automated axe violations on desktop and mobile", async ({
   await signIn(page, E2E_OWNER_EMAIL);
   await page.goto(inventoryPath);
   await page.getByRole("button", { name: /Inventory test tea/ }).click();
+  // Axe must not sample colours mid-transition (the selected row fades in).
+  await page.addStyleTag({
+    content:
+      "*,*::before,*::after{transition:none!important;animation:none!important}",
+  });
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
   await page.setViewportSize({ height: 844, width: 390 });

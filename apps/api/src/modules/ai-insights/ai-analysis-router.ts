@@ -93,6 +93,13 @@ function serviceFailure(
   >,
 ): void {
   if (result.kind === "not_found") return notFound(response);
+  if (result.kind === "insufficient_data")
+    return error(
+      response,
+      422,
+      "INSUFFICIENT_DATA",
+      "There are no sales in the selected period to analyze.",
+    );
   if (result.kind === "rate_limited") {
     response.setHeader("Retry-After", String(result.retryAfterSeconds));
     return error(

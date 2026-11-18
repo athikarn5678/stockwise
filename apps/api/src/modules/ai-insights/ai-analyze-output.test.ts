@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { AiAnalyzeProductFacts } from "./ai-analyze-product-facts.ts";
 import type { AiAnalyzeSnapshot } from "./ai-analyze-snapshot.ts";
 import {
   AiAnalyzeOutputError,
@@ -7,6 +8,53 @@ import {
   parseAiAnalyzeOutput,
   splitStoredAiAnalyzeSections,
 } from "./ai-analyze-output.ts";
+import { buildAiAnalyzePrompt } from "./ai-analyze-prompt.ts";
+
+const productFacts: AiAnalyzeProductFacts = {
+  lowStock: {
+    count: 2,
+    coverDaysThreshold: 7,
+    items: [
+      {
+        daysOfCover: "1.50",
+        name: "Cola 330ml",
+        onHandQuantity: "3",
+        quantitySoldInPeriod: "14",
+      },
+      {
+        daysOfCover: "6.00",
+        name: "Iced Tea",
+        onHandQuantity: "12",
+        quantitySoldInPeriod: "14",
+      },
+    ],
+  },
+  noSales: { count: 1, names: ["Ginger Ale"] },
+  outOfStock: {
+    count: 1,
+    items: [
+      {
+        daysOfCover: null,
+        name: "Soda Water",
+        onHandQuantity: "0",
+        quantitySoldInPeriod: "2",
+      },
+    ],
+  },
+  slowestByNetSales: [
+    { name: "Iced Tea", netSalesAmount: "70.00", quantity: "14" },
+  ],
+  slowestByQuantity: [
+    { name: "Iced Tea", netSalesAmount: "70.00", quantity: "14" },
+  ],
+  soldProductCount: 2,
+  topByNetSales: [
+    { name: "Cola 330ml", netSalesAmount: "210.00", quantity: "14" },
+  ],
+  topByQuantity: [
+    { name: "Cola 330ml", netSalesAmount: "210.00", quantity: "14" },
+  ],
+};
 
 const snapshot: AiAnalyzeSnapshot = {
   bestDay: { date: "2026-11-12", netSalesAmount: "1200.00" },
@@ -44,6 +92,7 @@ const snapshot: AiAnalyzeSnapshot = {
     timezone: "Asia/Bangkok",
     to: "2026-11-13",
   },
+  products: productFacts,
   totals: {
     averageOrderValue: "200.00",
     netSalesAmount: "1400.00",
@@ -75,7 +124,7 @@ describe("AI analyze output validation", () => {
       text: english([
         "Net sales 1,400.00 from 7 sales.",
         "Refunds 50.00.",
-        "Only category-level data: Food 900.00.",
+        "Top product Cola 330ml with 14 units and 210.00 net sales. Food 900.00.",
         "Gross margin 33.33%.",
         "Review Drinks.",
       ]),
@@ -161,6 +210,35 @@ describe("AI analyze output validation", () => {
     ).not.toThrow();
   });
 
+  it("accepts a product name with grouped digits copied without the comma", () => {
+    const withName: AiAnalyzeSnapshot = {
+      ...snapshot,
+      products: {
+        ...snapshot.products,
+        topByQuantity: [
+          {
+            name: "Tissue 1,000 sheets",
+            netSalesAmount: "200.00",
+            quantity: "2",
+          },
+        ],
+      },
+    };
+    expect(() =>
+      parseAiAnalyzeOutput({
+        language: "en",
+        snapshot: withName,
+        text: english([
+          "Net sales 1400.00.",
+          "Tissue 1000 sheets sold 2.",
+          "Food.",
+          "None.",
+          "Act.",
+        ]),
+      }),
+    ).not.toThrow();
+  });
+
   it("tolerates comma grouping and rounding of snapshot values", () => {
     expect(() =>
       parseAiAnalyzeOutput({
@@ -201,6 +279,68 @@ describe("AI analyze output validation", () => {
         5,
       );
       expect(text).toContain("1400.00");
+      // The mock names the real top/slowest/stock products from the snapshot.
+      expect(text).toContain("Cola 330ml");
+      expect(text).toContain("Iced Tea");
+      expect(text).toContain("Soda Water");
+      expect(text).toContain("Ginger Ale");
     }
+  });
+
+  it("sends the product facts to the model and drops the old caveats", () => {
+    for (const language of ["en", "th"] as const) {
+      const prompt = buildAiAnalyzePrompt({ language, snapshot });
+      expect(prompt).toContain("Cola 330ml");
+      expect(prompt).toContain("Iced Tea");
+      expect(prompt).toContain("Soda Water");
+      expect(prompt).toContain('"lowStock"');
+      expect(prompt).not.toContain("category-level");
+      expect(prompt).not.toContain("product-level detail is unavailable");
+    }
+  });
+
+  it("rejects a hallucinated product number or product count", () => {
+    expect(() =>
+      parseAiAnalyzeOutput({
+        language: "en",
+        snapshot,
+        text: english([
+          "Net sales 1400.00.",
+          "None.",
+          "Cola 330ml sold 41 units for 210.00.",
+          "None.",
+          "Act.",
+        ]),
+      }),
+    ).toThrow(AiAnalyzeOutputError);
+    expect(() =>
+      parseAiAnalyzeOutput({
+        language: "en",
+        snapshot,
+        text: english([
+          "Net sales 1400.00.",
+          "None.",
+          "Products with no sales (9): Ginger Ale.",
+          "None.",
+          "Act.",
+        ]),
+      }),
+    ).toThrow(AiAnalyzeOutputError);
+  });
+
+  it("accepts a digit that only appears inside a product name", () => {
+    expect(() =>
+      parseAiAnalyzeOutput({
+        language: "en",
+        snapshot,
+        text: english([
+          "Net sales 1400.00.",
+          "None.",
+          "Cola 330ml is the top product.",
+          "None.",
+          "Act.",
+        ]),
+      }),
+    ).not.toThrow();
   });
 });

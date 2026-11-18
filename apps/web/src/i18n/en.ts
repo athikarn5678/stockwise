@@ -603,6 +603,8 @@ export const en = {
   aiAnalyzeErrAccess: "AI analysis is not available for your current access.",
   aiAnalyzeErrProvider:
     "The AI system is unavailable or its output failed validation. Try again.",
+  aiAnalyzeErrInsufficient:
+    "There are no sales in the selected period, so there is nothing to analyze yet. Try a longer period.",
   aiAnalyzeErrLoad: "The analysis could not be completed. Try again later.",
   aiTitle: "AI insights",
   aiAnalysis: "AI analysis",

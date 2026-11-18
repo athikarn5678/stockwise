@@ -3464,6 +3464,11 @@ Before apply the operator takes and verifies a database export. `retire` (bound 
 - **Date:** 2026-11-18
 - **Status:** Proposed (owner-specified in the 2026-11-18 sprint brief; acceptance to be recorded by the planner). Full record: `docs/decisions/0050-subscription-access-and-renewal.md`.
 - **Type:** Billing, permission and schema amendment. Amends `ADR-047` (checkout from EXPIRED, in-place renewal, yearly interval). Adds the TRIAL/ACTIVE/EXPIRED states, one central `402 SUBSCRIPTION_REQUIRED` guard for mutating organization-scoped routes, an additive migration (`EXPIRED` status, `interval`, nullable Stripe ids for Stripe-less EXPIRED rows) and the operator `expire-subscription` rehearsal command.
+## ADR-051 — Product-level input for the on-demand AI analysis
+
+- **Date:** 2026-11-18
+- **Status:** Proposed. Full record: `docs/decisions/0051-ai-analysis-product-level-input.md`.
+- **Type:** AI amendment. Amends `ADR-046` §3: the snapshot now carries product-level top/slowest, no-sales, out-of-stock and low-stock facts (names and aggregates only); no schema change.
 
 ## 2. Explicitly superseded planning directions
 

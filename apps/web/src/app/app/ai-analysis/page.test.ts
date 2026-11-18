@@ -19,7 +19,9 @@ async function go(query: Record<string, string | string[] | undefined>) {
 }
 
 describe("legacy /app/ai-analysis route", () => {
-  beforeEach(() => redirect.mockClear());
+  beforeEach(() => {
+    redirect.mockClear();
+  });
 
   it("redirects to the Analytics AI analysis tab and keeps the context", async () => {
     expect(await go({ organizationId: "org-1", branchId: "branch-1" })).toBe(

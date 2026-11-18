@@ -801,7 +801,6 @@ export const th: Dictionary = {
   uiAmountTenderedTHB: "เงินที่รับ (บาท)",
   uiEnterTenderedCashAtOrAboveTheCurrentPrice:
     "ใส่เงินสดที่รับไม่น้อยกว่ายอดรวมตามราคาปัจจุบัน",
-  uiTransferReferenceOptional: "เลขอ้างอิงการโอน (ไม่บังคับ)",
   paymentPromptPay: "พร้อมเพย์",
   uiPromptPay: "ชำระเงินด้วยพร้อมเพย์",
   uiGeneratePromptPayQr: "สร้าง QR พร้อมเพย์",

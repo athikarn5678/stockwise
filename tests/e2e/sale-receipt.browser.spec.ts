@@ -266,7 +266,7 @@ for (const width of [375, 430, 768, 1024, 1280, 1440]) {
 }
 
 for (const method of ["CASH", "TRANSFER"] as const) {
-  test(`completed POS ${method} sale uses the same printable snapshot receipt (stub API)`, async ({
+  test(`completed POS cash sale renders the printable snapshot receipt for a ${method} result (stub API)`, async ({
     page,
   }) => {
     const sale = receiptSale(1);

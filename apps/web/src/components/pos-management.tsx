@@ -550,7 +550,15 @@ function PosContent({
         <VatProfilePanel
           error={vatProfileQuery.error}
           isLoading={vatProfileQuery.isPending}
-          onSaved={() => void vatProfileQuery.refetch()}
+          onSaved={(saved) => {
+            // The PATCH answer is the new saved profile: show it at once and
+            // refresh in the background.
+            queryClient.setQueryData(
+              ["organization-scoped", organization.id, "sales-vat-profile"],
+              saved,
+            );
+            void vatProfileQuery.refetch();
+          }}
           profile={vatProfileQuery.data}
           organizationId={organization.id}
         />
@@ -1127,6 +1135,13 @@ function buildPayment(
     : ({ amountTendered: tendered, method } as const);
 }
 
+/** "7" and "7.000000" are the same saved rate. */
+function sameRate(typed: string, saved: string | null): boolean {
+  const left = decimalToScaled(typed.trim(), 6);
+  const right = saved === null ? null : decimalToScaled(saved, 6);
+  return left !== null && left === right;
+}
+
 function VatProfilePanel({
   error,
   isLoading,
@@ -1136,7 +1151,7 @@ function VatProfilePanel({
 }: {
   error: Error | null;
   isLoading: boolean;
-  onSaved: () => void;
+  onSaved: (saved: SalesVatProfile) => void;
   organizationId: string;
   profile: SalesVatProfile | undefined;
 }) {
@@ -1158,10 +1173,10 @@ function VatProfilePanel({
       setJustSaved(false);
       setNotice(errorMessage(cause));
     },
-    onSuccess: () => {
+    onSuccess: (saved) => {
       setNotice(null);
       setJustSaved(true);
-      onSaved();
+      onSaved(saved);
     },
   });
   // The form always starts from, and falls back to, the saved profile: leaving
@@ -1191,7 +1206,7 @@ function VatProfilePanel({
   const dirty =
     unconfigured ||
     status !== profile.salesVatStatus ||
-    (status === "REGISTERED" && rate.trim() !== (profile.salesVatRate ?? ""));
+    (status === "REGISTERED" && !sameRate(rate, profile.salesVatRate));
   const savedSummary = unconfigured
     ? t("uiVatNotConfiguredYet")
     : profile.salesVatStatus === "REGISTERED"

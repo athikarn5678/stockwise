@@ -823,7 +823,6 @@ export const en = {
   uiAmountTenderedTHB: "Amount tendered (THB)",
   uiEnterTenderedCashAtOrAboveTheCurrentPrice:
     "Enter tendered cash at or above the current-price subtotal.",
-  uiTransferReferenceOptional: "Transfer reference (optional)",
   paymentPromptPay: "PromptPay",
   uiPromptPay: "PromptPay QR payment",
   uiGeneratePromptPayQr: "Generate PromptPay QR",

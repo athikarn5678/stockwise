@@ -697,6 +697,59 @@ describe("POS management UI", () => {
       expect(saveButton()).toBeNull();
     });
 
+    it("confirms the save at once from the PATCH answer, before the refetch returns", async () => {
+      const registered = {
+        salesVatRate: "7.000000",
+        salesVatStatus: "REGISTERED" as const,
+        updatedAt: "2026-09-18T10:01:00.000Z",
+      };
+      let calls = 0;
+      vi.mocked(getSalesVatProfile).mockImplementation(() =>
+        calls++ === 0
+          ? Promise.resolve({
+              salesVatRate: null,
+              salesVatStatus: "NOT_REGISTERED" as const,
+              updatedAt: "2026-09-18T10:00:00.000Z",
+            })
+          : new Promise(() => undefined),
+      );
+      vi.mocked(updateSalesVatProfile).mockResolvedValue(registered);
+      renderPos();
+      await addCoffee();
+      await form();
+      await chooseOptionByValue(statusTrigger(), "REGISTERED");
+      fireEvent.change(screen.getByLabelText("VAT rate (%)"), {
+        target: { value: "7" },
+      });
+      fireEvent.click(saveButton()!);
+      await waitFor(() =>
+        expect(screen.getByTestId("vat-saved-summary").textContent).toContain(
+          "VAT profile saved.",
+        ),
+      );
+      expect(saveButton()).toBeNull();
+    });
+
+    it("treats 7 and the saved 7.000000 as the same rate", async () => {
+      vi.mocked(getSalesVatProfile).mockResolvedValue({
+        salesVatRate: "7.000000",
+        salesVatStatus: "REGISTERED",
+        updatedAt: "2026-09-18T10:00:00.000Z",
+      });
+      renderPos();
+      await addCoffee();
+      await form();
+      expect(saveButton()).toBeNull();
+      fireEvent.change(screen.getByLabelText("VAT rate (%)"), {
+        target: { value: "7" },
+      });
+      expect(saveButton()).toBeNull();
+      fireEvent.change(screen.getByLabelText("VAT rate (%)"), {
+        target: { value: "7.5" },
+      });
+      expect(saveButton()).toBeTruthy();
+    });
+
     it("reports a failed save and keeps Save available", async () => {
       vi.mocked(updateSalesVatProfile).mockRejectedValue(
         new SalesApiError("unavailable"),

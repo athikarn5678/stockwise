@@ -6,7 +6,7 @@ import { AI_ANALYZE_HEADINGS } from "./ai-analyze-prompt.ts";
 /** The `ai_insight_reports.content` storage limit enforced by the database check. */
 export const SEEDED_REPORT_MAX_BYTES = 4096;
 
-/** At most this many low-stock or replenishment rows are described per period. */
+/** At most this many best or slowest products are described per period. */
 export const SEEDED_REPORT_LIST_LIMIT = 4;
 
 const DEFAULT_NAME_LIMIT = 48;
@@ -29,32 +29,13 @@ export interface SeededReportProductFact {
   quantity: string;
 }
 
-export interface SeededReportLowStockFact {
-  branchName: string;
-  productName: string;
-  unit: string;
-  onHand: string;
-  coverageDays: string | null;
-}
-
-export interface SeededReportReplenishmentFact {
-  branchName: string;
-  productName: string;
-  unit: string;
-  quantity: string;
-}
-
 /**
  * Facts a seed step computes for one period and scope from that period's own
- * analytics reads. They never contain cross-period or cross-scope figures.
+ * analytics reads. They never contain cross-period or cross-scope figures and
+ * never describe a current stock level: only sale depletion inside the period.
  */
 export interface SeededReportFacts {
   best: readonly SeededReportProductFact[];
-  /** Low-stock branch/product pairs at the period end, already capped. */
-  lowStock: readonly SeededReportLowStockFact[];
-  /** Total low-stock pairs before the cap, so the text can say how many remain. */
-  lowStockTotal: number;
-  replenishment: readonly SeededReportReplenishmentFact[];
   scopeKind: "organization" | "branch";
   scopeName: string;
   slowest: readonly SeededReportProductFact[];
@@ -87,6 +68,18 @@ function truncateName(value: string, limit: number): string {
 function money2(value: string): string {
   const separator = value.indexOf(".");
   return separator === -1 ? value : value.slice(0, separator + 3);
+}
+
+/**
+ * One reading of the supplied comparison, never a recomputation: the sign of
+ * the stored growth percentage decides the sentence.
+ */
+function growthReading(value: string | null): string {
+  if (value === null) return "ไม่มีข้อมูลเปรียบเทียบช่วงก่อนหน้า";
+  if (!/[1-9]/u.test(value)) return "ยอดขายสุทธิใกล้เคียงช่วงก่อนหน้า";
+  return value.trimStart().startsWith("-")
+    ? "ยอดขายสุทธิลดลงเมื่อเทียบช่วงก่อนหน้า"
+    : "ยอดขายสุทธิเพิ่มขึ้นเมื่อเทียบช่วงก่อนหน้า";
 }
 
 function list(values: readonly string[], empty: string): string {
@@ -138,23 +131,15 @@ function renderSeededReportText(
   const name = (value: string) => truncateName(value, limits.nameLimit);
   const productFact = (fact: SeededReportProductFact) =>
     `${name(fact.name)}: ${fact.quantity} ${fact.unit}`;
-  const lowStockFact = (fact: SeededReportLowStockFact) => {
-    const coverage =
-      fact.coverageDays === null
-        ? "ไม่ทราบจำนวนวัน"
-        : `${fact.coverageDays} วัน`;
-    return `${name(fact.branchName)} / ${name(fact.productName)}: ${fact.onHand} ${fact.unit} (${coverage})`;
-  };
-  const replenishmentFact = (fact: SeededReportReplenishmentFact) =>
-    `${name(fact.branchName)} / ${name(fact.productName)}: ${fact.quantity} ${fact.unit}`;
 
-  const listedLowStock = input.lowStock.slice(0, limits.listLimit);
-  const lowStockTotal = Math.max(input.lowStockTotal, input.lowStock.length);
-  const listedReplenishment = input.replenishment.slice(0, limits.listLimit);
+  const listedBest = input.best.slice(0, limits.listLimit);
+  const listedSlowest = input.slowest.slice(0, limits.listLimit);
   const lastDay = Temporal.PlainDate.from(input.localToExclusive)
     .subtract({ days: 1 })
     .toString();
   const { sales } = input;
+  // The growth percentage is a Sales fact; Notes re-reads its sign only.
+  const growthValue = sales.netSalesGrowthPercent.value;
   const refunds = `การคืนเงิน: ${sales.refundCount} รายการ รวม ${money2(sales.refundAmount)} THB`;
   const averageOrderValue =
     sales.averageOrderValue.value === null
@@ -169,18 +154,30 @@ function renderSeededReportText(
     sales.grossMarginPercent.value === null
       ? `กำไรขั้นต้น: ไม่มีข้อมูลต้นทุนที่ยืนยันได้ (ความครบถ้วนของต้นทุน: ${sales.costCoverage})`
       : `กำไรขั้นต้น: ${money2(sales.grossProfitAmount.value)} THB (${sales.grossMarginPercent.value}%) · ความครบถ้วนของต้นทุน: ${sales.costCoverage}`;
-  const lowStock =
-    lowStockTotal === 0
-      ? "สินค้าใกล้หมด ณ วันสิ้นสุดช่วง: ไม่มี"
-      : `สินค้าใกล้หมด ณ วันสิ้นสุดช่วง: ${list(listedLowStock.map(lowStockFact), "ไม่มี")}${
-          lowStockTotal > listedLowStock.length
-            ? ` และอีก ${lowStockTotal - listedLowStock.length} คู่`
-            : ""
-        }`;
-  const actions =
-    listedReplenishment.length === 0
-      ? "ยังไม่มีข้อเสนอแนะการเติมสินค้าในช่วงนี้ ควรติดตามยอดขายและสต็อกต่อเนื่อง"
-      : `ข้อเสนอแนะการเติมสินค้า (ระยะวางแผน 7 วัน): ${list(listedReplenishment.map(replenishmentFact), "ไม่มี")}`;
+  // Actions stay deterministic and use only this period's own facts: ranked
+  // products and refunds. No action may claim a current stock level.
+  const actionLimit = Math.min(2, limits.listLimit);
+  const bestNames = listedBest
+    .slice(0, actionLimit)
+    .map((fact) => name(fact.name));
+  const slowestNames = listedSlowest
+    .slice(0, actionLimit)
+    .map((fact) => name(fact.name));
+  const actions: string[] = [];
+  if (bestNames.length > 0)
+    actions.push(
+      `ควรเตรียมสต็อกสินค้าขายดีให้เพียงพอ: ${bestNames.join("; ")}`,
+    );
+  if (slowestNames.length > 0)
+    actions.push(
+      `ทบทวนการสั่งซื้อและโปรโมชันของสินค้าขายช้า: ${slowestNames.join("; ")}`,
+    );
+  if (sales.refundCount > 0)
+    actions.push(
+      `ติดตามสาเหตุการคืนสินค้า ${sales.refundCount} รายการในช่วงนี้`,
+    );
+  const actionLines =
+    actions.length === 0 ? ["ติดตามยอดขายต่อเนื่องในช่วงถัดไป"] : actions;
 
   const sections: ReadonlyArray<readonly [string, readonly string[]]> = [
     [
@@ -195,12 +192,12 @@ function renderSeededReportText(
     [
       SEEDED_REPORT_HEADINGS.products,
       [
-        `สินค้าขายดีตามหน่วยฐาน: ${list(input.best.map(productFact), "ยังไม่มีการขาย")}`,
-        `สินค้าขายช้าตามหน่วยฐาน: ${list(input.slowest.map(productFact), "ยังไม่มีการขาย")}`,
+        `สินค้าขายดีตามหน่วยฐาน: ${list(listedBest.map(productFact), "ยังไม่มีการขาย")}`,
+        `สินค้าขายช้าตามหน่วยฐาน: ${list(listedSlowest.map(productFact), "ยังไม่มีการขาย")}`,
       ],
     ],
-    [SEEDED_REPORT_HEADINGS.notes, [profit, refunds, lowStock]],
-    [SEEDED_REPORT_HEADINGS.actions, [actions]],
+    [SEEDED_REPORT_HEADINGS.notes, [profit, growthReading(growthValue)]],
+    [SEEDED_REPORT_HEADINGS.actions, actionLines],
   ];
   return sections
     .map(([sectionHeading, lines]) => [sectionHeading, ...lines].join("\n"))

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { Prisma } from "../generated/prisma/client.ts";
 import { loadTestDatabaseEnvironment } from "../test/database-environment.ts";
 import {
   createTestPrismaClient,
@@ -42,6 +43,9 @@ const headings = [
   SEEDED_REPORT_HEADINGS.notes,
   SEEDED_REPORT_HEADINGS.actions,
 ];
+
+/** The report text must never describe a stock level; only period sale facts. */
+const STOCK_CLAIM = /ใกล้หมด|on hand|on-hand|สต็อกคงเหลือ|สินค้าคงเหลือ/iu;
 
 const reportColumns = {
   attemptCount: true,
@@ -127,6 +131,85 @@ async function analyticsSales(input: {
   return sales.buckets[0]!;
 }
 
+/**
+ * Independent ledger sum of sale depletion for one scope and period, read
+ * straight from `inventory_transactions` rather than through the analytics
+ * inventory service. Rows are cut off at the period's own end.
+ */
+async function ledgerSaleDepletion(input: {
+  branchIds: readonly string[];
+  cutoff: Date;
+  from: Date;
+  to: Date;
+}): Promise<
+  Array<{
+    productId: string;
+    productName: string;
+    productUnit: string;
+    quantity: Prisma.Decimal;
+  }>
+> {
+  const branches = input.branchIds.map((id) => Prisma.sql`${id}::uuid`);
+  return prisma.$queryRaw(Prisma.sql`
+    SELECT product.id::text AS "productId", product.name AS "productName",
+      product.unit::text AS "productUnit",
+      COALESCE(SUM(-movement.delta), 0)::numeric AS "quantity"
+    FROM products AS product
+    LEFT JOIN inventory_transactions AS movement
+      ON movement.organization_id = product.organization_id
+      AND movement.product_id = product.id
+      AND movement.branch_id IN (${Prisma.join(branches)})
+      AND movement.source = 'SALE' AND movement.delta < 0
+      AND movement.occurred_at >= ${input.from}::timestamptz
+      AND movement.occurred_at < ${input.to}::timestamptz
+      AND movement.occurred_at <= ${input.cutoff}::timestamptz
+    WHERE product.organization_id = ${organizationId}::uuid
+      AND product.status = 'ACTIVE'
+    GROUP BY product.id, product.name, product.unit
+    ORDER BY product.id
+  `);
+}
+
+/** The same deterministic per-unit ranking the report text renders. */
+function rankedProducts(
+  rows: Awaited<ReturnType<typeof ledgerSaleDepletion>>,
+  direction: "best" | "slowest",
+): string[] {
+  const units = [...new Set(rows.map((row) => row.productUnit))].sort();
+  return units
+    .map(
+      (unit) =>
+        rows
+          .filter((row) => row.productUnit === unit)
+          .sort((a, b) =>
+            direction === "best"
+              ? b.quantity.cmp(a.quantity) ||
+                a.productId.localeCompare(b.productId)
+              : a.quantity.cmp(b.quantity) ||
+                a.productId.localeCompare(b.productId),
+          )[0]!,
+    )
+    .filter((row) => (direction === "best" ? row.quantity.gt(0) : true))
+    .map(
+      (row) =>
+        `${row.productName}: ${row.quantity.toFixed(4)} ${row.productUnit}`,
+    );
+}
+
+function lineAfter(content: string, prefix: string): string {
+  const line = content
+    .split("\n")
+    .find((candidate) => candidate.startsWith(prefix));
+  if (line === undefined) throw new Error(`The report has no ${prefix} line.`);
+  return line.slice(prefix.length);
+}
+
+/** Display-only shortening mirrored from the text builder. */
+function money2(value: string): string {
+  const separator = value.indexOf(".");
+  return separator === -1 ? value : value.slice(0, separator + 3);
+}
+
 async function clearDemoProvenance() {
   const relation = await prisma.$queryRaw<Array<{ exists: string | null }>>`
     SELECT to_regclass('stockwise_demo.seed_runs')::text AS exists`;
@@ -194,6 +277,11 @@ suite("seeded stored weekly/monthly AI insight reports", () => {
       });
       expect(row.branchId === null).toBe(row.scope === "ORGANIZATION");
       expect(row.content).not.toMatch(/demo|uat|ตัวอย่าง|sample/iu);
+      // The stored text never states a stock level: only this period's sales,
+      // refunds and sale depletion.
+      expect(row.content).not.toMatch(STOCK_CLAIM);
+      expect(row.content).not.toContain("onHand");
+      expect(row.content).not.toContain("coverageDays");
     }
 
     const snapshots = await prisma.analyticsSnapshot.findMany({
@@ -237,6 +325,7 @@ suite("seeded stored weekly/monthly AI insight reports", () => {
     expect(checked).toHaveLength(18 + 18);
 
     for (const row of checked) {
+      const content = row.content!;
       const payload = snapshots.get(row.snapshotId!) as {
         sales: { netSalesAmount: string; saleCount: number };
       };
@@ -254,9 +343,68 @@ suite("seeded stored weekly/monthly AI insight reports", () => {
       });
       expect(payload.sales.netSalesAmount).toBe(sales.netSalesAmount);
       expect(payload.sales.saleCount).toBe(sales.saleCount);
-      expect(row.content).toContain(
+      expect(content).toContain(
         `net sales): ${sales.netSalesAmount} THB จาก ${sales.saleCount} รายการขาย`,
       );
+      expect(content).toContain(
+        `การคืนเงิน: ${sales.refundCount} รายการ รวม ${money2(sales.refundAmount)} THB`,
+      );
+      const growth = sales.netSalesGrowthPercent.value;
+      expect(content).toContain(
+        growth === null
+          ? "การเติบโตเทียบช่วงก่อนหน้า: ไม่มีข้อมูลเปรียบเทียบ"
+          : `การเติบโตเทียบช่วงก่อนหน้า: ${growth}%`,
+      );
+      const reading =
+        growth === null
+          ? "ไม่มีข้อมูลเปรียบเทียบช่วงก่อนหน้า"
+          : !/[1-9]/u.test(growth)
+            ? "ยอดขายสุทธิใกล้เคียงช่วงก่อนหน้า"
+            : growth.trimStart().startsWith("-")
+              ? "ยอดขายสุทธิลดลงเมื่อเทียบช่วงก่อนหน้า"
+              : "ยอดขายสุทธิเพิ่มขึ้นเมื่อเทียบช่วงก่อนหน้า";
+      expect(content.split("\n\n")[3]!).toContain(reading);
+    }
+  }, 300_000);
+
+  it("ranks an older week's best and slowest products from that week's own ledger", async () => {
+    const reports = await storedReports();
+    const weeks = reports
+      .filter((row) => row.cadence === "WEEKLY" && row.scope === "ORGANIZATION")
+      .sort(
+        (a, b) =>
+          a.periodStartInclusive.getTime() - b.periodStartInclusive.getTime(),
+      );
+    expect(weeks.length).toBeGreaterThan(1);
+    // The oldest completed week, far from the run day, so today's stock cannot
+    // explain any figure in it.
+    const row = weeks[0]!;
+    expect(row.periodEndExclusive.getTime()).toBeLessThan(
+      weeks.at(-1)!.periodEndExclusive.getTime(),
+    );
+    const branches = await prisma.branch.findMany({
+      select: { id: true },
+      where: { organizationId },
+    });
+    const ledger = await ledgerSaleDepletion({
+      branchIds: branches.map((branch) => branch.id),
+      cutoff: row.periodEndExclusive,
+      from: row.periodStartInclusive,
+      to: row.periodEndExclusive,
+    });
+    const best = rankedProducts(ledger, "best");
+    const slowest = rankedProducts(ledger, "slowest");
+    expect(best.length).toBeGreaterThan(0);
+    expect(lineAfter(row.content!, "สินค้าขายดีตามหน่วยฐาน: ")).toBe(
+      best.join("; "),
+    );
+    expect(lineAfter(row.content!, "สินค้าขายช้าตามหน่วยฐาน: ")).toBe(
+      slowest.join("; "),
+    );
+    // Depletion is a period flow, so the old week's quantities are its own.
+    for (const entry of best) {
+      const quantity = entry.slice(entry.indexOf(": ") + 2).split(" ")[0]!;
+      expect(Number(quantity)).toBeGreaterThan(0);
     }
   }, 300_000);
 

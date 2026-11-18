@@ -6,7 +6,6 @@ import { createAnalyticsDimensionCursorCodec } from "../modules/analytics/analyt
 import { createPrismaAnalyticsInventoryRepository } from "../modules/analytics/analytics-inventory-repository.ts";
 import { createAnalyticsInventoryService } from "../modules/analytics/analytics-inventory-service.ts";
 import type { InventoryDimension } from "../modules/analytics/analytics-inventory-values.ts";
-import { createPrismaReorderRepository } from "../modules/analytics/analytics-reorder-repository.ts";
 import { createPrismaAnalyticsScopeRepository } from "../modules/analytics/analytics-scope-repository.ts";
 import type { AnalyticsScopeCandidate } from "../modules/analytics/analytics-scope.ts";
 import {
@@ -15,7 +14,6 @@ import {
 } from "../modules/ai-insights/ai-insight-job.ts";
 import { createSeededTemplateProvider } from "../modules/ai-insights/seeded-template-provider.ts";
 import {
-  SEEDED_REPORT_LIST_LIMIT,
   type SeededReportFacts,
   type SeededReportProductFact,
 } from "../modules/ai-insights/seeded-report-text.ts";
@@ -25,7 +23,6 @@ import {
 } from "./demo-seed-periods.ts";
 
 const Decimal = Prisma.Decimal.clone({ precision: 80 });
-const LEAD_TIME_DAYS = 7;
 const PAGE_LIMIT = 100;
 
 export interface SeedStoredReportsInput {
@@ -106,7 +103,11 @@ function productFacts(
 
 /**
  * Reads one completed period and scope through the same analytics read path the
- * Demo Insight uses, pinned to the period end so no later fact can leak in.
+ * Demo Insight uses. Sales and per-product sale depletion are cut off at the
+ * period end, so a later sale can never change this period's figures. The
+ * inventory dimension is read for those depletion quantities only: its current
+ * on-hand balance describes today, not the period end, and is never stored in a
+ * report.
  */
 async function readSeededReportFacts(
   context: SeedContext,
@@ -144,48 +145,8 @@ async function readSeededReportFacts(
     cursor = page.page.nextCursor ?? undefined;
   } while (cursor !== undefined);
 
-  const lowStock = dimensions
-    .filter((item) => item.stockClassification.classification === "LOW_STOCK")
-    .sort(
-      (a, b) =>
-        a.branchId.localeCompare(b.branchId) ||
-        a.productId.localeCompare(b.productId),
-    );
-  const listed = lowStock.slice(0, SEEDED_REPORT_LIST_LIMIT);
-  const replenishment: SeededReportFacts["replenishment"][number][] = [];
-  for (const item of listed) {
-    const result = await createPrismaReorderRepository(context.prisma, {
-      now: atPeriodEnd,
-    }).read({
-      actorUserId: context.actorUserId,
-      branchId: item.branchId,
-      leadTimeDays: LEAD_TIME_DAYS,
-      organizationId: context.organizationId,
-      productId: item.productId,
-    });
-    if (
-      result.kind === "success" &&
-      result.recommendation.status === "AVAILABLE"
-    )
-      replenishment.push({
-        branchName: item.branchName,
-        productName: item.productName,
-        quantity: result.recommendation.recommendedQuantity,
-        unit: item.productUnit,
-      });
-  }
-
   return {
     best: productFacts(dimensions, "best"),
-    lowStock: listed.map((item) => ({
-      branchName: item.branchName,
-      coverageDays: item.coverageDays.value,
-      onHand: item.onHandQuantity,
-      productName: item.productName,
-      unit: item.productUnit,
-    })),
-    lowStockTotal: lowStock.length,
-    replenishment,
     scopeKind: context.candidate.kind === "branch" ? "branch" : "organization",
     scopeName: context.label,
     slowest: productFacts(dimensions, "slowest"),

@@ -19,9 +19,6 @@ const facts: SeededReportFacts = {
   best: [
     { name: "Siam Drinking Water 600 ml", quantity: "48.0000", unit: "EA" },
   ],
-  lowStock: [],
-  lowStockTotal: 0,
-  replenishment: [],
   scopeKind: "organization",
   scopeName: "Siam Mart",
   slowest: [{ name: "Fresh Eggs 10 Pack", quantity: "0.0000", unit: "PACK" }],
@@ -89,6 +86,8 @@ describe("seeded template AI provider", () => {
     expect(result.text).toContain("2026-08-03 ถึง 2026-08-09");
     expect(result.text).toContain("ขอบเขต: องค์กร Siam Mart");
     expect(result.text).toContain("net sales): 3947.00 THB จาก 16 รายการขาย");
+    // The prompt supplies no stock level, and the prose never claims one.
+    expect(result.text).not.toMatch(/ใกล้หมด|on hand|สต็อกคงเหลือ/iu);
   });
 
   it("reserves and records exactly one attempt through the job observer", async () => {

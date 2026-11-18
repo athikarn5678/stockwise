@@ -9,6 +9,7 @@ import {
 } from "./seeded-report-text.ts";
 
 const FORBIDDEN = /demo|uat|ตัวอย่าง|sample/iu;
+const STOCK_CLAIM = /ใกล้หมด|on hand|on-hand|สต็อกคงเหลือ|สินค้าคงเหลือ/iu;
 
 const headings = [
   SEEDED_REPORT_HEADINGS.overview,
@@ -48,24 +49,6 @@ function input(
     granularity: "week",
     localFromInclusive: "2026-08-03",
     localToExclusive: "2026-08-10",
-    lowStock: [
-      {
-        branchName: "Siam Mart Main",
-        coverageDays: "0.70",
-        onHand: "3.0000",
-        productName: "Siam Drinking Water 600 ml",
-        unit: "EA",
-      },
-    ],
-    lowStockTotal: 1,
-    replenishment: [
-      {
-        branchName: "Siam Mart Main",
-        productName: "Siam Drinking Water 600 ml",
-        quantity: "24.0000",
-        unit: "EA",
-      },
-    ],
     sales: salesInput(),
     scopeKind: "branch",
     scopeName: "Siam Mart Main",
@@ -105,8 +88,52 @@ describe("seeded stored report text", () => {
       "สินค้าขายดีตามหน่วยฐาน: Siam Drinking Water 600 ml",
     );
     expect(text).toContain("สินค้าขายช้าตามหน่วยฐาน: Fresh Eggs 10 Pack");
-    expect(text).toContain("สินค้าใกล้หมด ณ วันสิ้นสุดช่วง: Siam Mart Main");
-    expect(text).toContain("ข้อเสนอแนะการเติมสินค้า (ระยะวางแผน 7 วัน)");
+  });
+
+  it("states the refund line once, in Sales only", () => {
+    const text = buildSeededReportText(input());
+    expect(text.split("การคืนเงิน")).toHaveLength(2);
+    const [salesSection, notesSection] = text.split("\n\n").slice(1, 3);
+    expect(salesSection).toContain("การคืนเงิน");
+    expect(notesSection).not.toContain("การคืนเงิน");
+  });
+
+  it("never claims a stock level, on-hand quantity or coverage", () => {
+    const text = buildSeededReportText(input());
+    expect(text).not.toMatch(STOCK_CLAIM);
+    expect(text).not.toContain("onHand");
+    expect(text).not.toContain("coverageDays");
+    const longText = buildSeededReportText(
+      input({
+        best: [{ name: "ก".repeat(300), quantity: "5.0000", unit: "EA" }],
+        slowest: [{ name: "ข".repeat(300), quantity: "1.0000", unit: "EA" }],
+      }),
+    );
+    expect(longText).not.toMatch(STOCK_CLAIM);
+  });
+
+  it("reads the supplied growth percentage sign without recomputing it", () => {
+    const readings = [
+      ["12.34", "ยอดขายสุทธิเพิ่มขึ้นเมื่อเทียบช่วงก่อนหน้า"],
+      ["0.01", "ยอดขายสุทธิเพิ่มขึ้นเมื่อเทียบช่วงก่อนหน้า"],
+      ["-12.34", "ยอดขายสุทธิลดลงเมื่อเทียบช่วงก่อนหน้า"],
+      ["-0.01", "ยอดขายสุทธิลดลงเมื่อเทียบช่วงก่อนหน้า"],
+      ["0", "ยอดขายสุทธิใกล้เคียงช่วงก่อนหน้า"],
+      ["0.00", "ยอดขายสุทธิใกล้เคียงช่วงก่อนหน้า"],
+      ["-0.00", "ยอดขายสุทธิใกล้เคียงช่วงก่อนหน้า"],
+    ] as const;
+    for (const [value, reading] of readings) {
+      const text = buildSeededReportText(
+        input({
+          sales: salesInput({
+            netSalesGrowthPercent: { reason: null, value },
+          }),
+        }),
+      );
+      const notes = text.split("\n\n")[3]!;
+      expect(notes).toContain(reading);
+      expect(text).toContain(`การเติบโตเทียบช่วงก่อนหน้า: ${value}%`);
+    }
   });
 
   it("states unavailable comparison and cost facts instead of guessing", () => {
@@ -139,14 +166,38 @@ describe("seeded stored report text", () => {
     );
     expect(text).toContain("ไม่มีข้อมูลต้นทุนที่ยืนยันได้");
     expect(text).toContain("ความครบถ้วนของต้นทุน: none");
+    const notes = text.split("\n\n")[3]!;
+    expect(notes).toContain("ไม่มีข้อมูลเปรียบเทียบช่วงก่อนหน้า");
   });
 
-  it("uses a deterministic fallback when there is no low stock or advice", () => {
-    const text = buildSeededReportText(
-      input({ lowStock: [], lowStockTotal: 0, replenishment: [] }),
+  it("derives deterministic actions from the period's own ranked products and refunds", () => {
+    const text = buildSeededReportText(input());
+    const actions = text.split("\n\n")[4]!;
+    expect(actions).toContain(
+      "ควรเตรียมสต็อกสินค้าขายดีให้เพียงพอ: Siam Drinking Water 600 ml; Thai Jasmine Rice 1 kg",
     );
-    expect(text).toContain("สินค้าใกล้หมด ณ วันสิ้นสุดช่วง: ไม่มี");
-    expect(text).toContain("ยังไม่มีข้อเสนอแนะการเติมสินค้าในช่วงนี้");
+    expect(actions).toContain(
+      "ทบทวนการสั่งซื้อและโปรโมชันของสินค้าขายช้า: Fresh Eggs 10 Pack; Fresh Pork Shoulder",
+    );
+    expect(actions).toContain("ติดตามสาเหตุการคืนสินค้า 2 รายการในช่วงนี้");
+  });
+
+  it("keeps only the applicable actions when facts are absent", () => {
+    const onlyRefunds = buildSeededReportText(
+      input({ best: [], slowest: [] }),
+    ).split("\n\n")[4]!;
+    expect(onlyRefunds).toContain("ติดตามสาเหตุการคืนสินค้า 2 รายการในช่วงนี้");
+    expect(onlyRefunds).not.toContain("ควรเตรียมสต็อกสินค้าขายดี");
+    expect(onlyRefunds).not.toContain("ทบทวนการสั่งซื้อ");
+
+    const none = buildSeededReportText(
+      input({
+        best: [],
+        sales: salesInput({ refundCount: 0 }),
+        slowest: [],
+      }),
+    ).split("\n\n")[4]!;
+    expect(none).toContain("ติดตามยอดขายต่อเนื่องในช่วงถัดไป");
   });
 
   it("stays within the stored prose contract and the 4096-byte limit", () => {
@@ -162,20 +213,6 @@ describe("seeded stored report text", () => {
           name: `${longName}${index}`,
           quantity: "0.0000",
           unit: ["EA", "KG", "G", "L", "ML", "BOX", "PACK", "M", "CM"][index]!,
-        })),
-        lowStock: Array.from({ length: 4 }, (_, index) => ({
-          branchName: longName,
-          coverageDays: "12345.6789",
-          onHand: "9999999999.9999",
-          productName: `${longName}${index}`,
-          unit: "PACK",
-        })),
-        lowStockTotal: 36,
-        replenishment: Array.from({ length: 4 }, (_, index) => ({
-          branchName: longName,
-          productName: `${longName}${index}`,
-          quantity: "9999999999.9999",
-          unit: "PACK",
         })),
         granularity: "month",
         localFromInclusive: "2026-08-01",
@@ -195,9 +232,13 @@ describe("seeded stored report text", () => {
     );
     expect(validateAiSummaryProse(worstCase)).toBe(worstCase);
     expect(worstCase).not.toMatch(FORBIDDEN);
+    expect(worstCase).not.toMatch(STOCK_CLAIM);
     expect(
       worstCase.split("\n").filter((line) => headings.includes(line)),
     ).toEqual(headings);
+    // The bounded ladder reduces the tail of the ranked lists, never the head.
+    expect(worstCase).toContain("สินค้าขายดีตามหน่วยฐาน: ");
+    expect(worstCase).not.toContain("CM");
   });
 
   it("passes the AI summary prose validation and states the English word sales", () => {

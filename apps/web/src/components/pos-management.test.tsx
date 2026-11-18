@@ -430,13 +430,32 @@ describe("POS management UI", () => {
     expect(screen.getAllByText("THB 0.30")).toHaveLength(2);
   });
 
-  it("switches between labelled CASH and TRANSFER payment controls", async () => {
+  it("offers only Cash while PromptPay is unavailable and never Transfer", async () => {
     renderPos();
     await addCoffee();
     expect(screen.getByLabelText("Amount tendered (THB)")).toBeTruthy();
-    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
-    expect(screen.getByLabelText("Transfer reference (optional)")).toBeTruthy();
-    expect(screen.queryByLabelText("Amount tendered (THB)")).toBeNull();
+    expect(screen.getByRole("radio", { name: "Cash" })).toBeTruthy();
+    expect(screen.queryByRole("radio", { name: "Transfer" })).toBeNull();
+    expect(screen.queryByLabelText("Transfer reference (optional)")).toBeNull();
+    expect(screen.getAllByRole("radio")).toHaveLength(1);
+  });
+
+  it("keeps the cart quantity controls on one line with a compact input", async () => {
+    renderPos();
+    await addCoffee();
+    const input = screen.getByLabelText("Quantity for Coffee (EA)");
+    const row = input.parentElement as HTMLElement;
+    expect(row.className).toContain("flex");
+    expect(row.className).not.toContain("flex-wrap");
+    for (const name of [
+      "Decrease Coffee quantity",
+      "Increase Coffee quantity",
+      "Remove Coffee from cart",
+    ])
+      expect(row.contains(screen.getByRole("button", { name }))).toBe(true);
+    // No long floating label: the field is named by aria-label alone.
+    expect(input.closest("label")).toBeNull();
+    expect(input.getAttribute("aria-label")).toBe("Quantity for Coffee (EA)");
   });
 
   it.each(["OWNER", "ADMIN", "BRANCH_MANAGER"] as const)(
@@ -487,7 +506,7 @@ describe("POS management UI", () => {
     expect(screen.queryByLabelText("Printable receipt")).toBeNull();
   });
 
-  it("posts a successful TRANSFER sale with its optional reference", async () => {
+  it("still displays a historic Transfer sale result with its reference", async () => {
     vi.mocked(checkoutSale).mockResolvedValue({
       ...completedSale,
       payment: {
@@ -500,20 +519,7 @@ describe("POS management UI", () => {
     });
     renderPos();
     await addCoffee();
-    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
-    fireEvent.change(screen.getByLabelText("Transfer reference (optional)"), {
-      target: { value: "TX-100" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Complete sale" }));
-    await waitFor(() =>
-      expect(checkoutSale).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.anything(),
-        expect.objectContaining({
-          payment: { method: "TRANSFER", reference: "TX-100" },
-        }),
-      ),
-    );
+    await checkoutCash();
     expect(await screen.findByText(/Transfer · TX-100/)).toBeTruthy();
   });
 
@@ -604,6 +610,179 @@ describe("POS management UI", () => {
     expect(
       screen.getByRole("button", { name: "Complete sale" }),
     ).toHaveProperty("disabled", true);
+  });
+
+  describe("sales VAT profile", () => {
+    const form = () => screen.findByRole("form", { name: "Sales VAT profile" });
+    const saveButton = () =>
+      screen.queryByRole("button", { name: "Save VAT profile" });
+    const statusTrigger = () => screen.getByLabelText("Sales VAT status");
+
+    it("shows the saved value and offers Save only for a change", async () => {
+      renderPos();
+      await addCoffee();
+      await form();
+      expect(screen.getByTestId("vat-saved-summary").textContent).toBe(
+        "Saved: Not registered",
+      );
+      expect(saveButton()).toBeNull();
+
+      await chooseOptionByValue(statusTrigger(), "REGISTERED");
+      expect(saveButton()).toBeTruthy();
+
+      // Reverting to the saved value hides Save again.
+      await chooseOptionByValue(statusTrigger(), "NOT_REGISTERED");
+      expect(saveButton()).toBeNull();
+      expect(updateSalesVatProfile).not.toHaveBeenCalled();
+    });
+
+    it("keeps the saved value when the page is left without saving", async () => {
+      renderPos();
+      await addCoffee();
+      await form();
+      await chooseOptionByValue(statusTrigger(), "REGISTERED");
+      expect(saveButton()).toBeTruthy();
+      cleanup();
+      renderPos();
+      await addCoffee();
+      await form();
+      expect(saveButton()).toBeNull();
+      expect(screen.getByTestId("vat-saved-summary").textContent).toBe(
+        "Saved: Not registered",
+      );
+      expect(updateSalesVatProfile).not.toHaveBeenCalled();
+    });
+
+    it("confirms a successful save and hides Save again", async () => {
+      const profiles = [
+        {
+          salesVatRate: null,
+          salesVatStatus: "NOT_REGISTERED" as const,
+          updatedAt: "2026-09-18T10:00:00.000Z",
+        },
+        {
+          salesVatRate: "7.000000",
+          salesVatStatus: "REGISTERED" as const,
+          updatedAt: "2026-09-18T10:01:00.000Z",
+        },
+      ];
+      let calls = 0;
+      vi.mocked(getSalesVatProfile).mockImplementation(
+        async () => profiles[Math.min(profiles.length - 1, calls++)]!,
+      );
+      vi.mocked(updateSalesVatProfile).mockResolvedValue(profiles[1]!);
+      renderPos();
+      await addCoffee();
+      await form();
+      await chooseOptionByValue(statusTrigger(), "REGISTERED");
+      fireEvent.change(screen.getByLabelText("VAT rate (%)"), {
+        target: { value: "7.000000" },
+      });
+      fireEvent.click(saveButton()!);
+      await waitFor(() =>
+        expect(updateSalesVatProfile).toHaveBeenCalledWith(ORGANIZATION_ID, {
+          expectedUpdatedAt: "2026-09-18T10:00:00.000Z",
+          salesVatRate: "7.000000",
+          salesVatStatus: "REGISTERED",
+        }),
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("vat-saved-summary").textContent).toContain(
+          "VAT profile saved.",
+        ),
+      );
+      expect(screen.getByTestId("vat-saved-summary").textContent).toContain(
+        "Saved: Registered, VAT 7.000000%",
+      );
+      expect(saveButton()).toBeNull();
+    });
+
+    it("confirms the save at once from the PATCH answer, before the refetch returns", async () => {
+      const registered = {
+        salesVatRate: "7.000000",
+        salesVatStatus: "REGISTERED" as const,
+        updatedAt: "2026-09-18T10:01:00.000Z",
+      };
+      let calls = 0;
+      vi.mocked(getSalesVatProfile).mockImplementation(() =>
+        calls++ === 0
+          ? Promise.resolve({
+              salesVatRate: null,
+              salesVatStatus: "NOT_REGISTERED" as const,
+              updatedAt: "2026-09-18T10:00:00.000Z",
+            })
+          : new Promise(() => undefined),
+      );
+      vi.mocked(updateSalesVatProfile).mockResolvedValue(registered);
+      renderPos();
+      await addCoffee();
+      await form();
+      await chooseOptionByValue(statusTrigger(), "REGISTERED");
+      fireEvent.change(screen.getByLabelText("VAT rate (%)"), {
+        target: { value: "7" },
+      });
+      fireEvent.click(saveButton()!);
+      await waitFor(() =>
+        expect(screen.getByTestId("vat-saved-summary").textContent).toContain(
+          "VAT profile saved.",
+        ),
+      );
+      expect(saveButton()).toBeNull();
+    });
+
+    it("treats 7 and the saved 7.000000 as the same rate", async () => {
+      vi.mocked(getSalesVatProfile).mockResolvedValue({
+        salesVatRate: "7.000000",
+        salesVatStatus: "REGISTERED",
+        updatedAt: "2026-09-18T10:00:00.000Z",
+      });
+      renderPos();
+      await addCoffee();
+      await form();
+      expect(saveButton()).toBeNull();
+      fireEvent.change(screen.getByLabelText("VAT rate (%)"), {
+        target: { value: "7" },
+      });
+      expect(saveButton()).toBeNull();
+      fireEvent.change(screen.getByLabelText("VAT rate (%)"), {
+        target: { value: "7.5" },
+      });
+      expect(saveButton()).toBeTruthy();
+    });
+
+    it("reports a failed save and keeps Save available", async () => {
+      vi.mocked(updateSalesVatProfile).mockRejectedValue(
+        new SalesApiError("unavailable"),
+      );
+      renderPos();
+      await addCoffee();
+      await form();
+      await chooseOptionByValue(statusTrigger(), "REGISTERED");
+      fireEvent.change(screen.getByLabelText("VAT rate (%)"), {
+        target: { value: "7" },
+      });
+      fireEvent.click(saveButton()!);
+      expect(await screen.findByRole("alert")).toBeTruthy();
+      expect(saveButton()).toBeTruthy();
+      expect(screen.getByTestId("vat-saved-summary").textContent).toBe(
+        "Saved: Not registered",
+      );
+    });
+
+    it("requires saving an unconfigured profile once", async () => {
+      vi.mocked(getSalesVatProfile).mockResolvedValue({
+        salesVatRate: null,
+        salesVatStatus: "UNCONFIGURED",
+        updatedAt: "2026-09-18T10:00:00.000Z",
+      });
+      renderPos();
+      await addCoffee();
+      await form();
+      expect(screen.getByTestId("vat-saved-summary").textContent).toContain(
+        "Not configured yet",
+      );
+      expect(saveButton()).toBeTruthy();
+    });
   });
 
   it("shows branch context feedback without sending arbitrary branch IDs", async () => {
@@ -740,7 +919,7 @@ describe("POS PromptPay option", () => {
     expect(screen.queryByRole("radio", { name: "PromptPay" })).toBeNull();
   });
 
-  it("shows the option next to cash and transfer when the branch accepts it", async () => {
+  it("shows the option next to cash, without Transfer, when the branch accepts it", async () => {
     enablePromptPay();
     renderPos();
     await addCoffee();
@@ -748,7 +927,8 @@ describe("POS PromptPay option", () => {
       await screen.findByRole("radio", { name: "PromptPay" }),
     ).toBeTruthy();
     expect(screen.getByRole("radio", { name: "Cash" })).toBeTruthy();
-    expect(screen.getByRole("radio", { name: "Transfer" })).toBeTruthy();
+    expect(screen.queryByRole("radio", { name: "Transfer" })).toBeNull();
+    expect(screen.getAllByRole("radio")).toHaveLength(2);
   });
 
   it("falls back to cash when the option disappears while selected", async () => {
@@ -871,6 +1051,25 @@ describe("POS PromptPay option", () => {
     ).toBeTruthy();
   });
 
+  it("labels a completed PromptPay sale as PromptPay", async () => {
+    enablePromptPay();
+    vi.mocked(checkoutSale).mockResolvedValue({
+      ...completedSale,
+      payment: {
+        amount: "0.30",
+        amountTendered: null,
+        changeAmount: null,
+        method: "TRANSFER",
+        reference: "PromptPay",
+      },
+    });
+    await generatePromptPayQr();
+    fireEvent.click(confirmButton());
+    await screen.findByRole("heading", { name: "Sale completed" });
+    expect(screen.getAllByText("PromptPay").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Transfer · PromptPay/)).toBeNull();
+  });
+
   it("sends the whole-sale discount to the quote and clears the QR when it changes", async () => {
     enablePromptPay();
     renderPos();
@@ -919,7 +1118,7 @@ describe("POS PromptPay option", () => {
     );
     await screen.findByRole("img", { name: /PromptPay QR for the amount/ });
 
-    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Cash" }));
     fireEvent.click(screen.getByRole("radio", { name: "PromptPay" }));
     expect(promptPayQrImage()).toBeNull();
     expect(confirmButton()).toHaveProperty("disabled", true);

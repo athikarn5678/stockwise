@@ -1,5 +1,6 @@
 "use client";
 import type { TranslationKey } from "@/i18n/en";
+import { PageContainer, PageHeader } from "@/components/page-layout";
 import { useLanguage } from "@/providers/language-provider";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -61,7 +62,10 @@ type CartLine = Pick<
   quantity: string;
 };
 type DiscountType = "NONE" | "AMOUNT" | "PERCENT";
-type PaymentMethod = "CASH" | "PROMPTPAY" | "TRANSFER";
+// POS offers Cash and PromptPay only. Historic Transfer sales keep displaying
+// elsewhere; the API and stored sales are unchanged (PromptPay is stored as a
+// TRANSFER with the "PromptPay" reference).
+type PaymentMethod = "CASH" | "PROMPTPAY";
 
 const CHECKOUT_ROLES = new Set<PosRole>([
   "OWNER",
@@ -274,13 +278,12 @@ function ContextUnavailable({
   const { t } = useLanguage();
 
   return (
-    <section className="space-y-4">
-      <h1 className="text-2xl font-semibold">{heading}</h1>
-      <p className="text-muted-foreground">{message}</p>
+    <PageContainer className="space-y-4">
+      <PageHeader description={message} title={heading} />
       <Link className="underline" href="/app">
         {t("uiReturnToWorkspace")}
       </Link>
-    </section>
+    </PageContainer>
   );
 }
 
@@ -310,7 +313,6 @@ function PosContent({
   const [discountReason, setDiscountReason] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
   const [amountTendered, setAmountTendered] = useState("");
-  const [transferReference, setTransferReference] = useState("");
   const [notice, setNotice] = useState<TranslationKey | null>(null);
   const [promptPayQr, setPromptPayQr] = useState<PromptPayQr | null>(null);
   const [promptPayError, setPromptPayError] = useState<TranslationKey | null>(
@@ -433,7 +435,6 @@ function PosContent({
       const payment = buildPayment(
         paymentMethod,
         amountTendered,
-        transferReference,
         promptPayQr?.amount ?? null,
       );
       if (payment === "invalid") throw new SalesApiError("validation");
@@ -517,7 +518,6 @@ function PosContent({
           setDiscountReason("");
           setPaymentMethod("CASH");
           setAmountTendered("");
-          setTransferReference("");
           setPromptPayQr(null);
           setPromptPayError(null);
           setCompletedSale(null);
@@ -528,26 +528,37 @@ function PosContent({
   }
 
   return (
-    <section className="w-full space-y-6">
-      <header className="space-y-2">
+    <PageContainer>
+      <PageHeader
+        description={
+          <>
+            {branch.code} — {branch.name}
+            {t("uiProductPricesAndFinalTotalsAreConfirmedByCheckout")}
+          </>
+        }
+        title={t("marketingFeaturePos")}
+      >
         <Link
           className="text-sm underline"
           href={applicationContextUrl(organization.id, branch.id)}
         >
           {t("backToWorkspace")}
         </Link>
-        <h1 className="text-2xl font-semibold">{t("marketingFeaturePos")}</h1>
-        <p className="text-muted-foreground">
-          {branch.code} — {branch.name}
-          {t("uiProductPricesAndFinalTotalsAreConfirmedByCheckout")}
-        </p>
-      </header>
+      </PageHeader>
 
       {canConfigureVat ? (
         <VatProfilePanel
           error={vatProfileQuery.error}
           isLoading={vatProfileQuery.isPending}
-          onSaved={() => void vatProfileQuery.refetch()}
+          onSaved={(saved) => {
+            // The PATCH answer is the new saved profile: show it at once and
+            // refresh in the background.
+            queryClient.setQueryData(
+              ["organization-scoped", organization.id, "sales-vat-profile"],
+              saved,
+            );
+            void vatProfileQuery.refetch();
+          }}
           profile={vatProfileQuery.data}
           organizationId={organization.id}
         />
@@ -708,14 +719,12 @@ function PosContent({
             ) : null}
             <PaymentControls
               amountTendered={amountTendered}
-              onChange={(method, tendered, reference) => {
+              onChange={(method, tendered) => {
                 changeIntent();
                 setPaymentMethod(method);
                 setAmountTendered(tendered);
-                setTransferReference(reference);
               }}
               promptPayAvailable={promptPayAvailable}
-              reference={transferReference}
               subtotal={subtotal}
               method={paymentMethod}
             />
@@ -772,7 +781,7 @@ function PosContent({
           </fieldset>
         </aside>
       </div>
-    </section>
+    </PageContainer>
   );
 }
 
@@ -897,7 +906,7 @@ function CartLines({
                 {estimate === null ? t("uiCheckQuantity") : formatThb(estimate)}
               </strong>
             </div>
-            <div className="flex flex-wrap items-end gap-2">
+            <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 aria-label={t("uiDecreaseQuantity").replace(
@@ -909,18 +918,22 @@ function CartLines({
               >
                 −
               </Button>
-              <Label className="form-field max-w-48 basis-32 flex-1">
-                {t("uiQuantityFor")} {line.name} ({line.unit})
-                <Input
-                  aria-invalid={!valid}
-                  className="form-control--numeric"
-                  inputMode="decimal"
-                  onChange={(event) =>
-                    onChangeQuantity(line.id, event.target.value)
-                  }
-                  value={line.quantity}
-                />
-              </Label>
+              <Input
+                aria-invalid={!valid}
+                aria-label={`${t("uiQuantityFor")} ${line.name} (${line.unit})`}
+                className="form-control--numeric w-20 min-w-0 text-center"
+                inputMode="decimal"
+                onChange={(event) =>
+                  onChangeQuantity(line.id, event.target.value)
+                }
+                value={line.quantity}
+              />
+              <span
+                aria-hidden="true"
+                className="text-sm text-muted-foreground"
+              >
+                {line.unit}
+              </span>
               <Button
                 variant="outline"
                 aria-label={t("uiIncreaseQuantity").replace(
@@ -933,6 +946,7 @@ function CartLines({
                 +
               </Button>
               <Button
+                className="ml-auto"
                 variant="outline"
                 aria-label={t("uiRemoveFromCart").replace("{name}", line.name)}
                 onClick={() => onRemove(line.id)}
@@ -1016,18 +1030,12 @@ function PaymentControls({
   method,
   onChange,
   promptPayAvailable,
-  reference,
   subtotal,
 }: {
   amountTendered: string;
   method: PaymentMethod;
-  onChange: (
-    method: PaymentMethod,
-    tendered: string,
-    reference: string,
-  ) => void;
+  onChange: (method: PaymentMethod, tendered: string) => void;
   promptPayAvailable: boolean;
-  reference: string;
   subtotal: string | null;
 }) {
   const { t } = useLanguage();
@@ -1047,22 +1055,11 @@ function PaymentControls({
             className=""
             checked={method === "CASH"}
             name="payment-method"
-            onChange={() => onChange("CASH", amountTendered, reference)}
+            onChange={() => onChange("CASH", amountTendered)}
             type="radio"
             value="CASH"
           />
           {t("paymentCash")}
-        </Label>
-        <Label className="flex items-center gap-2">
-          <Input
-            className=""
-            checked={method === "TRANSFER"}
-            name="payment-method"
-            onChange={() => onChange("TRANSFER", amountTendered, reference)}
-            type="radio"
-            value="TRANSFER"
-          />
-          {t("paymentTransfer")}
         </Label>
         {promptPayAvailable ? (
           <Label className="flex min-h-11 items-center gap-2 text-sm font-medium">
@@ -1070,7 +1067,7 @@ function PaymentControls({
               className=""
               checked={method === "PROMPTPAY"}
               name="payment-method"
-              onChange={() => onChange("PROMPTPAY", amountTendered, reference)}
+              onChange={() => onChange("PROMPTPAY", amountTendered)}
               type="radio"
               value="PROMPTPAY"
             />
@@ -1085,9 +1082,7 @@ function PaymentControls({
             <Input
               className="form-control--numeric"
               inputMode="decimal"
-              onChange={(event) =>
-                onChange("CASH", event.target.value, reference)
-              }
+              onChange={(event) => onChange("CASH", event.target.value)}
               required
               value={amountTendered}
             />
@@ -1098,17 +1093,6 @@ function PaymentControls({
               : t("uiEstimatedChange").replace("{amount}", formatThb(change))}
           </p>
         </>
-      ) : method === "TRANSFER" ? (
-        <Label className="form-field">
-          {t("uiTransferReferenceOptional")}
-          <Input
-            className=""
-            onChange={(event) =>
-              onChange("TRANSFER", amountTendered, event.target.value)
-            }
-            value={reference}
-          />
-        </Label>
       ) : null}
     </fieldset>
   );
@@ -1133,7 +1117,6 @@ function buildDiscount(
 function buildPayment(
   method: PaymentMethod,
   tendered: string,
-  reference: string,
   promptPayAmount: string | null,
 ) {
   if (method === "PROMPTPAY") {
@@ -1146,12 +1129,17 @@ function buildPayment(
           reference: "PromptPay",
         } as const);
   }
-  if (method === "TRANSFER")
-    return { method, reference: reference.trim() || null } as const;
   const amount = decimalToScaled(tendered, 2);
   return amount === null || amount <= 0n
     ? ("invalid" as const)
     : ({ amountTendered: tendered, method } as const);
+}
+
+/** "7" and "7.000000" are the same saved rate. */
+function sameRate(typed: string, saved: string | null): boolean {
+  const left = decimalToScaled(typed.trim(), 6);
+  const right = saved === null ? null : decimalToScaled(saved, 6);
+  return left !== null && left === right;
 }
 
 function VatProfilePanel({
@@ -1163,7 +1151,7 @@ function VatProfilePanel({
 }: {
   error: Error | null;
   isLoading: boolean;
-  onSaved: () => void;
+  onSaved: (saved: SalesVatProfile) => void;
   organizationId: string;
   profile: SalesVatProfile | undefined;
 }) {
@@ -1174,18 +1162,25 @@ function VatProfilePanel({
     useState<SalesVatProfile["salesVatStatus"]>("NOT_REGISTERED");
   const [rate, setRate] = useState("");
   const [notice, setNotice] = useState<TranslationKey | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
   const mutation = useMutation({
     mutationFn: (input: {
       expectedUpdatedAt: string;
       salesVatRate: string | null;
       salesVatStatus: SalesVatProfile["salesVatStatus"];
     }) => updateSalesVatProfile(organizationId, input),
-    onError: (cause) => setNotice(errorMessage(cause)),
-    onSuccess: () => {
+    onError: (cause) => {
+      setJustSaved(false);
+      setNotice(errorMessage(cause));
+    },
+    onSuccess: (saved) => {
       setNotice(null);
-      onSaved();
+      setJustSaved(true);
+      onSaved(saved);
     },
   });
+  // The form always starts from, and falls back to, the saved profile: leaving
+  // the page without saving never changes the stored value.
   useEffect(() => {
     if (profile) {
       setStatus(
@@ -1205,16 +1200,30 @@ function VatProfilePanel({
       </p>
     );
   if (!profile) return null;
+  const unconfigured = profile.salesVatStatus === "UNCONFIGURED";
+  // Save is offered only for a change: an unconfigured profile must be saved
+  // once; afterwards only a different status or VAT rate counts.
+  const dirty =
+    unconfigured ||
+    status !== profile.salesVatStatus ||
+    (status === "REGISTERED" && !sameRate(rate, profile.salesVatRate));
+  const savedSummary = unconfigured
+    ? t("uiVatNotConfiguredYet")
+    : profile.salesVatStatus === "REGISTERED"
+      ? t("uiVatSavedRegistered").replace("{rate}", profile.salesVatRate ?? "")
+      : t("uiVatSavedNotRegistered");
   return (
     <form
       aria-label={t("uiSalesVATProfile")}
       className="grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
       onSubmit={(event) => {
         event.preventDefault();
+        if (!dirty) return;
         if (status === "REGISTERED" && decimalToScaled(rate, 6) === null) {
           setNotice("uiEnterAValidVATRateBeforeSaving");
           return;
         }
+        setJustSaved(false);
         void mutation
           .mutateAsync({
             expectedUpdatedAt: profile.updatedAt,
@@ -1224,13 +1233,23 @@ function VatProfilePanel({
           .catch(() => undefined);
       }}
     >
+      <p
+        className="font-medium sm:col-span-3"
+        data-testid="vat-saved-summary"
+        role="status"
+      >
+        {justSaved && !dirty ? t("uiVatSaved") + " " : ""}
+        {savedSummary}
+      </p>
       <Label className="form-field">
         {t("uiSalesVATStatus")}
         <OptionSelect
           className="w-full "
-          onValueChange={(value) =>
-            setStatus(value as SalesVatProfile["salesVatStatus"])
-          }
+          onValueChange={(value) => {
+            setJustSaved(false);
+            setNotice(null);
+            setStatus(value as SalesVatProfile["salesVatStatus"]);
+          }}
           options={[
             { label: t("uiNotRegistered"), value: "NOT_REGISTERED" },
             { label: t("uiRegistered"), value: "REGISTERED" },
@@ -1244,7 +1263,11 @@ function VatProfilePanel({
           <Input
             className="form-control--numeric"
             inputMode="decimal"
-            onChange={(event) => setRate(event.target.value)}
+            onChange={(event) => {
+              setJustSaved(false);
+              setNotice(null);
+              setRate(event.target.value);
+            }}
             value={rate}
           />
         </Label>
@@ -1256,14 +1279,16 @@ function VatProfilePanel({
           {t(notice)}
         </p>
       ) : null}
-      <Button
-        aria-busy={mutation.isPending}
-        className="self-end"
-        disabled={mutation.isPending || writeBlocked}
-        type="submit"
-      >
-        {mutation.isPending ? t("uiSavingVAT") : t("uiSaveVATProfile")}
-      </Button>
+      {dirty ? (
+        <Button
+          aria-busy={mutation.isPending}
+          className="self-end"
+          disabled={mutation.isPending || writeBlocked}
+          type="submit"
+        >
+          {mutation.isPending ? t("uiSavingVAT") : t("uiSaveVATProfile")}
+        </Button>
+      ) : null}
     </form>
   );
 }
@@ -1303,8 +1328,12 @@ function SaleComplete({
                   "{amount}",
                   formatThb(sale.payment.changeAmount),
                 )
-              : t("paymentTransfer") +
-                (sale.payment.reference ? ` · ${sale.payment.reference}` : "")}
+              : sale.payment.reference === "PromptPay"
+                ? t("paymentPromptPay")
+                : t("paymentTransfer") +
+                  (sale.payment.reference
+                    ? ` · ${sale.payment.reference}`
+                    : "")}
           </strong>
         </p>
       </div>

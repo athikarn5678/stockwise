@@ -313,6 +313,8 @@ async function main(): Promise<void> {
             model: environment.OPENCODE_GO_MODEL,
           }),
         }),
+    onLanguageFailure: (event) =>
+      logger.info(event, "ai analysis language attempt failed"),
     buildSnapshot: createAiAnalyzeSnapshotBuilder({
       categoryService: analyticsCategoryService,
       organizationReader: prisma,

@@ -308,6 +308,19 @@ describe("web application shell", () => {
     },
   );
 
+  it("shows no top-right Sign in button on /login, but keeps it on other guest pages", async () => {
+    pathname = "/login";
+    const login = renderShell(undefined, <p>Login form</p>);
+    await waitFor(() => expect(screen.getByText("Login form")).toBeTruthy());
+    expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
+    login.unmount?.();
+    cleanup();
+    pathname = "/register";
+    renderShell(undefined, <p>Register form</p>);
+    await waitFor(() => expect(screen.getByText("Register form")).toBeTruthy());
+    expect(screen.getByRole("link", { name: "Sign in" })).toBeTruthy();
+  });
+
   it.each(guestPaths)(
     "fails closed on unavailable access context at %s",
     async (path) => {

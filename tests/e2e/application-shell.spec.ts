@@ -101,9 +101,13 @@ test("desktop sidebar preserves scoped navigation, active state, logo and logout
   expect((await logoutResponse).status()).toBe(204);
   await expect(page).toHaveURL("/login");
   await expect(page.getByRole("complementary")).toHaveCount(0);
+  // The sign-in page has its form and no second top-right Sign in button.
+  await expect(
+    page.getByRole("button", { name: "Sign in", exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("navigation").getByRole("link", { name: "Sign in" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   expect(
     (await page.context().cookies()).some((cookie) =>
       cookie.name.endsWith("stockwise_native.session_token"),
@@ -311,8 +315,11 @@ test("signed-out public and app surfaces do not expose authenticated navigation"
   await page.goto("/app");
   // The existing workspace observer retries access-context reads before settling.
   await expect(
-    page.getByRole("navigation").getByRole("link", { name: "Sign in" }),
+    page.getByRole("button", { name: "Sign in", exact: true }),
   ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByRole("navigation").getByRole("link", { name: "Sign in" }),
+  ).toHaveCount(0);
   await expect(page.getByRole("complementary")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Log out" })).toHaveCount(0);
 });

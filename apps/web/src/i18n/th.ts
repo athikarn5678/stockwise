@@ -98,7 +98,6 @@ export const th: Dictionary = {
   billingPerMonth: "ต่อเดือน",
   billingSubscribe: "สมัคร",
   billingSubscribing: "กำลังเปิดหน้าชำระเงินที่ปลอดภัย…",
-  billingCurrentPlan: "แพ็กเกจปัจจุบัน: {plan} ({status})",
   billingPlanStarter: "Starter",
   billingPlanGrowth: "Growth",
   billingPlanBusiness: "Business",
@@ -108,7 +107,6 @@ export const th: Dictionary = {
   billingStatusExpired: "หมดอายุ",
   billingCanceledNote: "ยกเลิกการชำระเงินแล้ว ไม่มีการเรียกเก็บเงิน",
   billingConfirming: "กำลังยืนยันการสมัครสมาชิก…",
-  billingConfirmed: "การสมัครสมาชิกใช้งานได้แล้ว: {plan}",
   billingErrCheckout: "ไม่สามารถเริ่มการชำระเงินได้ กรุณาลองอีกครั้ง",
   billingErrUntrustedRedirect:
     "ไม่รู้จักที่อยู่หน้าชำระเงิน จึงไม่ได้เปิดหน้าชำระเงิน",
@@ -129,6 +127,8 @@ export const th: Dictionary = {
   subscriptionDismiss: "ปิด",
   pricingSignInToSubscribe: "เข้าสู่ระบบเพื่อสมัครสมาชิก",
   pricingSetUpStore: "ตั้งค่าร้านค้าของคุณ",
+  pricingActivePanelTitle: "การสมัครสมาชิกใช้งานอยู่",
+  pricingActivePanelBody: "แพ็กเกจ {plan} · {period}",
   pricingCurrentPlanBadge: "แพ็กเกจปัจจุบัน",
   pricingNonOwnerNotice:
     "เฉพาะเจ้าของร้านเท่านั้นที่สมัครหรือต่ออายุได้ โปรดแจ้งเจ้าของร้านให้ต่ออายุแพ็กเกจ",
@@ -800,7 +800,6 @@ export const th: Dictionary = {
   uiAmountTenderedTHB: "เงินที่รับ (บาท)",
   uiEnterTenderedCashAtOrAboveTheCurrentPrice:
     "ใส่เงินสดที่รับไม่น้อยกว่ายอดรวมตามราคาปัจจุบัน",
-  uiTransferReferenceOptional: "เลขอ้างอิงการโอน (ไม่บังคับ)",
   paymentPromptPay: "พร้อมเพย์",
   uiPromptPay: "ชำระเงินด้วยพร้อมเพย์",
   uiGeneratePromptPayQr: "สร้าง QR พร้อมเพย์",
@@ -829,6 +828,10 @@ export const th: Dictionary = {
   uiRegistered: "จดทะเบียนแล้ว",
   uiVATRate: "อัตรา VAT (%)",
   uiSavingVAT: "กำลังบันทึก VAT…",
+  uiVatNotConfiguredYet: "ยังไม่ได้ตั้งค่า เลือกสถานะแล้วบันทึกก่อนขาย",
+  uiVatSavedNotRegistered: "ค่าที่บันทึกไว้: ไม่ได้จดทะเบียน",
+  uiVatSavedRegistered: "ค่าที่บันทึกไว้: จดทะเบียน VAT {rate}%",
+  uiVatSaved: "บันทึกโปรไฟล์ VAT แล้ว",
   uiSaveVATProfile: "บันทึกข้อมูล VAT",
   uiSaleCompleted: "บันทึกการขายแล้ว",
   uiNewSale: "รายการขายใหม่",

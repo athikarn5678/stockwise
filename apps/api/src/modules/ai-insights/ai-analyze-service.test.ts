@@ -584,6 +584,39 @@ describe("AI analysis service", () => {
     expect(generate).toHaveBeenCalledTimes(2);
   });
 
+  it("retries only when the first attempt ended within 20 s (fake clock)", async () => {
+    for (const [elapsed, expectedCalls] of [
+      [19_000, 3],
+      [21_000, 2],
+    ] as const) {
+      const { store } = fakeStore();
+      let advanceClock: (milliseconds: number) => void = () => undefined;
+      let thaiCalls = 0;
+      const generate = vi.fn<AiProvider["generate"]>(async ({ text }) => {
+        if (languageOf(text) === "en") return success(englishText);
+        thaiCalls += 1;
+        if (thaiCalls === 1) {
+          advanceClock(elapsed);
+          return {
+            attempts: [],
+            failureCategory: "INVALID_RESPONSE",
+            ok: false,
+          };
+        }
+        return success(thaiText);
+      });
+      const { advance, analyzeService: analysis } = service({
+        provider: { generate },
+        store,
+      });
+      advanceClock = advance;
+      const result = await analysis.analyze(analyzeRequest);
+      if (result.kind !== "ok") throw new Error("expected success");
+      expect(generate).toHaveBeenCalledTimes(expectedCalls);
+      expect(result.run.missing).toEqual(expectedCalls === 3 ? [] : ["th"]);
+    }
+  });
+
   it("retries a manual single-language retry once, within one limiter use", async () => {
     let calls = 0;
     const generate = vi.fn<AiProvider["generate"]>(async () => {

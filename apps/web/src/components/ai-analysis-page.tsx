@@ -39,6 +39,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { TranslationKey } from "@/i18n/en";
 import { useLanguage } from "@/providers/language-provider";
 
+const POLL_INTERVAL_MILLISECONDS = 10_000;
+const POLL_TICKS = 6;
 const DAY_OPTIONS = [7, 14, 30] as const satisfies readonly AiAnalysisDays[];
 
 const LANGUAGE_LABELS: Record<AiAnalysisLanguage, TranslationKey> = {
@@ -64,6 +66,13 @@ function createdTime(run: AiAnalysisRun, language: AiAnalysisLanguage): string {
       timeZone: run.period.timezone,
     },
   ).format(new Date(run.createdAt));
+}
+
+function isTimeout(error: unknown): boolean {
+  return (
+    error instanceof AiAnalysisApiError &&
+    (error.status === 504 || error.status === 0)
+  );
 }
 
 function errorKey(error: unknown): TranslationKey {
@@ -158,8 +167,25 @@ export function AiAnalysisContent({
         : current;
     });
   };
+  // A gateway timeout (504) or a lost connection does not mean the run failed:
+  // the API keeps going and stores the result, so poll the history for a while.
+  const [waiting, setWaiting] = useState<{ baselineId: string | null } | null>(
+    null,
+  );
+  const [waitGaveUp, setWaitGaveUp] = useState(false);
   const createMutation = useMutation({
     mutationFn: () => createRun(organization.id, scope, days),
+    onMutate: () => {
+      setWaiting(null);
+      setWaitGaveUp(false);
+    },
+    onError: (error) => {
+      if (
+        error instanceof AiAnalysisApiError &&
+        (error.status === 504 || error.status === 0)
+      )
+        setWaiting({ baselineId: runs[0]?.id ?? null });
+    },
     onSuccess: (run) => {
       showRun(run);
       void queryClient.invalidateQueries({
@@ -203,6 +229,32 @@ export function AiAnalysisContent({
     }, 1000);
     return () => clearInterval(timer);
   }, [rateError, rateWait]);
+  useEffect(() => {
+    if (waiting === null) return;
+    let ticks = 0;
+    const timer = setInterval(() => {
+      ticks += 1;
+      void historyQuery.refetch();
+      if (ticks >= POLL_TICKS) {
+        clearInterval(timer);
+        setWaiting(null);
+        setWaitGaveUp(true);
+      }
+    }, POLL_INTERVAL_MILLISECONDS);
+    return () => clearInterval(timer);
+    // The query object changes identity every render; only `waiting` restarts it.
+  }, [waiting]);
+  const newest = runs[0];
+  useEffect(() => {
+    if (
+      waiting !== null &&
+      newest !== undefined &&
+      newest.id !== waiting.baselineId
+    ) {
+      showRun(newest);
+      setWaiting(null);
+    }
+  }, [newest?.id, waiting]);
   const retryError = retryMutation.isError ? retryMutation.error : null;
   const missingLanguage =
     viewer !== null && viewer.missing.length === 1
@@ -327,7 +379,14 @@ export function AiAnalysisContent({
           </div>
         ) : null}
         {createMutation.isPending ? <AnalysisSkeleton /> : null}
-        {createMutation.isError ? (
+        {waiting !== null ? (
+          <p aria-live="polite" role="status">
+            {t("aiAnalysisStillGenerating")}
+          </p>
+        ) : null}
+        {createMutation.isError &&
+        waiting === null &&
+        (waitGaveUp || !isTimeout(createMutation.error)) ? (
           <p className="text-sm form-message" role="alert">
             {t(errorKey(createMutation.error))}
           </p>

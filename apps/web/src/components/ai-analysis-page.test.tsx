@@ -382,6 +382,68 @@ describe("AI analysis viewer", () => {
     expect(pending.querySelector("svg.animate-spin")).not.toBeNull();
   });
 
+  it("keeps polling the history after a 504 instead of showing a blanket error", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mocks.listRuns.mockResolvedValue(page([]));
+      mocks.createRun.mockRejectedValueOnce(new mocks.AiAnalysisApiError(504));
+      renderContent();
+      await screen.findByText("No analysis is saved for this scope yet.");
+      fireEvent.click(
+        screen.getByRole("button", { name: "Generate analysis" }),
+      );
+      expect(
+        await screen.findByText(
+          "Still generating. The result will appear in history shortly.",
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByRole("alert")).toBeNull();
+
+      // The run finished in the background: the next poll finds it.
+      const calls = mocks.listRuns.mock.calls.length;
+      mocks.listRuns.mockResolvedValue(page([createdRun]));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_100);
+      });
+      expect(mocks.listRuns.mock.calls.length).toBeGreaterThan(calls);
+      expect(await screen.findByText("English overview body")).toBeTruthy();
+      expect(
+        screen.queryByText(
+          "Still generating. The result will appear in history shortly.",
+        ),
+      ).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("gives up after 60 s of polling and then shows the error", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mocks.listRuns.mockResolvedValue(page([]));
+      mocks.createRun.mockRejectedValueOnce(new mocks.AiAnalysisApiError(0));
+      renderContent();
+      await screen.findByText("No analysis is saved for this scope yet.");
+      fireEvent.click(
+        screen.getByRole("button", { name: "Generate analysis" }),
+      );
+      await screen.findByText(
+        "Still generating. The result will appear in history shortly.",
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(61_000);
+      });
+      expect(await screen.findByRole("alert")).toBeTruthy();
+      expect(
+        screen.queryByText(
+          "Still generating. The result will appear in history shortly.",
+        ),
+      ).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("explains the one-per-minute limit", async () => {
     mocks.createRun.mockRejectedValue(new mocks.AiAnalysisApiError(429));
     renderContent();

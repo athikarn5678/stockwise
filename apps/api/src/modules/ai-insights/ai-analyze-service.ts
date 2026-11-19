@@ -27,9 +27,9 @@ import type {
 } from "./ai-analyze-snapshot.ts";
 
 const RATE_LIMIT_MILLISECONDS = 60_000;
-// The web proxy allows 90 s and the ALB 60 s idle; a second attempt may only
-// start when the first ended early enough to stay well inside both.
-const SECOND_ATTEMPT_DEADLINE_MILLISECONDS = 25_000;
+// The ALB idle timeout is 60 s: a second attempt (25 s timeout) may only start
+// when the first ended within 20 s, so a whole run stays under ~50 s.
+const SECOND_ATTEMPT_DEADLINE_MILLISECONDS = 20_000;
 const RETRYABLE_CATEGORIES: ReadonlySet<AiProviderFailureCategory> = new Set([
   "INVALID_RESPONSE",
   "RATE_LIMITED",

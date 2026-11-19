@@ -634,6 +634,8 @@ export const en = {
   aiAnalysisLanguageEn: "English",
   aiAnalysisModel: "Model: {model}",
   aiAnalysisMissing: "This language could not be generated.",
+  aiAnalysisStillGenerating:
+    "Still generating. The result will appear in history shortly.",
   aiAnalysisCooldown: "Try again in {seconds}s",
   aiAnalysisRetry: "Retry {language}",
   aiAnalysisRetrying: "Rebuilding…",

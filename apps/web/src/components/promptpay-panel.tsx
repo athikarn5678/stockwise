@@ -122,7 +122,7 @@ export function PromptPayPanel({
       {qr === null ? null : (
         <div className="grid items-start gap-4 sm:grid-cols-[auto_minmax(0,1fr)]">
           <div
-            className="w-56 overflow-hidden rounded-md border bg-white"
+            className="w-[226px] overflow-hidden rounded-md border bg-white"
             data-testid="promptpay-qr-card"
           >
             <div

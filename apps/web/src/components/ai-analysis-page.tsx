@@ -8,7 +8,8 @@ import {
   type InfiniteData,
 } from "@tanstack/react-query";
 import Link from "next/link";
-import { useState } from "react";
+import { Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import {
   AiAnalysisApiError,
@@ -178,7 +179,35 @@ export function AiAnalysisContent({
   });
   // A late response must not land under a different scope selector.
   const busy = createMutation.isPending || retryMutation.isPending;
+  // 429: count the Retry-After seconds down, then re-enable Generate.
+  const rateError = [createMutation.error, retryMutation.error].find(
+    (error): error is AiAnalysisApiError =>
+      error instanceof AiAnalysisApiError && error.status === 429,
+  );
+  const rateWait = rateError?.retryAfterSeconds ?? (rateError ? 60 : 0);
+  const [cooldown, setCooldown] = useState(0);
+  useEffect(() => {
+    if (rateError === undefined) {
+      setCooldown(0);
+      return;
+    }
+    setCooldown(rateWait);
+    const timer = setInterval(() => {
+      setCooldown((value) => {
+        if (value <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return value - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [rateError, rateWait]);
   const retryError = retryMutation.isError ? retryMutation.error : null;
+  const missingLanguage =
+    viewer !== null && viewer.missing.length === 1
+      ? (viewer.missing[0] ?? null)
+      : null;
   const sections = viewer?.languages[viewLanguage] ?? null;
   const viewerMissing =
     viewer !== null && viewer.missing.includes(viewLanguage);
@@ -256,13 +285,20 @@ export function AiAnalysisContent({
 
         <div className="flex flex-wrap items-center gap-3">
           <Button
-            disabled={!enabled || createMutation.isPending}
+            disabled={!enabled || createMutation.isPending || cooldown > 0}
             onClick={() => createMutation.mutate()}
             type="button"
           >
-            {createMutation.isPending
-              ? t("aiAnalysisGenerating")
-              : t("aiAnalysisGenerate")}
+            {createMutation.isPending ? (
+              <>
+                <Loader2 aria-hidden="true" className="animate-spin" />
+                {t("aiAnalysisGenerating")}
+              </>
+            ) : cooldown > 0 ? (
+              t("aiAnalysisCooldown").replace("{seconds}", String(cooldown))
+            ) : (
+              t("aiAnalysisGenerate")
+            )}
           </Button>
           <div
             aria-label={t("aiAnalysisLanguageSwitch")}
@@ -324,14 +360,39 @@ export function AiAnalysisContent({
               </p>
             ) : null}
 
+            {missingLanguage !== null &&
+            viewer.id !== null &&
+            sections !== null ? (
+              <div className="mt-3 space-y-2 rounded-md border p-3">
+                <p role="status">{t("aiAnalysisMissing")}</p>
+                <Button
+                  disabled={retryMutation.isPending}
+                  onClick={() => {
+                    if (viewer.id === null) return;
+                    retryMutation.mutate({
+                      language: missingLanguage,
+                      runId: viewer.id,
+                    });
+                  }}
+                  type="button"
+                >
+                  {retryMutation.isPending ? (
+                    <>
+                      <Loader2 aria-hidden="true" className="animate-spin" />
+                      {t("aiAnalysisRetrying")}
+                    </>
+                  ) : (
+                    t("aiAnalysisRetry").replace(
+                      "{language}",
+                      t(LANGUAGE_LABELS[missingLanguage]),
+                    )
+                  )}
+                </Button>
+              </div>
+            ) : null}
             {sections === null ? (
               <div className="mt-4 space-y-3">
-                <p role="alert">
-                  {t("aiAnalysisMissing").replace(
-                    "{language}",
-                    t(LANGUAGE_LABELS[viewLanguage]),
-                  )}
-                </p>
+                <p role="alert">{t("aiAnalysisMissing")}</p>
                 {viewerMissing && viewer.id !== null ? (
                   <Button
                     disabled={retryMutation.isPending}

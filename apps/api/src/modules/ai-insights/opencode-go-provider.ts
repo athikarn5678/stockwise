@@ -7,8 +7,8 @@ export const OPENCODE_GO_ENDPOINT =
   "https://opencode.ai/zen/go/v1/chat/completions";
 export const OPENCODE_GO_DEFAULT_MODEL = "deepseek-v4.1-flash";
 const TIMEOUT_MILLISECONDS = 60_000;
-const MAX_TOKENS = 4_000;
-const RESPONSE_TEXT_LIMIT_BYTES = 12 * 1024;
+const MAX_TOKENS = 8_000;
+const RESPONSE_TEXT_LIMIT_BYTES = 32 * 1024;
 
 /**
  * OpenCode Go exposes an OpenAI-compatible chat-completions API, so it reuses

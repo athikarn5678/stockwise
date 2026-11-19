@@ -17,6 +17,13 @@ export type AiProviderUsage = Readonly<{
 
 export type AiProviderName = "openrouter" | "opencode-go" | "seeded-template";
 
+/** Content-free reason an INVALID_RESPONSE was raised (never the text itself). */
+export type AiProviderFailureDetail = Readonly<{
+  check: "parse" | "schema" | "size" | "empty" | "finish";
+  contentBytes?: number;
+  finishReason?: string;
+}>;
+
 export type AiProviderAttempt = Readonly<{
   provider: AiProviderName;
   requestedModel: string;
@@ -24,6 +31,7 @@ export type AiProviderAttempt = Readonly<{
   durationMilliseconds: number;
   httpStatus?: number;
   failureCategory?: AiProviderFailureCategory;
+  failureDetail?: AiProviderFailureDetail;
   actualModel?: string;
   usage?: AiProviderUsage;
 }>;

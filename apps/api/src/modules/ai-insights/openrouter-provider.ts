@@ -5,6 +5,7 @@ import type {
   AiProviderAttempt,
   AiProviderAttemptObserver,
   AiProviderFailureCategory,
+  AiProviderFailureDetail,
   AiProviderName,
   AiProviderResult,
   AiProviderUsage,
@@ -47,10 +48,10 @@ const completionSchema = z.object({
     .array(
       z.object({
         index: z.literal(0),
-        finish_reason: z.literal("stop"),
+        finish_reason: z.string().nullable(),
         message: z.object({
           role: z.literal("assistant"),
-          content: z.string().min(1),
+          content: z.string(),
         }),
       }),
     )
@@ -197,6 +198,7 @@ export function createOpenRouterProvider({
         const signal = AbortSignal.timeout(timeoutMilliseconds);
         let status: number | undefined;
         let failureCategory: AiProviderFailureCategory | undefined;
+        let failureDetail: AiProviderFailureDetail | undefined;
         let completion: z.infer<typeof completionSchema> | undefined;
 
         try {
@@ -219,26 +221,52 @@ export function createOpenRouterProvider({
             const raw = await readBounded(response, responseBodyLimitBytes);
             if (raw === null) {
               failureCategory = "INVALID_RESPONSE";
+              failureDetail = { check: "size" };
             } else {
               let parsed: unknown;
               try {
                 parsed = JSON.parse(raw);
               } catch {
                 failureCategory = "INVALID_RESPONSE";
+                failureDetail = { check: "parse" };
               }
               if (failureCategory === undefined) {
                 const checked = completionSchema.safeParse(parsed);
                 if (!checked.success) {
                   failureCategory = "INVALID_RESPONSE";
-                } else if (
-                  Buffer.byteLength(
-                    checked.data.choices[0]!.message.content,
-                    "utf8",
-                  ) > responseTextLimitBytes
-                ) {
-                  failureCategory = "INVALID_RESPONSE";
+                  failureDetail = { check: "schema" };
                 } else {
-                  completion = checked.data;
+                  const choice = checked.data.choices[0]!;
+                  const contentBytes = Buffer.byteLength(
+                    choice.message.content,
+                    "utf8",
+                  );
+                  const finishReason = choice.finish_reason ?? "null";
+                  if (contentBytes === 0) {
+                    failureCategory = "INVALID_RESPONSE";
+                    failureDetail = {
+                      check: "empty",
+                      contentBytes,
+                      finishReason,
+                    };
+                  } else if (contentBytes > responseTextLimitBytes) {
+                    failureCategory = "INVALID_RESPONSE";
+                    failureDetail = {
+                      check: "size",
+                      contentBytes,
+                      finishReason,
+                    };
+                  } else if (finishReason !== "stop") {
+                    // A truncated answer ("length") is never accepted as text.
+                    failureCategory = "INVALID_RESPONSE";
+                    failureDetail = {
+                      check: "finish",
+                      contentBytes,
+                      finishReason,
+                    };
+                  } else {
+                    completion = checked.data;
+                  }
                 }
               }
             }
@@ -255,6 +283,7 @@ export function createOpenRouterProvider({
           durationMilliseconds: performance.now() - started,
           ...(status === undefined ? {} : { httpStatus: status }),
           ...(failureCategory === undefined ? {} : { failureCategory }),
+          ...(failureDetail === undefined ? {} : { failureDetail }),
           ...(completion === undefined
             ? {}
             : {

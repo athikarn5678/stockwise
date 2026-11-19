@@ -1,6 +1,7 @@
 "use client";
 import type { TranslationKey } from "@/i18n/en";
 import { Badge } from "@/components/ui/badge";
+import { useAutoFetchFilteredPage } from "@/hooks/use-auto-fetch-filtered-page";
 import { useLanguage } from "@/providers/language-provider";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -379,6 +380,24 @@ function CatalogContentLoaded({
       ...allCategories,
     ].map((category) => [category.id, category.name]),
   );
+  // An Inactive-only view can load a page of active rows while the cursor
+  // still has more, so keep fetching until a page matches or the list ends.
+  useAutoFetchFilteredPage({
+    enabled: statusFilter === "INACTIVE" && products.length === 0,
+    fetchNextPage: () => void productQuery.fetchNextPage(),
+    hasNextPage: productQuery.hasNextPage,
+    isError: productQuery.isError,
+    isFetching: productQuery.isFetching,
+    loadedPageCount: productQuery.data?.pages.length ?? 0,
+  });
+  useAutoFetchFilteredPage({
+    enabled: statusFilter === "INACTIVE" && categories.length === 0,
+    fetchNextPage: () => void categoryQuery.fetchNextPage(),
+    hasNextPage: categoryQuery.hasNextPage,
+    isError: categoryQuery.isError,
+    isFetching: categoryQuery.isFetching,
+    loadedPageCount: categoryQuery.data?.pages.length ?? 0,
+  });
 
   return (
     <PageContainer>
@@ -474,12 +493,14 @@ function CatalogContentLoaded({
                 />
               ))}
             </div>
+          </CatalogListState>
+          {productQuery.error === null ? (
             <LoadMore
               hasNextPage={productQuery.hasNextPage}
               isPending={productQuery.isFetchingNextPage}
               onLoadMore={() => void productQuery.fetchNextPage()}
             />
-          </CatalogListState>
+          ) : null}
         </section>
       ) : (
         <section
@@ -533,12 +554,14 @@ function CatalogContentLoaded({
                 />
               ))}
             </div>
+          </CatalogListState>
+          {categoryQuery.error === null ? (
             <LoadMore
               hasNextPage={categoryQuery.hasNextPage}
               isPending={categoryQuery.isFetchingNextPage}
               onLoadMore={() => void categoryQuery.fetchNextPage()}
             />
-          </CatalogListState>
+          ) : null}
         </section>
       )}
     </PageContainer>

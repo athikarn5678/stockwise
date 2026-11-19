@@ -364,6 +364,68 @@ describe("membership management UI", () => {
     ).toBeTruthy();
   });
 
+  it("loads the next member page automatically while the Inactive view is empty", async () => {
+    const inactive = {
+      ...membership,
+      id: "30000000-0000-4000-8000-000000000002",
+      status: "INACTIVE" as const,
+      user: {
+        ...membership.user,
+        displayName: "Former cashier",
+        email: "former@example.com",
+        id: "50000000-0000-4000-8000-000000000002",
+      },
+    };
+    vi.mocked(fetchMemberships).mockImplementation(
+      async (_organizationId, _includeInactive, cursor) =>
+        cursor === "page-2"
+          ? { data: [inactive], meta: { nextCursor: null } }
+          : { data: [membership], meta: { nextCursor: "page-2" } },
+    );
+    renderManagement();
+    const statusFilter = await screen.findByLabelText("Status");
+    await screen.findByRole("heading", { name: "Cashier" });
+
+    await chooseOptionByValue(statusFilter, "INACTIVE");
+
+    expect(
+      await screen.findByRole("heading", { name: "Former cashier" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Cashier" })).toBeNull();
+    expect(fetchMemberships).toHaveBeenCalledWith(
+      ORGANIZATION_ID,
+      true,
+      "page-2",
+    );
+  });
+
+  it("shows the loading state instead of the empty message while the Inactive view fetches more pages", async () => {
+    vi.mocked(fetchMemberships).mockImplementation(
+      async (_organizationId, _includeInactive, cursor) => {
+        if (cursor === "page-2") return new Promise<never>(() => {});
+        return { data: [membership], meta: { nextCursor: "page-2" } };
+      },
+    );
+    renderManagement();
+    const statusFilter = await screen.findByLabelText("Status");
+    await screen.findByRole("heading", { name: "Cashier" });
+
+    await chooseOptionByValue(statusFilter, "INACTIVE");
+
+    await waitFor(() =>
+      expect(fetchMemberships).toHaveBeenCalledWith(
+        ORGANIZATION_ID,
+        true,
+        "page-2",
+      ),
+    );
+    expect(screen.getByText(en.teamLoadingMembers)).toBeTruthy();
+    expect(screen.queryByText(en.teamNoMembers)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: en.teamMoreMembers }),
+    ).toBeTruthy();
+  });
+
   it.each(["BRANCH_MANAGER", "INVENTORY_STAFF", "CASHIER"] as const)(
     "denies %s without loading management resources",
     async (role) => {

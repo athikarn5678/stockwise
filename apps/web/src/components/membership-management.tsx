@@ -30,6 +30,7 @@ import {
 } from "@/components/page-layout";
 import { OptionSelect } from "@/components/option-select";
 import type { TranslationKey } from "@/i18n/en";
+import { useAutoFetchFilteredPage } from "@/hooks/use-auto-fetch-filtered-page";
 import {
   createInvitation,
   deactivateMembership,
@@ -232,6 +233,21 @@ function TeamWorkspace({
     statusFilter === "INACTIVE"
       ? allMembers.filter((member) => member.status === "INACTIVE")
       : allMembers;
+  // The Inactive-only view filters loaded pages client-side, so a page of
+  // active members may still leave the view empty while more pages exist.
+  const autoFetchingInactiveMembers =
+    statusFilter === "INACTIVE" &&
+    members.length === 0 &&
+    !membersQuery.isError &&
+    membersQuery.hasNextPage;
+  useAutoFetchFilteredPage({
+    enabled: statusFilter === "INACTIVE" && members.length === 0,
+    fetchNextPage: () => void membersQuery.fetchNextPage(),
+    hasNextPage: membersQuery.hasNextPage,
+    isError: membersQuery.isError,
+    isFetching: membersQuery.isFetching,
+    loadedPageCount: membersQuery.data?.pages.length ?? 0,
+  });
   const invitations =
     invitationsQuery.data?.pages.flatMap(({ data }) => data) ?? [];
   const branches = branchesQuery.data ?? [];
@@ -338,9 +354,13 @@ function TeamWorkspace({
             </Button>
           </div>
         )}
-        {membersQuery.isSuccess && members.length === 0 && (
-          <p className="text-muted-foreground">{t("teamNoMembers")}</p>
-        )}
+        {membersQuery.isSuccess &&
+          members.length === 0 &&
+          (autoFetchingInactiveMembers ? (
+            <p role="status">{t("teamLoadingMembers")}</p>
+          ) : (
+            <p className="text-muted-foreground">{t("teamNoMembers")}</p>
+          ))}
         {members.map((member) => (
           <MemberEditor
             key={member.id}

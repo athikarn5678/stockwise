@@ -27,7 +27,7 @@ Choose **Option 3**.
 
 - OpenCode Go, reached through its OpenAI-compatible chat-completions API: `POST https://opencode.ai/zen/go/v1/chat/completions`.
 - Configuration: `OPENCODE_GO_API_KEY` (server-only, optional) and `OPENCODE_GO_MODEL` (optional, default `deepseek-v4.1-flash`). Existing OpenAI-compatible adapter widened by options (`endpoint`, `model`, `providerName`, `timeoutMilliseconds`, `maxTokens`, `responseTextLimitBytes`); OpenRouter defaults and its `usage.include` extension are unchanged.
-- Bounds: 25 s timeout per provider call; the adapter makes a single attempt per call (the service may retry a failed language once, see ADR-049), `max_tokens` 4000 (the model spends part of it on reasoning tokens), 32 KB response text. No paid fallback.
+- Bounds: 25 s timeout per provider call; the adapter makes a single attempt per call (the service may retry a failed language once, see ADR-049), `max_tokens` 4000; the provider's reasoning mode is switched off (`thinking: {type: disabled}`), because live measurements showed 37-54 s per call with reasoning on (over the 60 s ALB idle limit) and 8-12 s with it off, with output passing the same validator, 32 KB response text. No paid fallback.
 - Scheduled OpenRouter job, orchestrator, stored insights, and `ADR-033` data minimization remain unchanged; the two paths never share state.
 
 ### 2. Endpoint and authorization

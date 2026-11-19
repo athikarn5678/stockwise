@@ -73,6 +73,7 @@ describe("OpenCode Go provider", () => {
       messages: [{ content: input.text, role: "user" }],
       max_tokens: 4000,
       model: "deepseek-v4.1-flash",
+      thinking: { type: "disabled" },
     });
     expect(result.attempts[0]).toMatchObject({
       provider: "opencode-go",

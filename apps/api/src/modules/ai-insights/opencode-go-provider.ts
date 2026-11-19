@@ -28,6 +28,11 @@ export function createOpenCodeGoProvider({
   return createOpenRouterProvider({
     apiKey,
     endpoint: OPENCODE_GO_ENDPOINT,
+    // Measured live: with reasoning on, a run takes 37-54 s (2-3k reasoning
+    // tokens), over the 60 s ALB idle limit; with it off about 11 s and the
+    // output still passes the same validator. Short sectioned prose needs no
+    // chain of thought.
+    extraBody: { thinking: { type: "disabled" } },
     fetchImplementation,
     // One attempt per call; the service decides about one quick retry.
     maxAttempts: 1,

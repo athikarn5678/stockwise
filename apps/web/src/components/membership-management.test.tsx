@@ -30,6 +30,7 @@ import { en } from "@/i18n/en";
 import { MembershipManagement } from "./membership-management";
 import {
   chooseOption,
+  chooseOptionByValue,
   expectSelectValue,
   readSelectOptionValues,
 } from "@/test/select-helpers";
@@ -305,11 +306,125 @@ describe("membership management UI", () => {
         expect(self.queryByRole("combobox")).toBeNull();
         expect(self.queryByRole("button")).toBeNull();
       }
+      const statusFilter = screen.getByLabelText(copy.commonStatus);
+      expectSelectValue(statusFilter, copy.commonActive);
       for (const select of screen.getAllByRole("combobox")) {
+        if (select === statusFilter) continue;
         expect(await readSelectOptionValues(select)).toEqual(allowed);
       }
     },
   );
+
+  it("narrows the members list by lifecycle status from the toolbar", async () => {
+    const inactive = {
+      ...membership,
+      id: "30000000-0000-4000-8000-000000000002",
+      status: "INACTIVE" as const,
+      user: {
+        ...membership.user,
+        displayName: "Former cashier",
+        email: "former@example.com",
+        id: "50000000-0000-4000-8000-000000000002",
+      },
+    };
+    vi.mocked(fetchMemberships).mockResolvedValue({
+      data: [membership, inactive],
+      meta: { nextCursor: null },
+    });
+    renderManagement();
+    const statusFilter = await screen.findByLabelText("Status");
+    expect(fetchMemberships).toHaveBeenLastCalledWith(
+      ORGANIZATION_ID,
+      false,
+      null,
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Former cashier" }),
+    ).toBeTruthy();
+
+    await chooseOptionByValue(statusFilter, "INACTIVE");
+
+    await waitFor(() =>
+      expect(fetchMemberships).toHaveBeenLastCalledWith(
+        ORGANIZATION_ID,
+        true,
+        null,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Cashier" })).toBeNull(),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Former cashier" }),
+    ).toBeTruthy();
+
+    await chooseOptionByValue(statusFilter, "ALL");
+    expect(
+      await screen.findByRole("heading", { name: "Cashier" }),
+    ).toBeTruthy();
+  });
+
+  it("loads the next member page automatically while the Inactive view is empty", async () => {
+    const inactive = {
+      ...membership,
+      id: "30000000-0000-4000-8000-000000000002",
+      status: "INACTIVE" as const,
+      user: {
+        ...membership.user,
+        displayName: "Former cashier",
+        email: "former@example.com",
+        id: "50000000-0000-4000-8000-000000000002",
+      },
+    };
+    vi.mocked(fetchMemberships).mockImplementation(
+      async (_organizationId, _includeInactive, cursor) =>
+        cursor === "page-2"
+          ? { data: [inactive], meta: { nextCursor: null } }
+          : { data: [membership], meta: { nextCursor: "page-2" } },
+    );
+    renderManagement();
+    const statusFilter = await screen.findByLabelText("Status");
+    await screen.findByRole("heading", { name: "Cashier" });
+
+    await chooseOptionByValue(statusFilter, "INACTIVE");
+
+    expect(
+      await screen.findByRole("heading", { name: "Former cashier" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Cashier" })).toBeNull();
+    expect(fetchMemberships).toHaveBeenCalledWith(
+      ORGANIZATION_ID,
+      true,
+      "page-2",
+    );
+  });
+
+  it("shows the loading state instead of the empty message while the Inactive view fetches more pages", async () => {
+    vi.mocked(fetchMemberships).mockImplementation(
+      async (_organizationId, _includeInactive, cursor) => {
+        if (cursor === "page-2") return new Promise<never>(() => {});
+        return { data: [membership], meta: { nextCursor: "page-2" } };
+      },
+    );
+    renderManagement();
+    const statusFilter = await screen.findByLabelText("Status");
+    await screen.findByRole("heading", { name: "Cashier" });
+
+    await chooseOptionByValue(statusFilter, "INACTIVE");
+
+    await waitFor(() =>
+      expect(fetchMemberships).toHaveBeenCalledWith(
+        ORGANIZATION_ID,
+        true,
+        "page-2",
+      ),
+    );
+    expect(screen.getByText(en.teamLoadingMembers)).toBeTruthy();
+    expect(screen.queryByText(en.teamNoMembers)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: en.teamMoreMembers }),
+    ).toBeTruthy();
+  });
 
   it.each(["BRANCH_MANAGER", "INVENTORY_STAFF", "CASHIER"] as const)(
     "denies %s without loading management resources",

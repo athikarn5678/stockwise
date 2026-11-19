@@ -26,6 +26,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { formatThb } from "@/money-display";
+import { PageContainer, PageHeader } from "@/components/page-layout";
 import { useSubscriptionWriteGate } from "@/providers/subscription-provider";
 import { SaleReceipt } from "@/components/sale-receipt";
 import {
@@ -202,15 +203,15 @@ function ContextUnavailable({
   const { t } = useLanguage();
 
   return (
-    <section className="space-y-4">
-      <h1 className="text-2xl font-semibold">
-        {title ?? t("uiSalesHistoryUnavailable")}
-      </h1>
-      <p className="text-muted-foreground">{message}</p>
+    <PageContainer>
+      <PageHeader
+        description={message}
+        title={title ?? t("uiSalesHistoryUnavailable")}
+      />
       <Link className="underline" href="/app">
         {t("uiReturnToWorkspace")}
       </Link>
-    </section>
+    </PageContainer>
   );
 }
 
@@ -256,20 +257,18 @@ function SalesHistoryContent({
   }, [branch.id, organization.id, actorUserId]);
 
   return (
-    <section className="w-full space-y-8">
-      <header className="space-y-2">
+    <PageContainer>
+      <PageHeader
+        description={`${t("uiCompletedSalesAt")} ${branch.code} — ${branch.name}${t("uiSaleTimestampsAreShownInUTCAnalyticsUsesThe")}`}
+        title={t("sales")}
+      >
         <Link
           className="text-sm underline"
           href={applicationContextUrl(organization.id, branch.id)}
         >
           {t("backToWorkspace")}
         </Link>
-        <h1 className="text-2xl font-semibold">{t("sales")}</h1>
-        <p className="text-muted-foreground">
-          {t("uiCompletedSalesAt")} {branch.code} — {branch.name}
-          {t("uiSaleTimestampsAreShownInUTCAnalyticsUsesThe")}
-        </p>
-      </header>
+      </PageHeader>
 
       <form
         aria-label={t("uiFilterSalesHistory")}
@@ -336,7 +335,7 @@ function SalesHistoryContent({
           scopeKey={scopeKey}
         />
       ) : null}
-    </section>
+    </PageContainer>
   );
 }
 

@@ -4,9 +4,15 @@ import { useLanguage } from "@/providers/language-provider";
 import type { TranslationKey } from "@/i18n/en";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { OptionSelect } from "@/components/option-select";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  ListToolbar,
+  PageContainer,
+  PageHeader,
+  StatusFilter,
+  type StatusFilterValue,
+} from "@/components/page-layout";
 
 import {
   useInfiniteQuery,
@@ -16,7 +22,7 @@ import {
 } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useState, useId } from "react";
 import {
   applicationContextUrl,
   resolveApplicationContext,
@@ -37,6 +43,18 @@ import { useSubscriptionWriteGate } from "@/providers/subscription-provider";
 
 const MANAGEMENT_ROLES = new Set(["OWNER", "ADMIN", "BRANCH_MANAGER"]);
 const LIFECYCLE_ROLES = new Set(["OWNER", "ADMIN"]);
+// The shared StatusFilter speaks the uppercase lifecycle vocabulary; the
+// Supplier API request keeps its accepted lowercase values.
+const REQUEST_STATUS: Record<StatusFilterValue, SupplierStatusFilter> = {
+  ACTIVE: "active",
+  ALL: "all",
+  INACTIVE: "inactive",
+};
+const FILTER_STATUS: Record<SupplierStatusFilter, StatusFilterValue> = {
+  active: "ACTIVE",
+  all: "ALL",
+  inactive: "INACTIVE",
+};
 const emptyInput: SupplierInput = {
   name: "",
   contactName: "",
@@ -138,60 +156,44 @@ function SupplierContent({
   const records =
     suppliers.data?.pages.flatMap((page) => page.data.suppliers) ?? [];
   return (
-    <section className="w-full space-y-6">
-      <header>
+    <PageContainer>
+      <PageHeader
+        description={t("supplierManageFor").replace(
+          "{name}",
+          organization.name,
+        )}
+        title={t("supplierTitle")}
+      >
         <Link
           className="text-sm underline"
           href={applicationContextUrl(organization.id, branchId)}
         >
           {t("backToWorkspace")}
         </Link>
-        <h1 className="mt-3 text-2xl font-semibold">{t("supplierTitle")}</h1>
-        <p className="text-muted-foreground">
-          {t("supplierManageFor").replace("{name}", organization.name)}
-        </p>
-      </header>
+      </PageHeader>
       {notice ? (
         <p className="form-message" role="alert">
           {message(notice, t)}
         </p>
       ) : null}
-      <SupplierForm
-        label={t("supplierCreate")}
+      <SupplierCreateForm
         onError={(error) => setNotice(error)}
         onSave={(input) => createSupplier(organization.id, input).then(refresh)}
       />
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto]">
-        <Label className="form-field">
-          {t("supplierSearch")}
-          <Input
-            className=""
-            defaultValue={search}
-            onChange={(event) => setSearch(event.target.value)}
+      <ListToolbar
+        onRefresh={() => void refresh()}
+        search={{
+          label: t("supplierSearch"),
+          onChange: setSearch,
+          value: search,
+        }}
+        status={
+          <StatusFilter
+            onValueChange={(value) => setStatus(REQUEST_STATUS[value])}
+            value={FILTER_STATUS[status]}
           />
-        </Label>
-        <Label className="form-field">
-          {t("commonStatus")}
-          <OptionSelect
-            className="w-full "
-            onValueChange={(value) => setStatus(value as SupplierStatusFilter)}
-            options={[
-              { label: t("commonActive"), value: "active" },
-              { label: t("commonInactive"), value: "inactive" },
-              { label: t("commonAll"), value: "all" },
-            ]}
-            value={status}
-          />
-        </Label>
-        <Button
-          variant="outline"
-          className="self-end"
-          onClick={() => void refresh()}
-          type="button"
-        >
-          {t("commonRefresh")}
-        </Button>
-      </div>
+        }
+      />
       {suppliers.isPending ? (
         <p aria-live="polite">{t("supplierLoading")}</p>
       ) : suppliers.isError ? (
@@ -227,17 +229,13 @@ function SupplierContent({
             : t("commonLoadMore")}
         </Button>
       ) : null}
-    </section>
+    </PageContainer>
   );
 }
-function SupplierForm({
-  initial = emptyInput,
-  label,
+function SupplierCreateForm({
   onError,
   onSave,
 }: {
-  initial?: SupplierInput;
-  label: string;
   onError: (error: unknown) => void;
   onSave: (input: SupplierInput) => Promise<unknown>;
 }) {
@@ -259,56 +257,59 @@ function SupplierForm({
             phone: String(form.get("phone") ?? ""),
             address: String(form.get("address") ?? ""),
           })
-          .then(() => {
-            if (label === t("supplierCreate")) formElement.reset();
-          })
+          .then(() => formElement.reset())
           .catch(onError);
       }}
     >
-      <h2 className="font-semibold">{label}</h2>
-      <div className="mt-4 grid max-w-4xl items-start gap-4 sm:grid-cols-2">
-        <Field
-          defaultValue={initial.name}
-          label={t("supplierName")}
-          name="name"
-          required
-        />
-        <Field
-          defaultValue={initial.contactName}
-          label={t("supplierContact")}
-          name="contactName"
-        />
-        <Field
-          defaultValue={initial.email}
-          label={t("supplierEmail")}
-          name="email"
-          type="email"
-        />
-        <Field
-          defaultValue={initial.phone}
-          label={t("supplierPhone")}
-          name="phone"
-        />
-        <Label className="form-field sm:col-span-2">
-          {t("supplierAddress")}
-          <Textarea
-            className=""
-            defaultValue={initial.address}
-            name="address"
-          />
-        </Label>
-      </div>
+      <h2 className="font-semibold">{t("supplierCreate")}</h2>
+      <SupplierFields />
       <Button
         aria-busy={mutation.isPending}
         className="mt-4"
         disabled={mutation.isPending || writeBlocked}
         type="submit"
       >
-        {mutation.isPending ? t("commonSaving") : label}
+        {mutation.isPending ? t("commonSaving") : t("supplierCreate")}
       </Button>
     </form>
   );
 }
+
+/** The shared field grid of a Supplier card: one card, no nested card. */
+function SupplierFields({ initial = emptyInput }: { initial?: SupplierInput }) {
+  const { t } = useLanguage();
+  return (
+    <div className="mt-4 mb-4 grid max-w-4xl items-start gap-4 sm:grid-cols-2">
+      <Field
+        defaultValue={initial.name}
+        label={t("supplierName")}
+        name="name"
+        required
+      />
+      <Field
+        defaultValue={initial.contactName}
+        label={t("supplierContact")}
+        name="contactName"
+      />
+      <Field
+        defaultValue={initial.email}
+        label={t("supplierEmail")}
+        name="email"
+        type="email"
+      />
+      <Field
+        defaultValue={initial.phone}
+        label={t("supplierPhone")}
+        name="phone"
+      />
+      <Label className="form-field sm:col-span-2">
+        {t("supplierAddress")}
+        <Textarea className="" defaultValue={initial.address} name="address" />
+      </Label>
+    </div>
+  );
+}
+
 function SupplierCard({
   canLifecycle,
   onError,
@@ -324,6 +325,7 @@ function SupplierCard({
 }) {
   const { t } = useLanguage();
   const { writeBlocked } = useSubscriptionWriteGate();
+  const headingId = useId();
   const edit = useMutation({
     mutationFn: (input: SupplierInput) =>
       updateSupplier(organizationId, supplier.id, input),
@@ -335,42 +337,66 @@ function SupplierCard({
   });
   const pending = edit.isPending || lifecycle.isPending;
   return (
-    <article className="rounded-lg border bg-card p-5">
+    <form
+      aria-labelledby={headingId}
+      className="rounded-lg border bg-card p-5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        void edit
+          .mutateAsync({
+            name: String(form.get("name") ?? ""),
+            contactName: String(form.get("contactName") ?? ""),
+            email: String(form.get("email") ?? ""),
+            phone: String(form.get("phone") ?? ""),
+            address: String(form.get("address") ?? ""),
+          })
+          .catch(onError);
+      }}
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-semibold">{supplier.name}</h2>
+        <h2 className="font-semibold" id={headingId}>
+          {supplier.name}
+        </h2>
         <Badge variant="outline">
           {supplier.status === "ACTIVE"
             ? t("commonActive")
             : t("commonInactive")}
         </Badge>
       </div>
-      <SupplierForm
+      <SupplierFields
         initial={{
-          name: supplier.name,
+          address: supplier.address ?? "",
           contactName: supplier.contactName ?? "",
           email: supplier.email ?? "",
+          name: supplier.name,
           phone: supplier.phone ?? "",
-          address: supplier.address ?? "",
         }}
-        label={t("saveChanges")}
-        onError={onError}
-        onSave={(input) => edit.mutateAsync(input)}
       />
-      {canLifecycle ? (
+      <div className="mt-4 flex flex-wrap gap-3">
         <Button
           variant="outline"
-          aria-busy={lifecycle.isPending}
-          className="mt-3"
+          aria-busy={edit.isPending}
           disabled={pending || writeBlocked}
-          onClick={() => void lifecycle.mutateAsync().catch(onError)}
-          type="button"
+          type="submit"
         >
-          {supplier.status === "ACTIVE"
-            ? t("supplierDeactivate")
-            : t("supplierReactivate")}
+          {t("saveChanges")}
         </Button>
-      ) : null}
-    </article>
+        {canLifecycle ? (
+          <Button
+            variant="outline"
+            aria-busy={lifecycle.isPending}
+            disabled={pending || writeBlocked}
+            onClick={() => void lifecycle.mutateAsync().catch(onError)}
+            type="button"
+          >
+            {supplier.status === "ACTIVE"
+              ? t("supplierDeactivate")
+              : t("supplierReactivate")}
+          </Button>
+        ) : null}
+      </div>
+    </form>
   );
 }
 function Field({

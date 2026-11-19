@@ -8,7 +8,7 @@ import {
   E2E_OWNER_EMAIL,
   E2E_PASSWORD,
 } from "./catalog-fixtures.ts";
-import { selectOption } from "./select-helpers.ts";
+import { expectSelectValue, selectOption } from "./select-helpers.ts";
 
 const scope = `organizationId=${E2E_ORGANIZATION_ID}&branchId=${E2E_BRANCH_ID}`;
 const onboardingEmail = "form-onboarding-e2e@example.test";
@@ -196,7 +196,7 @@ for (const width of [375, 430, 768, 1024, 1280, 1440]) {
       page.getByRole("heading", { name: "Create product", exact: true }),
     ).toBeVisible();
     await inspect(page, info, "catalog-products");
-    await page.getByRole("tab", { name: "Categories", exact: true }).click();
+    await page.getByRole("button", { name: "Categories", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "Create category", exact: true }),
     ).toBeVisible();
@@ -318,5 +318,43 @@ test("receiving, confirmation and refund forms fit mobile and desktop", async ({
   for (const width of [375, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await inspect(page, info, `refund-${width}`);
+  }
+});
+
+test("manage branches and manage members expose the shared status filter", async ({
+  page,
+}, info) => {
+  test.setTimeout(120_000);
+  await signIn(page);
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/app/branches?${scope}`);
+    await expect(
+      page.getByRole("heading", { name: "Branches", exact: true }).first(),
+    ).toBeVisible();
+    const branchStatus = page.getByLabel("Status");
+    await expectSelectValue(branchStatus, "All");
+    await selectOption(page, "Status", { value: "INACTIVE" });
+    await expect(
+      page.getByRole("heading", { name: "Create branch", exact: true }),
+    ).toBeVisible();
+    await inspect(page, info, `branches-inactive-${width}`);
+    await selectOption(page, "Status", { value: "ACTIVE" });
+    await expect(
+      page.getByRole("heading", { name: "Branches", exact: true }).first(),
+    ).toBeVisible();
+
+    await page.goto(`/app/members?${scope}`);
+    await expect(
+      page
+        .getByRole("heading", { name: "Team & permissions", exact: true })
+        .first(),
+    ).toBeVisible();
+    await expectSelectValue(page.getByLabel("Status"), "Active");
+    await selectOption(page, "Status", { value: "ALL" });
+    await expect(
+      page.getByRole("region", { name: "Organization members" }),
+    ).toBeVisible();
+    await inspect(page, info, `members-all-${width}`);
   }
 });

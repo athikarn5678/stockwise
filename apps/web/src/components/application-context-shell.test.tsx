@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -112,6 +113,25 @@ describe("application context shell", () => {
         `/app?organizationId=${ORG_ONE}&branchId=${BRANCH_A}`,
       ),
     );
+  });
+
+  it("renders the workspace as one page header with its scope selectors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(accessResponse([organization()])),
+    );
+    renderShell();
+
+    const heading = await screen.findByRole("heading", {
+      level: 1,
+      name: "Store One",
+    });
+    const header = heading.closest('[data-slot="page-header"]');
+    expect(header).not.toBeNull();
+    expect(within(header as HTMLElement).getByText("OWNER")).toBeTruthy();
+    expect(screen.getByText("Current workspace")).toBeTruthy();
+    expect(screen.getByLabelText("Organization")).toBeTruthy();
+    expect(screen.getByLabelText("Branch")).toBeTruthy();
   });
 
   it("requires an organization choice when several are accessible", async () => {

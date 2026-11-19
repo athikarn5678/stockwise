@@ -12,6 +12,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fetchAccessContext } from "@/branch-api-client";
+import { en } from "@/i18n/en";
 import {
   CatalogApiError,
   createCategory,
@@ -202,15 +203,121 @@ describe("catalog management UI", () => {
     fireEvent.change(screen.getByLabelText("Search catalog"), {
       target: { value: "tea" },
     });
-    fireEvent.submit(
-      screen.getByRole("button", { name: "Search" }).closest("form")!,
-    );
 
     await waitFor(() =>
       expect(listProducts).toHaveBeenLastCalledWith(
         { branchId: BRANCH_ID, organizationId: ORGANIZATION_ID },
         expect.objectContaining({ categoryId: "uncategorized", q: "tea" }),
       ),
+    );
+  });
+
+  it("maps the status filter to includeInactive and filters inactive-only rows client-side", async () => {
+    const inactiveProduct = {
+      ...product,
+      id: "40000000-0000-4000-8000-000000000002",
+      name: "Old tea",
+      sku: "TEA-OLD",
+      status: "INACTIVE" as const,
+    };
+    vi.mocked(listProducts).mockResolvedValue({
+      data: { products: [product, inactiveProduct] },
+      meta: { nextCursor: null },
+    });
+    renderCatalog();
+    await screen.findByText("Tea");
+    expect(listProducts).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ includeInactive: false }),
+    );
+
+    await chooseOptionByValue(screen.getByLabelText("Status"), "INACTIVE");
+
+    await waitFor(() =>
+      expect(listProducts).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ includeInactive: true }),
+      ),
+    );
+    expect(await screen.findByText("Old tea")).toBeTruthy();
+    expect(screen.queryByText("Tea")).toBeNull();
+
+    await chooseOptionByValue(screen.getByLabelText("Status"), "ALL");
+    expect(await screen.findByText("Tea")).toBeTruthy();
+    expect(screen.getByText("Old tea")).toBeTruthy();
+  });
+
+  it("loads the next product page automatically while the Inactive view is empty", async () => {
+    const inactiveProduct = {
+      ...product,
+      id: "40000000-0000-4000-8000-000000000002",
+      name: "Old tea",
+      sku: "TEA-OLD",
+      status: "INACTIVE" as const,
+    };
+    vi.mocked(listProducts).mockImplementation(async (_context, options) =>
+      options?.cursor === "page-2"
+        ? { data: { products: [inactiveProduct] }, meta: { nextCursor: null } }
+        : { data: { products: [product] }, meta: { nextCursor: "page-2" } },
+    );
+    renderCatalog();
+    await screen.findByText("Tea");
+
+    await chooseOptionByValue(screen.getByLabelText("Status"), "INACTIVE");
+
+    expect(await screen.findByText("Old tea")).toBeTruthy();
+    expect(screen.queryByText("Tea")).toBeNull();
+    expect(listProducts).toHaveBeenCalledWith(
+      { branchId: BRANCH_ID, organizationId: ORGANIZATION_ID },
+      expect.objectContaining({ cursor: "page-2", includeInactive: true }),
+    );
+  });
+
+  it("keeps Load more reachable when the Inactive view has no matches yet", async () => {
+    vi.mocked(listProducts).mockImplementation(async (_context, options) => {
+      if (options?.cursor === "page-2") return new Promise<never>(() => {});
+      return { data: { products: [product] }, meta: { nextCursor: "page-2" } };
+    });
+    renderCatalog();
+    await screen.findByText("Tea");
+
+    await chooseOptionByValue(screen.getByLabelText("Status"), "INACTIVE");
+
+    expect(
+      await screen.findByText("No products match this catalog view."),
+    ).toBeTruthy();
+    const loadMore = screen.getByRole("button", { name: en.commonLoading });
+    expect((loadMore as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("loads the next category page automatically while the Inactive view is empty", async () => {
+    const inactiveCategory = {
+      ...category,
+      id: "30000000-0000-4000-8000-000000000002",
+      name: "Retired",
+      status: "INACTIVE" as const,
+    };
+    vi.mocked(listCategories).mockImplementation(async (_context, options) => {
+      if (options?.limit === 100)
+        return { data: { categories: [category] }, meta: { nextCursor: null } };
+      return options?.cursor === "page-2"
+        ? {
+            data: { categories: [inactiveCategory] },
+            meta: { nextCursor: null },
+          }
+        : { data: { categories: [category] }, meta: { nextCursor: "page-2" } };
+    });
+    renderCatalog();
+    fireEvent.click(await screen.findByRole("button", { name: "Categories" }));
+    await screen.findByText("Drinks");
+
+    await chooseOptionByValue(screen.getByLabelText("Status"), "INACTIVE");
+
+    expect(await screen.findByText("Retired")).toBeTruthy();
+    expect(screen.queryByText("Drinks")).toBeNull();
+    expect(listCategories).toHaveBeenCalledWith(
+      { branchId: BRANCH_ID, organizationId: ORGANIZATION_ID },
+      expect.objectContaining({ cursor: "page-2", includeInactive: true }),
     );
   });
 
@@ -354,15 +461,13 @@ describe("catalog management UI", () => {
     await screen.findByText("Tea");
     expect(screen.queryByRole("button", { name: "Create product" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
-    expect(
-      screen.queryByRole("checkbox", { name: /include inactive/i }),
-    ).toBeNull();
+    expect(screen.queryByLabelText("Status")).toBeNull();
   });
 
   it("switches to category management and creates a category", async () => {
     renderCatalog();
-    await screen.findByRole("tab", { name: "Categories" });
-    fireEvent.click(screen.getByRole("tab", { name: "Categories" }));
+    await screen.findByRole("button", { name: "Categories" });
+    fireEvent.click(screen.getByRole("button", { name: "Categories" }));
 
     expect(
       await screen.findByRole("heading", { name: "Create category" }),
@@ -397,7 +502,7 @@ describe("catalog write gate", () => {
     expect(
       screen.getByRole("button", { name: "Create product" }),
     ).toHaveProperty("disabled", true);
-    expect(screen.getByRole("button", { name: "Search" })).toHaveProperty(
+    expect(screen.getByRole("button", { name: "Refresh" })).toHaveProperty(
       "disabled",
       false,
     );

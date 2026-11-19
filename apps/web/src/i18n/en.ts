@@ -423,7 +423,6 @@ export const en = {
   teamDeactivate: "Deactivate",
   teamRevoke: "Revoke",
   teamReissue: "Reissue",
-  teamIncludeInactive: "Include inactive",
   teamUnavailable: "Member management unavailable",
   teamReadOnlyMember: "This member's access is read-only for you.",
   teamOrganizationScope: "Organization-wide scope",
@@ -504,9 +503,9 @@ export const en = {
     "The invitation branch scope is no longer active. Reissue with active branches.",
   teamErrorOwner: "An organization must retain one active owner.",
   teamErrorExists:
-    "That email already has a membership in this organization. Use Include inactive to find deactivated members.",
+    "That email already has a membership in this organization. Set Status to Inactive or All to find deactivated members.",
   teamErrorInactiveExists:
-    "This person was removed earlier. Turn on Include inactive, find them in the list and use Reactivate instead of inviting again.",
+    "This person was removed earlier. Set Status to Inactive, find them in the list and use Reactivate instead of inviting again.",
   teamErrorSelf: "You cannot change or deactivate your own membership.",
   teamErrorNotFound: "The membership no longer exists.",
   teamErrorState:
@@ -1322,7 +1321,6 @@ export const en = {
   uiManageProductsAndCategoriesFor: "Manage products and categories for",
   uiRefreshLatest: "Refresh latest",
   uiCatalogViews: "Catalog views",
-  uiIncludeInactiveCatalogRecords: "Include inactive catalog records",
   uiNoProductsMatchThisCatalogView: "No products match this catalog view.",
   uiCurrentInactiveCategory: "Current inactive category",
   uiNoCategoriesMatchThisCatalogView: "No categories match this catalog view.",

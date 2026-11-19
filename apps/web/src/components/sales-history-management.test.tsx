@@ -456,9 +456,11 @@ describe("sales history UI", () => {
 
   it("renders immutable branch-scoped history and forwards the opaque cursor", async () => {
     renderSales();
-    expect(
-      await screen.findByRole("heading", { name: "Sales history" }),
-    ).toBeTruthy();
+    const heading = await screen.findByRole("heading", {
+      level: 1,
+      name: "Sales history",
+    });
+    expect(heading.closest('[data-slot="page-header"]')).not.toBeNull();
     expect(await screen.findByText("Historical cashier")).toBeTruthy();
     expect(
       screen.getByText(/Sale timestamps are shown in UTC\. Analytics uses/),

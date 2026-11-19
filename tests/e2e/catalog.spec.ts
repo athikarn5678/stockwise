@@ -27,12 +27,12 @@ test("owner manages the catalog through the same-origin application path", async
   await page.goto(catalogPath);
   await expect(page.getByRole("heading", { name: "Catalog" })).toBeVisible();
 
-  await page.getByRole("tab", { name: "Categories" }).click();
+  await page.getByRole("button", { name: "Categories" }).click();
   await page.getByLabel("Category name").first().fill("Drinks");
   await page.getByRole("button", { name: "Create category" }).click();
   await expect(page.getByRole("heading", { name: "Drinks" })).toBeVisible();
 
-  await page.getByRole("tab", { name: "Products" }).click();
+  await page.getByRole("button", { name: "Products" }).click();
   await page.getByLabel("Product name").first().fill("Green tea");
   await page.getByLabel("SKU").first().fill("TEA-E2E-01");
   await page.getByLabel("Base price").first().fill("12.3400");
@@ -93,11 +93,12 @@ test("owner manages the catalog through the same-origin application path", async
     name: "Edit product Green tea updated",
   });
   await updatedProductForm.getByRole("button", { name: "Deactivate" }).click();
-  await page.getByLabel("Include inactive catalog records").check();
+  await selectOption(page, "Status", { value: "INACTIVE" });
   await expect(
     page.getByRole("heading", { name: "Green tea updated" }),
   ).toBeVisible();
   await expect(updatedProductForm.getByText("Inactive")).toBeVisible();
+  await selectOption(page, "Status", { value: "ALL" });
   await updatedProductForm.getByRole("button", { name: "Reactivate" }).click();
   await expect(updatedProductForm.getByText("Active")).toBeVisible();
 });
@@ -111,9 +112,7 @@ test("cashier receives only the accepted catalog view UX", async ({ page }) => {
     page.getByRole("button", { name: "Create product" }),
   ).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Deactivate" })).toHaveCount(0);
-  await expect(page.getByLabel("Include inactive catalog records")).toHaveCount(
-    0,
-  );
+  await expect(page.getByLabel("Status")).toHaveCount(0);
 });
 
 test("catalog views have no automated axe violations on desktop and mobile", async ({
@@ -124,10 +123,10 @@ test("catalog views have no automated axe violations on desktop and mobile", asy
   await expect(page.getByRole("heading", { name: "Catalog" })).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
-  await page.getByRole("tab", { name: "Categories" }).click();
+  await page.getByRole("button", { name: "Categories" }).click();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.getByRole("tab", { name: "Products" }).click();
+  await page.getByRole("button", { name: "Products" }).click();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 });

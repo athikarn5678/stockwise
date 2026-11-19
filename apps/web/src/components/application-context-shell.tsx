@@ -14,6 +14,7 @@ import {
   clearPreviousBranchQueries,
   resolveApplicationContext,
 } from "@/application-context";
+import { PageContainer, PageHeader } from "@/components/page-layout";
 
 export function ApplicationContextShell() {
   const { t } = useLanguage();
@@ -92,15 +93,17 @@ export function ApplicationContextShell() {
         return <p aria-live="polite">{t("openingSetup")}</p>;
       }
       return (
-        <section className="space-y-5">
-          <h1 className="text-2xl font-semibold">{t("noOrganization")}</h1>
-          <p className="text-muted-foreground">{t("restoreAccess")}</p>
-        </section>
+        <PageContainer>
+          <PageHeader
+            description={t("restoreAccess")}
+            title={t("noOrganization")}
+          />
+        </PageContainer>
       );
     }
     return (
-      <section className="w-full max-w-xl space-y-5">
-        <h1 className="text-2xl font-semibold">{t("chooseOrganization")}</h1>
+      <PageContainer>
+        <PageHeader title={t("chooseOrganization")} />
         <div className="grid gap-3">
           {contextQuery.data.organizations.map((organization) => (
             <Button
@@ -119,23 +122,22 @@ export function ApplicationContextShell() {
             </Button>
           ))}
         </div>
-      </section>
+      </PageContainer>
     );
   }
 
   if (resolved === null) return null;
   const activeOrganization = resolved.organization;
   return (
-    <section className="w-full space-y-8">
-      <div className="rounded-lg border bg-card p-5 sm:p-7">
+    <PageContainer>
+      <PageHeader
+        description={t(activeOrganization.role)}
+        title={activeOrganization.name}
+      >
         <p className="text-sm text-muted-foreground">{t("workspace")}</p>
-        <h1 className="mt-1 text-2xl font-semibold">
-          {activeOrganization.name}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t(activeOrganization.role)}
-        </p>
-        <div className="mt-5 grid max-w-4xl gap-4 sm:grid-cols-2">
+      </PageHeader>
+      <div className="rounded-lg border bg-card p-5 sm:p-7">
+        <div className="grid max-w-4xl gap-4 sm:grid-cols-2">
           <Label className="form-field">
             {t("organization")}
             <OptionSelect
@@ -179,6 +181,6 @@ export function ApplicationContextShell() {
           </Label>
         </div>
       </div>
-    </section>
+    </PageContainer>
   );
 }

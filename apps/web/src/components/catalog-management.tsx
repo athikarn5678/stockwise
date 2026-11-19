@@ -1,13 +1,21 @@
 "use client";
 import type { TranslationKey } from "@/i18n/en";
 import { Badge } from "@/components/ui/badge";
+import { useAutoFetchFilteredPage } from "@/hooks/use-auto-fetch-filtered-page";
 import { useLanguage } from "@/providers/language-provider";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { OptionSelect } from "@/components/option-select";
+import {
+  ListToolbar,
+  PageContainer,
+  PageHeader,
+  PageTabs,
+  StatusFilter,
+  type StatusFilterValue,
+} from "@/components/page-layout";
 
 import {
   type InfiniteData,
@@ -278,7 +286,10 @@ function CatalogContentLoaded({
 
   const queryClient = useQueryClient();
   const [view, setView] = useState<CatalogView>("products");
-  const [includeInactive, setIncludeInactive] = useState(false);
+  // The Catalog API only exposes `includeInactive`; the Inactive-only view is
+  // therefore filtered on the already loaded pages below.
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>("ACTIVE");
+  const includeInactive = statusFilter !== "ACTIVE";
   const [categorySearch, setCategorySearch] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -351,32 +362,56 @@ function CatalogContentLoaded({
     }
   };
 
-  const categories =
+  const allCategories =
     categoryQuery.data?.pages.flatMap((page) => page.data.categories) ?? [];
-  const products =
+  const allProducts =
     productQuery.data?.pages.flatMap((page) => page.data.products) ?? [];
+  const categories =
+    statusFilter === "INACTIVE"
+      ? allCategories.filter((category) => category.status === "INACTIVE")
+      : allCategories;
+  const products =
+    statusFilter === "INACTIVE"
+      ? allProducts.filter((product) => product.status === "INACTIVE")
+      : allProducts;
   const categoryNames = new Map(
-    [...(categoryOptionsQuery.data?.data.categories ?? []), ...categories].map(
-      (category) => [category.id, category.name],
-    ),
+    [
+      ...(categoryOptionsQuery.data?.data.categories ?? []),
+      ...allCategories,
+    ].map((category) => [category.id, category.name]),
   );
+  // An Inactive-only view can load a page of active rows while the cursor
+  // still has more, so keep fetching until a page matches or the list ends.
+  useAutoFetchFilteredPage({
+    enabled: statusFilter === "INACTIVE" && products.length === 0,
+    fetchNextPage: () => void productQuery.fetchNextPage(),
+    hasNextPage: productQuery.hasNextPage,
+    isError: productQuery.isError,
+    isFetching: productQuery.isFetching,
+    loadedPageCount: productQuery.data?.pages.length ?? 0,
+  });
+  useAutoFetchFilteredPage({
+    enabled: statusFilter === "INACTIVE" && categories.length === 0,
+    fetchNextPage: () => void categoryQuery.fetchNextPage(),
+    hasNextPage: categoryQuery.hasNextPage,
+    isError: categoryQuery.isError,
+    isFetching: categoryQuery.isFetching,
+    loadedPageCount: categoryQuery.data?.pages.length ?? 0,
+  });
 
   return (
-    <section className="w-full space-y-8">
-      <header className="space-y-2">
+    <PageContainer>
+      <PageHeader
+        description={`${t("uiManageProductsAndCategoriesFor")} ${organization.name}.`}
+        title={t("marketingFeatureCatalog")}
+      >
         <Link
           className="text-sm underline"
           href={applicationContextUrl(organization.id, branch?.id ?? null)}
         >
           {t("backToWorkspace")}
         </Link>
-        <h1 className="text-2xl font-semibold">
-          {t("marketingFeatureCatalog")}
-        </h1>
-        <p className="text-muted-foreground">
-          {t("uiManageProductsAndCategoriesFor")} {organization.name}.
-        </p>
-      </header>
+      </PageHeader>
 
       {notice ? (
         <div
@@ -397,52 +432,18 @@ function CatalogContentLoaded({
         </div>
       ) : null}
 
-      <div
-        aria-label={t("uiCatalogViews")}
-        className="flex gap-2 border-b"
-        role="tablist"
-      >
-        <Button
-          variant={view === "products" ? "secondary" : "outline"}
-          aria-controls="products-panel"
-          aria-selected={view === "products"}
-          className=""
-          onClick={() => setView("products")}
-          role="tab"
-          type="button"
-        >
-          {t("uiProducts")}
-        </Button>
-        <Button
-          variant={view === "categories" ? "secondary" : "outline"}
-          aria-controls="categories-panel"
-          aria-selected={view === "categories"}
-          className=""
-          onClick={() => setView("categories")}
-          role="tab"
-          type="button"
-        >
-          {t("uiCategories")}
-        </Button>
-      </div>
-
-      {canIncludeInactive ? (
-        <Label className="flex min-h-11 items-center gap-3 text-sm font-medium">
-          <Checkbox
-            className=""
-            checked={includeInactive}
-            onCheckedChange={(checked) => setIncludeInactive(checked)}
-          />
-          {t("uiIncludeInactiveCatalogRecords")}
-        </Label>
-      ) : null}
+      <PageTabs
+        ariaLabel={t("uiCatalogViews")}
+        onValueChange={setView}
+        tabs={[
+          { id: "products", label: t("uiProducts") },
+          { id: "categories", label: t("uiCategories") },
+        ]}
+        value={view}
+      />
 
       {view === "products" ? (
-        <section
-          aria-labelledby="products-heading"
-          id="products-panel"
-          role="tabpanel"
-        >
+        <section aria-labelledby="products-heading" id="products-panel">
           <h2 className="sr-only" id="products-heading">
             {t("uiProducts")}
           </h2>
@@ -457,9 +458,13 @@ function CatalogContentLoaded({
           <ProductListControls
             categories={categoryOptionsQuery.data?.data.categories ?? []}
             categoryFilter={categoryFilter}
+            canFilterStatus={canIncludeInactive}
             onCategoryFilterChange={setCategoryFilter}
+            onRefresh={refreshCatalog}
             onSearch={setProductSearch}
+            onStatusFilterChange={setStatusFilter}
             search={productSearch}
+            statusFilter={statusFilter}
           />
           <CatalogListState
             emptyMessage={t("uiNoProductsMatchThisCatalogView")}
@@ -488,19 +493,20 @@ function CatalogContentLoaded({
                 />
               ))}
             </div>
+          </CatalogListState>
+          {productQuery.error === null ? (
             <LoadMore
               hasNextPage={productQuery.hasNextPage}
               isPending={productQuery.isFetchingNextPage}
               onLoadMore={() => void productQuery.fetchNextPage()}
             />
-          </CatalogListState>
+          ) : null}
         </section>
       ) : (
         <section
           aria-labelledby="categories-heading"
           className="space-y-5"
           id="categories-panel"
-          role="tabpanel"
         >
           <h2 className="sr-only" id="categories-heading">
             {t("uiCategories")}
@@ -512,7 +518,22 @@ function CatalogContentLoaded({
               onSaved={refreshCatalog}
             />
           ) : null}
-          <SearchControl onSearch={setCategorySearch} search={categorySearch} />
+          <ListToolbar
+            onRefresh={() => void refreshCatalog()}
+            search={{
+              label: t("uiSearchCatalog"),
+              onChange: setCategorySearch,
+              value: categorySearch,
+            }}
+            status={
+              canIncludeInactive ? (
+                <StatusFilter
+                  onValueChange={setStatusFilter}
+                  value={statusFilter}
+                />
+              ) : undefined
+            }
+          />
           <CatalogListState
             emptyMessage={t("uiNoCategoriesMatchThisCatalogView")}
             error={categoryQuery.error}
@@ -533,15 +554,17 @@ function CatalogContentLoaded({
                 />
               ))}
             </div>
+          </CatalogListState>
+          {categoryQuery.error === null ? (
             <LoadMore
               hasNextPage={categoryQuery.hasNextPage}
               isPending={categoryQuery.isFetchingNextPage}
               onLoadMore={() => void categoryQuery.fetchNextPage()}
             />
-          </CatalogListState>
+          ) : null}
         </section>
       )}
-    </section>
+    </PageContainer>
   );
 }
 
@@ -606,48 +629,48 @@ function LoadMore({
   );
 }
 
-function SearchControl({
-  onSearch,
-  search,
-}: {
-  onSearch: (value: string) => void;
-  search: string;
-}) {
-  const { t } = useLanguage();
-
-  return (
-    <form
-      className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end [&>label]:flex-1"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSearch(String(new FormData(event.currentTarget).get("q") ?? ""));
-      }}
-    >
-      <Field defaultValue={search} label={t("uiSearchCatalog")} name="q" />
-      <Button type="submit">{t("uiSearch")}</Button>
-    </form>
-  );
-}
-
 function ProductListControls({
+  canFilterStatus,
   categories,
   categoryFilter,
   onCategoryFilterChange,
+  onRefresh,
   onSearch,
+  onStatusFilterChange,
   search,
+  statusFilter,
 }: {
+  canFilterStatus: boolean;
   categories: CatalogCategory[];
   categoryFilter: string;
   onCategoryFilterChange: (value: string) => void;
+  onRefresh: () => Promise<void>;
   onSearch: (value: string) => void;
+  onStatusFilterChange: (value: StatusFilterValue) => void;
   search: string;
+  statusFilter: StatusFilterValue;
 }) {
   const { t } = useLanguage();
 
   const categorySelectId = useId();
   return (
     <div className="my-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_16rem] md:items-end">
-      <SearchControl onSearch={onSearch} search={search} />
+      <ListToolbar
+        onRefresh={() => void onRefresh()}
+        search={{
+          label: t("uiSearchCatalog"),
+          onChange: onSearch,
+          value: search,
+        }}
+        status={
+          canFilterStatus ? (
+            <StatusFilter
+              onValueChange={onStatusFilterChange}
+              value={statusFilter}
+            />
+          ) : undefined
+        }
+      />
       <Label className="form-field" htmlFor={categorySelectId}>
         {t("uiCategoryFilter")}
         <OptionSelect

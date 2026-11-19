@@ -676,7 +676,7 @@ function AnalyticsContent({
         }}
       >
         <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-[12rem_12rem_10rem_minmax(0,1fr)]">
-          <Label className="form-field">
+          <Label className="form-field flex-col items-stretch gap-1 leading-snug">
             {t("uiFromInclusive")}
             <DateInput
               required
@@ -687,7 +687,7 @@ function AnalyticsContent({
               className="form-control--date"
             />
           </Label>
-          <Label className="form-field">
+          <Label className="form-field flex-col items-stretch gap-1 leading-snug">
             {t("uiToExclusive")}
             <DateInput
               required
@@ -698,7 +698,7 @@ function AnalyticsContent({
               className="form-control--date"
             />
           </Label>
-          <Label className="form-field">
+          <Label className="form-field flex-col items-stretch gap-1 leading-snug">
             {t("uiGranularity")}
             <OptionSelect
               className="w-full "
@@ -717,7 +717,7 @@ function AnalyticsContent({
               value={draftPeriod.granularity}
             />
           </Label>
-          <Label className="form-field">
+          <Label className="form-field flex-col items-stretch gap-1 leading-snug">
             {t("uiScope")}
             <OptionSelect
               aria-label={t("uiAnalyticsScope")}

@@ -457,7 +457,7 @@ function PurchaseOrderContent({
             value={supplierId}
           />
         </Label>
-        <Label className="form-field">
+        <Label className="form-field flex-col items-stretch gap-1 leading-snug">
           {t("uiOrderDateFrom")}
           <DateInput
             className="form-control--date"
@@ -465,7 +465,7 @@ function PurchaseOrderContent({
             value={orderDateFrom}
           />
         </Label>
-        <Label className="form-field">
+        <Label className="form-field flex-col items-stretch gap-1 leading-snug">
           {t("uiOrderDateTo")}
           <DateInput
             className="form-control--date"
@@ -705,7 +705,10 @@ function PurchaseOrderForm({
             value={input.supplierId}
           />
         </Label>
-        <Label className="form-field" htmlFor={orderDateId}>
+        <Label
+          className="form-field flex-col items-stretch gap-1 leading-snug"
+          htmlFor={orderDateId}
+        >
           {t("uiOrderDate")}
           <DateInput
             aria-describedby={describedBy}
@@ -721,7 +724,10 @@ function PurchaseOrderForm({
             value={input.orderDate}
           />
         </Label>
-        <Label className="form-field" htmlFor={expectedDateId}>
+        <Label
+          className="form-field flex-col items-stretch gap-1 leading-snug"
+          htmlFor={expectedDateId}
+        >
           {t("uiExpectedDateOptional")}
           <DateInput
             aria-describedby={describedBy}
@@ -1251,7 +1257,7 @@ function ReceivingPanel({
             }}
           />
         </Label>
-        <Label className="form-field">
+        <Label className="form-field flex-col items-stretch gap-1 leading-snug">
           {t("uiSupplierTaxDocumentDate")}
           <DateInput
             aria-describedby={

@@ -23,6 +23,23 @@ function completion(model: string, text: string) {
   );
 }
 
+function completionWith(finishReason: string, text: string) {
+  return new Response(
+    JSON.stringify({
+      object: "chat.completion",
+      model: "deepseek-v4.1-flash",
+      choices: [
+        {
+          index: 0,
+          finish_reason: finishReason,
+          message: { role: "assistant", content: text },
+        },
+      ],
+    }),
+    { status: 200 },
+  );
+}
+
 function client(response: () => Response) {
   const fetchImplementation = vi.fn<typeof fetch>(async () => response());
   return {
@@ -54,7 +71,7 @@ describe("OpenCode Go provider", () => {
     );
     expect(requestBody(fetchImplementation)).toEqual({
       messages: [{ content: input.text, role: "user" }],
-      max_tokens: 4000,
+      max_tokens: 8000,
       model: "deepseek-v4.1-flash",
     });
     expect(result.attempts[0]).toMatchObject({
@@ -82,6 +99,36 @@ describe("OpenCode Go provider", () => {
     );
     expect(await provider.generate(input)).toMatchObject({ ok: false });
     expect(fetchImplementation).toHaveBeenCalledTimes(1);
+  });
+
+  it("records a content-free reason for a truncated, empty or oversized answer", async () => {
+    const cases: [string, Response, string][] = [
+      ["length", completionWith("length", "partial text"), "finish"],
+      ["empty", completionWith("stop", ""), "empty"],
+      ["size", completionWith("stop", "a".repeat(32 * 1024 + 1)), "size"],
+      ["parse", new Response("not json", { status: 200 }), "parse"],
+      ["schema", new Response("{}", { status: 200 }), "schema"],
+    ];
+    for (const [, response, check] of cases) {
+      const { provider } = client(() => response);
+      const result = await provider.generate(input);
+      expect(result).toMatchObject({
+        failureCategory: "INVALID_RESPONSE",
+        ok: false,
+      });
+      const attempt = result.attempts.at(-1);
+      expect(attempt?.failureDetail?.check).toBe(check);
+      // Only lengths and the finish reason: never the text itself.
+      expect(JSON.stringify(attempt)).not.toContain("partial text");
+    }
+    const truncated = await client(() =>
+      completionWith("length", "partial text"),
+    ).provider.generate(input);
+    expect(truncated.attempts.at(-1)?.failureDetail).toEqual({
+      check: "finish",
+      contentBytes: 12,
+      finishReason: "length",
+    });
   });
 
   it("keeps the OpenRouter default request byte-identical", async () => {
@@ -119,7 +166,7 @@ describe("OpenCode Go provider", () => {
   });
 
   it("rejects text beyond the 12 KB analysis limit", async () => {
-    const tooLong = "a".repeat(12 * 1024 + 1);
+    const tooLong = "a".repeat(32 * 1024 + 1);
     const result = await client(() =>
       completion("deepseek-v4.1-flash", tooLong),
     ).provider.generate(input);

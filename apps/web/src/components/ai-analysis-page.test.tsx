@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -31,6 +32,7 @@ const mocks = vi.hoisted(() => {
     constructor(
       readonly status: number,
       readonly code: string | null = null,
+      readonly retryAfterSeconds: number | null = null,
     ) {
       super("AI analysis request failed");
     }
@@ -256,7 +258,7 @@ describe("AI analysis viewer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Thai" }));
 
     expect(
-      screen.getByText("The Thai text is missing for this run."),
+      screen.getByText("This language could not be generated."),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry Thai" }));
     expect(await screen.findByText("เนื้อหาภาพรวม")).toBeTruthy();
@@ -305,6 +307,79 @@ describe("AI analysis viewer", () => {
       (screen.getByRole("button", { name: /older-model/ }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+
+  it("offers Retry for the missing language even while the other language is shown", async () => {
+    mocks.createRun.mockResolvedValue(
+      run({
+        languages: {
+          en: [{ body: "English overview body", heading: "Overview" }],
+          th: null,
+        },
+        missing: ["th"],
+      }),
+    );
+    renderContent();
+    fireEvent.click(screen.getByRole("button", { name: "Generate analysis" }));
+    expect(await screen.findByText("English overview body")).toBeTruthy();
+    // No blanket provider error: the run exists, one language is missing.
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(
+      screen.getByText("This language could not be generated."),
+    ).toBeTruthy();
+    mocks.retryRun.mockResolvedValue(createdRun);
+    fireEvent.click(screen.getByRole("button", { name: "Retry Thai" }));
+    await waitFor(() =>
+      expect(mocks.retryRun).toHaveBeenCalledWith(
+        ORG,
+        { scope: "organization" },
+        RUN_ID,
+        "th",
+      ),
+    );
+  });
+
+  it("shows a spinner while pending and re-enables Generate after the 429 countdown", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mocks.createRun.mockRejectedValueOnce(
+        new mocks.AiAnalysisApiError(429, "RATE_LIMITED", 3),
+      );
+      renderContent();
+      const generate = screen.getByRole("button", {
+        name: "Generate analysis",
+      });
+      expect((generate as HTMLButtonElement).disabled).toBe(false);
+      fireEvent.click(generate);
+      expect(
+        await screen.findByRole("button", { name: /Try again in 3s/ }),
+      ).toBeTruthy();
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /Try again in/,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_100);
+      });
+      const again = screen.getByRole("button", { name: "Generate analysis" });
+      expect((again as HTMLButtonElement).disabled).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("disables Generate with a spinner only while the run request is pending", async () => {
+    mocks.createRun.mockReturnValue(new Promise(() => undefined));
+    renderContent();
+    fireEvent.click(screen.getByRole("button", { name: "Generate analysis" }));
+    const pending = await screen.findByRole("button", {
+      name: "Analyzing — this can take about half a minute…",
+    });
+    expect((pending as HTMLButtonElement).disabled).toBe(true);
+    expect(pending.querySelector("svg.animate-spin")).not.toBeNull();
   });
 
   it("explains the one-per-minute limit", async () => {

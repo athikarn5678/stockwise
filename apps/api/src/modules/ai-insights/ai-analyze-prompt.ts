@@ -20,7 +20,7 @@ const rulesTail = `Rules:
 - State a value as unavailable when it is missing; a supplied zero is zero. The JSON may mark cost data unavailable.
 - Do not claim forecasts, reorder quantities, suppliers, or purchasing facts: none are supplied. Stock facts come only from the lowStock and outOfStock lists.
 - No JSON, no HTML, no code fences, no tables, no preamble outside the five sections.
-- Be concise: at most about 250 words in total.
+- Be concise: each section about 80 words (about 400 Thai characters), at most about 250 words in total.
 Snapshot data:
 `;
 

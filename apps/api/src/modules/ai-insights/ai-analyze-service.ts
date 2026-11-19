@@ -1,4 +1,8 @@
-import type { AiProvider, AiProviderFailureCategory } from "./ai-provider.ts";
+import type {
+  AiProvider,
+  AiProviderFailureCategory,
+  AiProviderFailureDetail,
+} from "./ai-provider.ts";
 import {
   AiAnalyzeOutputError,
   buildMockAiAnalyzeOutput,
@@ -58,6 +62,7 @@ type LanguageOutcome =
   | Readonly<{ kind: "rejected"; language: AiAnalyzeLanguage }>
   | Readonly<{
       category: AiProviderFailureCategory;
+      detail?: AiProviderFailureDetail | undefined;
       kind: "provider_failed";
       language: AiAnalyzeLanguage;
     }>;
@@ -73,6 +78,8 @@ export function createAiAnalyzeService(input: {
   onLanguageFailure?: (event: {
     attempt: 1 | 2;
     category: string;
+    /** finish_reason, content byte length and which check failed; no content. */
+    detail?: AiProviderFailureDetail | undefined;
     language: AiAnalyzeLanguage;
   }) => void;
   provider?: AiProvider;
@@ -201,6 +208,7 @@ export function createAiAnalyzeService(input: {
       if (!generated.ok)
         return {
           category: generated.failureCategory,
+          detail: generated.attempts.at(-1)?.failureDetail,
           kind: "provider_failed",
           language,
         };
@@ -222,6 +230,7 @@ export function createAiAnalyzeService(input: {
           attempt: 1,
           category:
             first.kind === "provider_failed" ? first.category : "REJECTED",
+          ...(first.kind === "provider_failed" ? { detail: first.detail } : {}),
           language,
         });
         // Retry a rejected draft or a transient provider error, and only while
@@ -239,6 +248,9 @@ export function createAiAnalyzeService(input: {
             attempt: 2,
             category:
               second.kind === "provider_failed" ? second.category : "REJECTED",
+            ...(second.kind === "provider_failed"
+              ? { detail: second.detail }
+              : {}),
             language,
           });
         return second;

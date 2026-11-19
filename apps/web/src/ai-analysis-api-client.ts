@@ -49,6 +49,8 @@ export class AiAnalysisApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string | null = null,
+    /** Seconds from the Retry-After header of a 429, when present. */
+    readonly retryAfterSeconds: number | null = null,
   ) {
     super("AI analysis request failed");
   }
@@ -85,9 +87,18 @@ async function send(path: string, init: RequestInit): Promise<Response> {
   }
 }
 
+function retryAfter(response: Response): number | null {
+  const value = Number(response.headers.get("retry-after"));
+  return Number.isFinite(value) && value > 0 ? Math.ceil(value) : null;
+}
+
 async function readRun(response: Response): Promise<AiAnalysisRun> {
   if (!response.ok)
-    throw new AiAnalysisApiError(response.status, await errorCode(response));
+    throw new AiAnalysisApiError(
+      response.status,
+      await errorCode(response),
+      retryAfter(response),
+    );
   try {
     return runResponseSchema.parse(await readPrivateJson(response)).data;
   } catch {

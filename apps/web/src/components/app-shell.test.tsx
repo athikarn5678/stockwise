@@ -259,12 +259,13 @@ describe("web application shell", () => {
         .getAttribute("href"),
     ).toBe(`/app/sales?organizationId=${ORG}&branchId=${BRANCH}`);
     expect(
-      within(nav)
-        .getByRole("link", { name: "Organization settings" })
-        .getAttribute("href"),
-    ).toBe(
-      `/app/organization-settings?organizationId=${ORG}&branchId=${BRANCH}`,
-    );
+      within(nav).getByRole("link", { name: "Settings" }).getAttribute("href"),
+    ).toBe(`/app/settings?organizationId=${ORG}&branchId=${BRANCH}`);
+    // Profile and organization settings are one Settings entry now.
+    expect(within(nav).queryByRole("link", { name: "My profile" })).toBeNull();
+    expect(
+      within(nav).queryByRole("link", { name: "Organization settings" }),
+    ).toBeNull();
     for (const logo of screen.getAllByRole("link", { name: "StockWise" })) {
       expect(logo.getAttribute("href")).toBe(
         `/app?organizationId=${ORG}&branchId=${BRANCH}`,
@@ -525,9 +526,8 @@ describe("web application shell", () => {
       expect(!!screen.queryByRole("link", { name: "Analytics" })).toBe(
         analytics,
       );
-      expect(!!screen.queryByRole("link", { name: "AI analysis" })).toBe(
-        role === "OWNER" || role === "ADMIN" || role === "BRANCH_MANAGER",
-      );
+      // AI analysis is a tab inside Analytics, not a sidebar entry.
+      expect(screen.queryByRole("link", { name: "AI analysis" })).toBeNull();
       expect(!!screen.queryByRole("link", { name: "Suppliers" })).toBe(
         suppliers,
       );
@@ -537,9 +537,10 @@ describe("web application shell", () => {
       expect(!!screen.queryByRole("link", { name: "Catalog" })).toBe(
         role !== "INVENTORY_STAFF",
       );
+      expect(screen.getByRole("link", { name: "Settings" })).toBeTruthy();
       expect(
-        !!screen.queryByRole("link", { name: "Organization settings" }),
-      ).toBe(manage);
+        screen.queryByRole("link", { name: "Organization settings" }),
+      ).toBeNull();
     },
   );
 
@@ -560,11 +561,10 @@ describe("web application shell", () => {
     ).toBeNull();
   });
 
-  it("hides AI analysis from a branch manager without an assigned branch", () => {
+  it("hides Analytics from a branch manager without an assigned branch", () => {
     const context = accessContext("BRANCH_MANAGER");
     context.organizations[0]!.branches = [];
     renderShell(context);
-    expect(screen.queryByRole("link", { name: "AI analysis" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Analytics" })).toBeNull();
   });
 

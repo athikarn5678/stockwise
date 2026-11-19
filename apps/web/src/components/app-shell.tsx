@@ -27,11 +27,9 @@ import {
   Package,
   Receipt,
   ShoppingCart,
-  Sparkles,
   Store,
   Users,
   Truck,
-  UserRound,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -386,7 +384,7 @@ function WorkspaceShell({ children }: AppShellProps) {
     organization?.role === "OWNER" || organization?.role === "ADMIN";
   const destinations = [
     { label: t("home"), path: "/app", visible: true },
-    { label: t("profileTitle"), path: "/app/profile", visible: true },
+    { label: t("settingsTitle"), path: "/app/settings", visible: true },
   ];
   if (organization) {
     destinations.push(
@@ -405,14 +403,6 @@ function WorkspaceShell({ children }: AppShellProps) {
         label: t("analytics"),
         path: "/app/analytics",
         visible: organization.role !== "CASHIER" && (canManage || !!branch),
-      },
-      {
-        label: t("aiAnalysis"),
-        path: "/app/ai-analysis",
-        visible:
-          canManage ||
-          (organization.role === "BRANCH_MANAGER" &&
-            organization.branches.length > 0),
       },
       {
         label: t("sales"),
@@ -436,11 +426,6 @@ function WorkspaceShell({ children }: AppShellProps) {
       },
       { label: t("branches"), path: "/app/branches", visible: canManage },
       { label: t("members"), path: "/app/members", visible: canManage },
-      {
-        label: t("organizationSettingsTitle"),
-        path: "/app/organization-settings",
-        visible: canManage,
-      },
     );
   }
 
@@ -476,7 +461,8 @@ function WorkspaceShell({ children }: AppShellProps) {
         <Fragment
           key={
             context &&
-            (pathname === "/app/profile" ||
+            (pathname === "/app/settings" ||
+              pathname === "/app/profile" ||
               pathname === "/app/organization-settings")
               ? accountDraftAuthority(context)
               : "content"
@@ -562,14 +548,12 @@ const destinationIcons: Record<string, LucideIcon> = {
   "/app/inventory": Boxes,
   "/app/pos": ShoppingCart,
   "/app/analytics": BarChart3,
-  "/app/ai-analysis": Sparkles,
   "/app/sales": Receipt,
   "/app/suppliers": Truck,
   "/app/purchase-orders": ClipboardList,
   "/app/branches": Store,
   "/app/members": Users,
-  "/app/profile": UserRound,
-  "/app/organization-settings": Settings,
+  "/app/settings": Settings,
 };
 
 function WorkspaceHeader({ title }: { title: string }) {

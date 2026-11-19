@@ -3484,7 +3484,7 @@ Before apply the operator takes and verifies a database export. `retire` (bound 
 
 - **Date:** 2026-11-18
 - **Status:** Proposed. Full record: `docs/decisions/0049-ai-analysis-page-persisted-bilingual.md`.
-- **Type:** AI and schema amendment. Amends `ADR-046`: `/app/ai-analysis` page, Thai and English generated together, persisted in `ai_analysis_runs`, history and per-language retry; the on-demand endpoint moves to `/ai-analysis/runs`.
+- **Type:** AI and schema amendment. Amends `ADR-046`: AI analysis (now the Analytics **AI analysis** tab; `/app/ai-analysis` redirects there), Thai and English generated together, persisted in `ai_analysis_runs`, history and per-language retry; the on-demand endpoint moves to `/ai-analysis/runs`.
 
 ## ADR-050 — Subscription access states, central 402 guard and renewal
 

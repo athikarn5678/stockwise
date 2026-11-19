@@ -658,8 +658,9 @@ describe("stored AI insight section", () => {
     expect(screen.getByRole("link", { name: "analytics views" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Analyze" })).toBeNull();
     const link = screen.getByRole("link", { name: "AI analysis" });
+    // Standalone (no in-page switch): a direct link to the Analytics tab.
     expect(link.getAttribute("href")).toBe(
-      `/app/ai-analysis?organizationId=${ORG}&branchId=${A}`,
+      `/app/analytics?view=ai-analysis&organizationId=${ORG}&branchId=${A}`,
     );
     expect(requests.every(({ method }) => method === "GET")).toBe(true);
   });

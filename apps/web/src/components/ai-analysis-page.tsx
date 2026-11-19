@@ -9,7 +9,7 @@ import {
 } from "@tanstack/react-query";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   AiAnalysisApiError,
@@ -39,6 +39,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { TranslationKey } from "@/i18n/en";
 import { useLanguage } from "@/providers/language-provider";
 
+const POLL_INTERVAL_MILLISECONDS = 10_000;
+const POLL_TICKS = 6;
 const DAY_OPTIONS = [7, 14, 30] as const satisfies readonly AiAnalysisDays[];
 
 const LANGUAGE_LABELS: Record<AiAnalysisLanguage, TranslationKey> = {
@@ -64,6 +66,13 @@ function createdTime(run: AiAnalysisRun, language: AiAnalysisLanguage): string {
       timeZone: run.period.timezone,
     },
   ).format(new Date(run.createdAt));
+}
+
+function isTimeout(error: unknown): boolean {
+  return (
+    error instanceof AiAnalysisApiError &&
+    (error.status === 504 || error.status === 0)
+  );
 }
 
 function errorKey(error: unknown): TranslationKey {
@@ -158,8 +167,35 @@ export function AiAnalysisContent({
         : current;
     });
   };
+  // A gateway timeout (504) or a lost connection does not mean the run failed:
+  // the API keeps going and stores the result, so poll the history for a while.
+  const [waiting, setWaiting] = useState<{
+    baselineId: string | null;
+    days: AiAnalysisDays;
+    scopeKey: string;
+    startedAt: number;
+  } | null>(null);
+  const [waitGaveUp, setWaitGaveUp] = useState(false);
+  const startedAtRef = useRef(0);
+  const scopeKey = `${organization.id}:${scope.scope === "branch" ? scope.branchId : "organization"}`;
   const createMutation = useMutation({
     mutationFn: () => createRun(organization.id, scope, days),
+    onMutate: () => {
+      startedAtRef.current = Date.now();
+      setWaitGaveUp(false);
+    },
+    onError: (error) => {
+      if (
+        error instanceof AiAnalysisApiError &&
+        (error.status === 504 || error.status === 0)
+      )
+        setWaiting({
+          baselineId: runs[0]?.id ?? null,
+          days,
+          scopeKey,
+          startedAt: startedAtRef.current,
+        });
+    },
     onSuccess: (run) => {
       showRun(run);
       void queryClient.invalidateQueries({
@@ -178,7 +214,8 @@ export function AiAnalysisContent({
     },
   });
   // A late response must not land under a different scope selector.
-  const busy = createMutation.isPending || retryMutation.isPending;
+  const busy =
+    createMutation.isPending || retryMutation.isPending || waiting !== null;
   // 429: count the Retry-After seconds down, then re-enable Generate.
   const rateError = [createMutation.error, retryMutation.error].find(
     (error): error is AiAnalysisApiError =>
@@ -203,6 +240,47 @@ export function AiAnalysisContent({
     }, 1000);
     return () => clearInterval(timer);
   }, [rateError, rateWait]);
+  // A run counts as ours only when it is new, was created after the click
+  // (5 s clock slack), has the same day window and belongs to the same scope.
+  const isOurs = (run: AiAnalysisRun) =>
+    waiting !== null &&
+    run.id !== waiting.baselineId &&
+    run.days === waiting.days &&
+    Date.parse(run.createdAt) >= waiting.startedAt - 5_000;
+  useEffect(() => {
+    if (waiting === null) return;
+    if (waiting.scopeKey !== scopeKey) {
+      setWaiting(null);
+      return;
+    }
+    let cancelled = false;
+    let ticks = 0;
+    const timer = setInterval(() => {
+      ticks += 1;
+      void (async () => {
+        const result = await historyQuery.refetch();
+        if (cancelled) return;
+        const found = result.data?.pages
+          .flatMap((page) => page.data)
+          .find(isOurs);
+        if (found !== undefined) {
+          clearInterval(timer);
+          showRun(found);
+          setWaiting(null);
+        } else if (ticks >= POLL_TICKS) {
+          clearInterval(timer);
+          setWaiting(null);
+          setWaitGaveUp(true);
+        }
+      })();
+    }, POLL_INTERVAL_MILLISECONDS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+    // The query object changes identity every render; only `waiting` and the
+    // scope restart the poll.
+  }, [waiting, scopeKey]);
   const retryError = retryMutation.isError ? retryMutation.error : null;
   const missingLanguage =
     viewer !== null && viewer.missing.length === 1
@@ -285,7 +363,12 @@ export function AiAnalysisContent({
 
         <div className="flex flex-wrap items-center gap-3">
           <Button
-            disabled={!enabled || createMutation.isPending || cooldown > 0}
+            disabled={
+              !enabled ||
+              createMutation.isPending ||
+              waiting !== null ||
+              cooldown > 0
+            }
             onClick={() => createMutation.mutate()}
             type="button"
           >
@@ -327,7 +410,14 @@ export function AiAnalysisContent({
           </div>
         ) : null}
         {createMutation.isPending ? <AnalysisSkeleton /> : null}
-        {createMutation.isError ? (
+        {waiting !== null ? (
+          <p aria-live="polite" role="status">
+            {t("aiAnalysisStillGenerating")}
+          </p>
+        ) : null}
+        {createMutation.isError &&
+        waiting === null &&
+        (waitGaveUp || !isTimeout(createMutation.error)) ? (
           <p className="text-sm form-message" role="alert">
             {t(errorKey(createMutation.error))}
           </p>

@@ -62,6 +62,7 @@ const completionSchema = z.object({
 function bodyFor(
   text: string,
   options: Readonly<{
+    extraBody?: Readonly<Record<string, unknown>>;
     includeUsage: boolean;
     maxTokens: number;
     model: string;
@@ -74,6 +75,7 @@ function bodyFor(
     // `usage.include` is an OpenRouter extension; OpenAI-compatible endpoints
     // receive the plain request body.
     ...(options.includeUsage ? { usage: { include: true } } : {}),
+    ...options.extraBody,
   });
 }
 
@@ -144,6 +146,8 @@ export type ChatCompletionProviderOptions = Readonly<{
   apiKey?: string | undefined;
   endpoint?: string;
   fetchImplementation?: typeof fetch;
+  /** Extra top-level request fields (provider specific). */
+  extraBody?: Readonly<Record<string, unknown>>;
   maxAttempts?: number;
   maxTokens?: number;
   requestHeaders?: () => Record<string, string>;
@@ -157,6 +161,7 @@ export function createOpenRouterProvider({
   apiKey,
   endpoint = ENDPOINT,
   fetchImplementation = fetch,
+  extraBody,
   maxAttempts = 3,
   maxTokens = MAX_TOKENS,
   model = MODEL,
@@ -182,7 +187,12 @@ export function createOpenRouterProvider({
       if (typeof input.text !== "string" || input.text.trim().length === 0) {
         return { ok: false, failureCategory: "INVALID_REQUEST", attempts };
       }
-      const body = bodyFor(input.text, { includeUsage, maxTokens, model });
+      const body = bodyFor(input.text, {
+        ...(extraBody === undefined ? {} : { extraBody }),
+        includeUsage,
+        maxTokens,
+        model,
+      });
       if (Buffer.byteLength(body, "utf8") > REQUEST_LIMIT_BYTES) {
         return { ok: false, failureCategory: "INVALID_REQUEST", attempts };
       }

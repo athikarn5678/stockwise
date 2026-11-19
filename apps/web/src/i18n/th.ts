@@ -615,6 +615,8 @@ export const th: Dictionary = {
   aiAnalysisLanguageEn: "อังกฤษ",
   aiAnalysisModel: "โมเดล: {model}",
   aiAnalysisMissing: "สร้างภาษานี้ไม่สำเร็จ",
+  aiAnalysisStillGenerating:
+    "ยังกำลังสร้างอยู่ ผลลัพธ์จะแสดงในประวัติในอีกสักครู่",
   aiAnalysisCooldown: "ลองใหม่ได้ใน {seconds} วินาที",
   aiAnalysisRetry: "สร้างภาษา{language}ใหม่",
   aiAnalysisRetrying: "กำลังสร้างใหม่…",

@@ -584,6 +584,39 @@ describe("AI analysis service", () => {
     expect(generate).toHaveBeenCalledTimes(2);
   });
 
+  it("retries only when the first attempt ended within 20 s (fake clock)", async () => {
+    for (const [elapsed, expectedCalls] of [
+      [19_000, 3],
+      [21_000, 2],
+    ] as const) {
+      const { store } = fakeStore();
+      let advanceClock: (milliseconds: number) => void = () => undefined;
+      let thaiCalls = 0;
+      const generate = vi.fn<AiProvider["generate"]>(async ({ text }) => {
+        if (languageOf(text) === "en") return success(englishText);
+        thaiCalls += 1;
+        if (thaiCalls === 1) {
+          advanceClock(elapsed);
+          return {
+            attempts: [],
+            failureCategory: "INVALID_RESPONSE",
+            ok: false,
+          };
+        }
+        return success(thaiText);
+      });
+      const { advance, analyzeService: analysis } = service({
+        provider: { generate },
+        store,
+      });
+      advanceClock = advance;
+      const result = await analysis.analyze(analyzeRequest);
+      if (result.kind !== "ok") throw new Error("expected success");
+      expect(generate).toHaveBeenCalledTimes(expectedCalls);
+      expect(result.run.missing).toEqual(expectedCalls === 3 ? [] : ["th"]);
+    }
+  });
+
   it("retries a manual single-language retry once, within one limiter use", async () => {
     let calls = 0;
     const generate = vi.fn<AiProvider["generate"]>(async () => {
@@ -612,6 +645,58 @@ describe("AI analysis service", () => {
     await expect(analysis.analyze(analyzeRequest)).resolves.toMatchObject({
       kind: "rate_limited",
     });
+  });
+
+  it("counts snapshot time toward the 20 s retry deadline", async () => {
+    const { store } = fakeStore();
+    const generate = vi.fn<AiProvider["generate"]>(async ({ text }) =>
+      languageOf(text) === "en"
+        ? success(englishText)
+        : { attempts: [], failureCategory: "INVALID_RESPONSE", ok: false },
+    );
+    const {
+      advance,
+      analyzeService: analysis,
+      buildSnapshot,
+    } = service({
+      provider: { generate },
+      store,
+    });
+    // The snapshot alone takes 21 s: the failed Thai attempt is not retried.
+    buildSnapshot.mockImplementation(async () => {
+      advance(21_000);
+      return { kind: "ok" as const, snapshot };
+    });
+    await analysis.analyze(analyzeRequest);
+    expect(generate).toHaveBeenCalledTimes(2);
+  });
+
+  it("applies the same deadline and no-timeout-retry rule to a manual retry", async () => {
+    for (const [category, spent, expected] of [
+      ["INVALID_RESPONSE", 19_000, 2],
+      ["INVALID_RESPONSE", 21_000, 1],
+      ["TIMEOUT", 1_000, 1],
+    ] as const) {
+      const { store } = fakeStore([
+        row({ contentEn: englishText, contentTh: null }),
+      ]);
+      let advanceClock: (milliseconds: number) => void = () => undefined;
+      const generate = vi.fn<AiProvider["generate"]>(async () => {
+        advanceClock(spent);
+        return { attempts: [], failureCategory: category, ok: false };
+      });
+      const { advance, analyzeService: analysis } = service({
+        provider: { generate },
+        store,
+      });
+      advanceClock = advance;
+      await analysis.retry({
+        ...analyzeRequest,
+        language: "th",
+        runId: RUN_ID,
+      });
+      expect(generate).toHaveBeenCalledTimes(expected);
+    }
   });
 
   it("keeps the run unchanged when both manual attempts fail or are rejected", async () => {

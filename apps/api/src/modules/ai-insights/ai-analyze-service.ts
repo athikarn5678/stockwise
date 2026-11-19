@@ -27,9 +27,9 @@ import type {
 } from "./ai-analyze-snapshot.ts";
 
 const RATE_LIMIT_MILLISECONDS = 60_000;
-// The web proxy allows 90 s and the ALB 60 s idle; a second attempt may only
-// start when the first ended early enough to stay well inside both.
-const SECOND_ATTEMPT_DEADLINE_MILLISECONDS = 25_000;
+// The ALB idle timeout is 60 s: a second attempt (25 s timeout) may only start
+// when the first ended within 20 s, so a whole run stays under ~50 s.
+const SECOND_ATTEMPT_DEADLINE_MILLISECONDS = 20_000;
 const RETRYABLE_CATEGORIES: ReadonlySet<AiProviderFailureCategory> = new Set([
   "INVALID_RESPONSE",
   "RATE_LIMITED",
@@ -166,6 +166,8 @@ export function createAiAnalyzeService(input: {
     scope: AiAnalyzeScope;
   }): Promise<AiAnalyzeServiceResult> {
     const previousRun = lastRunByActor.get(request.actorUserId);
+    // The 20 s retry deadline counts from here, snapshot time included.
+    const runStartedAt = now();
     const retryAfterSeconds = consumeAllowance(request.actorUserId);
     if (retryAfterSeconds !== null)
       return { kind: "rate_limited", retryAfterSeconds };
@@ -223,7 +225,6 @@ export function createAiAnalyzeService(input: {
     };
     const outcomes = await Promise.all(
       LANGUAGES.map(async (language): Promise<LanguageOutcome> => {
-        const startedAt = now();
         const first = await attempt(language);
         if (first.kind === "ok") return first;
         input.onLanguageFailure?.({
@@ -239,7 +240,7 @@ export function createAiAnalyzeService(input: {
           first.kind === "rejected" || RETRYABLE_CATEGORIES.has(first.category);
         if (
           !transient ||
-          now() - startedAt > SECOND_ATTEMPT_DEADLINE_MILLISECONDS
+          now() - runStartedAt > SECOND_ATTEMPT_DEADLINE_MILLISECONDS
         )
           return first;
         const second = await attempt(language);
@@ -300,6 +301,8 @@ export function createAiAnalyzeService(input: {
     const provider = input.provider;
     if (provider === undefined)
       return { kind: "provider_failed", category: "PROVIDER_UNAVAILABLE" };
+    // The 20 s retry deadline counts from here, snapshot time included.
+    const runStartedAt = now();
     const retryAfterSeconds = consumeAllowance(request.actorUserId);
     if (retryAfterSeconds !== null)
       return { kind: "rate_limited", retryAfterSeconds };
@@ -321,14 +324,16 @@ export function createAiAnalyzeService(input: {
       language: request.language,
       snapshot,
     });
-    const startedAt = now();
     let generated = await provider.generate({ text: prompt });
     // One automatic second attempt for a transient failure or a rejected draft,
     // only while the first attempt was quick (same limiter use).
     const transient = generated.ok
       ? !parseLanguage(request.language, snapshot, generated.text)
       : RETRYABLE_CATEGORIES.has(generated.failureCategory);
-    if (transient && now() - startedAt <= SECOND_ATTEMPT_DEADLINE_MILLISECONDS)
+    if (
+      transient &&
+      now() - runStartedAt <= SECOND_ATTEMPT_DEADLINE_MILLISECONDS
+    )
       generated = await provider.generate({ text: prompt });
     if (!generated.ok)
       return { kind: "provider_failed", category: generated.failureCategory };

@@ -647,6 +647,58 @@ describe("AI analysis service", () => {
     });
   });
 
+  it("counts snapshot time toward the 20 s retry deadline", async () => {
+    const { store } = fakeStore();
+    const generate = vi.fn<AiProvider["generate"]>(async ({ text }) =>
+      languageOf(text) === "en"
+        ? success(englishText)
+        : { attempts: [], failureCategory: "INVALID_RESPONSE", ok: false },
+    );
+    const {
+      advance,
+      analyzeService: analysis,
+      buildSnapshot,
+    } = service({
+      provider: { generate },
+      store,
+    });
+    // The snapshot alone takes 21 s: the failed Thai attempt is not retried.
+    buildSnapshot.mockImplementation(async () => {
+      advance(21_000);
+      return { kind: "ok" as const, snapshot };
+    });
+    await analysis.analyze(analyzeRequest);
+    expect(generate).toHaveBeenCalledTimes(2);
+  });
+
+  it("applies the same deadline and no-timeout-retry rule to a manual retry", async () => {
+    for (const [category, spent, expected] of [
+      ["INVALID_RESPONSE", 19_000, 2],
+      ["INVALID_RESPONSE", 21_000, 1],
+      ["TIMEOUT", 1_000, 1],
+    ] as const) {
+      const { store } = fakeStore([
+        row({ contentEn: englishText, contentTh: null }),
+      ]);
+      let advanceClock: (milliseconds: number) => void = () => undefined;
+      const generate = vi.fn<AiProvider["generate"]>(async () => {
+        advanceClock(spent);
+        return { attempts: [], failureCategory: category, ok: false };
+      });
+      const { advance, analyzeService: analysis } = service({
+        provider: { generate },
+        store,
+      });
+      advanceClock = advance;
+      await analysis.retry({
+        ...analyzeRequest,
+        language: "th",
+        runId: RUN_ID,
+      });
+      expect(generate).toHaveBeenCalledTimes(expected);
+    }
+  });
+
   it("keeps the run unchanged when both manual attempts fail or are rejected", async () => {
     const { store, fillLanguage } = fakeStore([
       row({ contentEn: englishText, contentTh: null }),

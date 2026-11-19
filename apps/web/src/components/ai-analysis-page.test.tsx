@@ -401,7 +401,10 @@ describe("AI analysis viewer", () => {
 
       // The run finished in the background: the next poll finds it.
       const calls = mocks.listRuns.mock.calls.length;
-      mocks.listRuns.mockResolvedValue(page([createdRun]));
+      // Another user's older run is ignored; ours was created after the click.
+      mocks.listRuns.mockResolvedValue(
+        page([run({ createdAt: new Date().toISOString() }), olderRun]),
+      );
       await act(async () => {
         await vi.advanceTimersByTimeAsync(10_100);
       });
@@ -412,6 +415,42 @@ describe("AI analysis viewer", () => {
           "Still generating. The result will appear in history shortly.",
         ),
       ).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores unrelated runs, locks Generate while waiting, and stops on a scope change", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mocks.listRuns.mockResolvedValue(page([olderRun]));
+      mocks.createRun.mockRejectedValueOnce(new mocks.AiAnalysisApiError(504));
+      renderContent();
+      await screen.findByRole("button", { name: /older-model/ });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Generate analysis" }),
+      );
+      await screen.findByText(
+        "Still generating. The result will appear in history shortly.",
+      );
+      // A second click is not possible while waiting (it would only 429).
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Generate analysis",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+      // An older run of someone else never counts as ours.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_100);
+      });
+      expect(
+        screen.getByText(
+          "Still generating. The result will appear in history shortly.",
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByText("English overview body")).toBeNull();
     } finally {
       vi.useRealTimers();
     }

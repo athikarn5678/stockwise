@@ -10,13 +10,21 @@ import type { TranslationKey } from "@/i18n/en";
 import { formatMoney, formatThb } from "@/money-display";
 import { useLanguage } from "@/providers/language-provider";
 
+/** Error correction used for every PromptPay QR (also covered by a decode test). */
+export const PROMPTPAY_QR_ERROR_CORRECTION = "H" as const;
+
+/** The centered badge covers at most this share of the QR width (EMV-safe at level H). */
+export const PROMPTPAY_BADGE_WIDTH_PERCENT = 20;
+
 /** The server-computed total and its locally rendered QR image. */
 export type PromptPayQr = { amount: string; svg: string };
 
 /** Renders the payload locally as SVG. No canvas, no request, no storage. */
 export async function renderPromptPayQrImage(payload: string): Promise<string> {
   return QRCode.toString(payload, {
-    errorCorrectionLevel: "M",
+    // Level H (about 30% recovery) leaves room for the centered brand badge;
+    // the payload itself is unchanged.
+    errorCorrectionLevel: PROMPTPAY_QR_ERROR_CORRECTION,
     margin: 2,
     type: "svg",
   });
@@ -113,18 +121,44 @@ export function PromptPayPanel({
       )}
       {qr === null ? null : (
         <div className="grid items-start gap-4 sm:grid-cols-[auto_minmax(0,1fr)]">
-          {/* A local data URL cannot be optimized by next/image. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            alt={t("uiPromptPayQrAlt").replace(
-              "{amount}",
-              formatMoney(qr.amount),
-            )}
-            className="h-56 w-56 rounded-md border bg-white"
-            height={224}
-            src={qrImageSource(qr.svg)}
-            width={224}
-          />
+          <div
+            className="w-[226px] overflow-hidden rounded-md border bg-white"
+            data-testid="promptpay-qr-card"
+          >
+            <div
+              className="px-2 py-1.5 text-center text-xs font-semibold tracking-wide text-white"
+              data-testid="promptpay-qr-header"
+              style={{ backgroundColor: "#1A3C6E" }}
+            >
+              THAI QR PAYMENT
+            </div>
+            <div className="relative">
+              {/* A local data URL cannot be optimized by next/image. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                alt={t("uiPromptPayQrAlt").replace(
+                  "{amount}",
+                  formatMoney(qr.amount),
+                )}
+                className="block h-56 w-56 bg-white"
+                height={224}
+                src={qrImageSource(qr.svg)}
+                width={224}
+              />
+              <span
+                aria-hidden="true"
+                className="absolute top-1/2 left-1/2 flex aspect-square -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-md bg-white p-0.5 text-center text-[8px] leading-[1.05] font-bold"
+                data-testid="promptpay-qr-badge"
+                style={{
+                  color: "#1A3C6E",
+                  width: `${PROMPTPAY_BADGE_WIDTH_PERCENT}%`,
+                }}
+              >
+                <span>Prompt</span>
+                <span>Pay</span>
+              </span>
+            </div>
+          </div>
           <div className="space-y-2">
             <p className="text-lg font-semibold">
               {t("uiPromptPayAmountDue").replace(
